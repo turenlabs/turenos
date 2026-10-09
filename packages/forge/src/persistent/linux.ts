@@ -17,10 +17,11 @@ import {
   rename,
   stat,
   unlink,
+  writeFile,
   type FileHandle,
 } from "node:fs/promises"
 import { createServer } from "node:net"
-import { dirname, join } from "node:path"
+import { basename, dirname, join } from "node:path"
 
 // The data root and port stay clear of the quick-connect shim, which uses the default XDG data path
 // and prefers port 4096, and of any older manual setup that used /var/lib/turenos as a home directory.
@@ -28,6 +29,9 @@ export const defaults = {
   serviceName: "turenos.service",
   unitPath: "/etc/systemd/system/turenos.service",
   dataRoot: "/var/lib/turenos-server",
+  // Written when the installer first takes a data root, so a later run can tell its own directory
+  // from an unrelated one that --data-root happens to name.
+  dataRootMarker: ".turenos-persistent",
   group: "turenos-operators",
   attachPath: "/etc/turenos/attach.json",
   credstore: "/etc/credstore",
@@ -64,10 +68,13 @@ export type Facts = {
   tpm2: boolean
   user: { name: string; home: string; uid: number; gid: number } | undefined
   existingUnit: string | undefined
+  dropIns: string[]
   keyCredential: boolean
   passwordCredential: boolean
   database: boolean
   dataRootOwner: number | undefined
+  dataRootEmpty: boolean
+  dataRootMarked: boolean
   dataRootLink: boolean
   dataRootParentSafe: boolean
   forgeBinSafe: boolean
@@ -97,6 +104,10 @@ export function databasePath(dataRoot: string) {
   return join(dataRoot, "data", "forge", "forge.db")
 }
 
+export function parseDropInPaths(output: string) {
+  return output.split(/\s+/).filter(Boolean)
+}
+
 export function parseSystemdVersion(output: string) {
   const match = /^systemd (\d+)/m.exec(output)
   return match ? Number(match[1]) : undefined
@@ -104,23 +115,31 @@ export function parseSystemdVersion(output: string) {
 
 /** The unit reads every secret through systemd credentials; nothing secret is in the unit text. */
 export function unit(plan: Plan) {
+  // A newline in any value would start a new unit line, so this holds even for a caller that skipped validate().
+  const unsafe = Object.entries(plan).find(([, value]) => typeof value === "string" && /[\x00-\x1f\x7f]/.test(value))
+  if (unsafe) throw new Error(`refusing to render a unit: ${unsafe[0]} contains a control character`)
   const encrypted = (name: string) => join(plan.credstoreEncrypted, name)
   return [
     "[Unit]",
     "Description=TurenOS persistent server",
     "After=network-online.target",
     "Wants=network-online.target",
+    // A binary that rejects the unit's flags would otherwise restart every RestartSec forever.
+    "StartLimitIntervalSec=300",
+    "StartLimitBurst=5",
     "",
     "[Service]",
     "Type=simple",
     `User=${plan.user}`,
-    `Environment=HOME=${plan.home}`,
+    // Without a passwd home systemd leaves HOME unset, which is better than an empty value.
+    ...(plan.home ? [`Environment=HOME=${plan.home}`] : []),
     `Environment=XDG_DATA_HOME=${join(plan.dataRoot, "data")}`,
     `Environment=XDG_CONFIG_HOME=${join(plan.dataRoot, "config")}`,
     `Environment=XDG_STATE_HOME=${join(plan.dataRoot, "state")}`,
     `Environment=XDG_CACHE_HOME=${join(plan.dataRoot, "cache")}`,
     `Environment=FORGE_DB=${databasePath(plan.dataRoot)}`,
     "Environment=FORGE_SERVER_MODE=persistent",
+    "Environment=FORGE_PERSISTENT_UNIT=1",
     `Environment=FORGE_SERVER_ID=${plan.serverID}`,
     `Environment=FORGE_SERVER_PASSWORD_CREDENTIAL=${credentials.password}`,
     `LoadCredentialEncrypted=${credentials.key}:${encrypted(credentials.key)}`,
@@ -128,6 +147,8 @@ export function unit(plan: Plan) {
     `LoadCredentialEncrypted=${credentials.password}:${encrypted(credentials.password)}`,
     `ExecStart=${plan.forgeBin} serve --key-source systemd-credentials --hostname 127.0.0.1 --port ${plan.port}`,
     "Restart=on-failure",
+    // EX_CONFIG: the server found a configuration error that a restart cannot fix.
+    "RestartPreventExitStatus=78",
     "RestartSec=5",
     "UMask=0077",
     "NoNewPrivileges=yes",
@@ -154,6 +175,7 @@ export function installed(text: string | undefined) {
   const dataHome = line(/^Environment=XDG_DATA_HOME=(\S+)$/m)
   const port = line(/^ExecStart=\S+ serve .*--port (\d+)/m)
   return {
+    forgeBin: line(/^ExecStart=(\S+) serve /m),
     serverID: line(/^Environment=FORGE_SERVER_ID=(\S+)$/m),
     user: line(/^User=(\S+)$/m),
     dataRoot: dataHome ? dirname(dataHome) : undefined,
@@ -166,7 +188,7 @@ const SERVER_ID = /^[A-Za-z0-9._-]{1,128}$/
 // Values are written into a systemd unit, so anything that could split or reinterpret a line is refused.
 const UNIT_PATH = /^(\/[A-Za-z0-9._+-]+)+$/
 
-function validate(plan: Plan) {
+export function validate(plan: Plan) {
   const problems: string[] = []
   if (!USER_NAME.test(plan.user)) problems.push(`invalid service user name: ${plan.user}`)
   if (!SERVER_ID.test(plan.serverID)) problems.push(`server ID may contain only letters, digits, ".", "_", and "-"`)
@@ -216,6 +238,21 @@ export function evaluate(facts: Facts, plan: Plan) {
     facts.dataRootOwner !== facts.user.uid
   )
     problems.push(`${plan.dataRoot} already exists and belongs to another account; choose another --data-root`)
+  // Setup hands the data root to the service account, so it must not take over an unrelated directory
+  // such as /var/lib. Marked roots are this installer's own, and a unit naming the root predates the marker.
+  if (
+    facts.dataRootOwner !== undefined &&
+    !facts.dataRootEmpty &&
+    !facts.dataRootMarked &&
+    installed(facts.existingUnit).dataRoot !== plan.dataRoot
+  )
+    problems.push(`${plan.dataRoot} is not empty and was not created by this installer; choose another --data-root`)
+  // systemd merges drop-ins over the unit the installer writes, so one can swap ExecStart, User, Environment,
+  // or credentials without the installed unit showing it.
+  for (const path of facts.dropIns)
+    problems.push(
+      `systemd drop-in ${path} would override the installed unit; remove it (the installer owns the whole service definition)`,
+    )
   const existingID = installed(facts.existingUnit).serverID
   if (facts.existingUnit !== undefined && existingID !== plan.serverID)
     problems.push(`${plan.unitPath} already exists for a different server; it was left untouched`)
@@ -259,12 +296,21 @@ export async function gather(plan: Plan, runner: Runner = run): Promise<Facts> {
         ? { name: fields[0]!, uid: Number(fields[2]), gid: Number(fields[3]), home: fields[5]! }
         : undefined,
     existingUnit: await readFile(plan.unitPath, "utf8").catch(() => undefined),
+    dropIns: await findDropIns(runner),
     keyCredential: await exists(join(plan.credstoreEncrypted, credentials.key)),
     passwordCredential: await exists(join(plan.credstoreEncrypted, credentials.password)),
     database: await exists(databasePath(plan.dataRoot)),
     dataRootOwner: await lstat(plan.dataRoot).then(
       (info) => info.uid,
       () => undefined,
+    ),
+    dataRootEmpty: await readdir(plan.dataRoot).then(
+      (entries) => entries.length === 0,
+      () => false,
+    ),
+    dataRootMarked: await lstat(join(plan.dataRoot, defaults.dataRootMarker)).then(
+      (info) => info.isFile() && info.uid === 0,
+      () => false,
     ),
     dataRootLink: await lstat(plan.dataRoot).then(
       (info) => info.isSymbolicLink(),
@@ -279,6 +325,51 @@ export async function gather(plan: Plan, runner: Runner = run): Promise<Facts> {
     portInUse: await portInUse(plan.port),
     serviceActive: (await runner("systemctl", ["is-active", "--quiet", defaults.serviceName])).code === 0,
   }
+}
+
+const operatorRoots = [
+  "/etc/systemd/system",
+  "/etc/systemd/system.control",
+  "/run/systemd/system",
+  "/run/systemd/system.control",
+]
+
+const dropInDirectories = [
+  ...operatorRoots.flatMap((root) => [join(root, `${defaults.serviceName}.d`), join(root, "service.d")]),
+  ...["/usr/local/lib/systemd/system", "/usr/lib/systemd/system"].map((root) =>
+    join(root, `${defaults.serviceName}.d`),
+  ),
+]
+
+/**
+ * A drop-in for turenos.service is refused wherever it lives. A generic service.d drop-in applies to every
+ * service, so only the operator-owned ones are refused: distributions ship their own under /usr/lib.
+ */
+function refusedDropIn(path: string) {
+  const directory = dirname(path)
+  return (
+    basename(directory) === `${defaults.serviceName}.d` ||
+    (basename(directory) === "service.d" && operatorRoots.includes(dirname(directory)))
+  )
+}
+
+/**
+ * systemd reports the drop-ins it would apply only for a unit it can find, so a drop-in left beside a
+ * missing unit file is found by listing the drop-in directories as well.
+ */
+export async function findDropIns(runner: Runner, directories: readonly string[] = dropInDirectories) {
+  const shown = await runner("systemctl", ["show", "-p", "DropInPaths", "--value", defaults.serviceName])
+  const listed = await Promise.all(
+    directories.map((directory) =>
+      readdir(directory).then(
+        (entries) => entries.filter((entry) => entry.endsWith(".conf")).map((entry) => join(directory, entry)),
+        () => [],
+      ),
+    ),
+  )
+  return [
+    ...new Set([...(shown.code === 0 ? parseDropInPaths(shown.stdout) : []), ...listed.flat()].filter(refusedDropIn)),
+  ].toSorted()
 }
 
 function portInUse(port: number) {
@@ -332,6 +423,14 @@ export async function withDataRoot<T>(dataRoot: string, owner: { uid: number; gi
       await entry.handle.chown(0, 0)
       entry.claimed = true
       await entry.handle.chmod(0o700)
+      // Right after the root is claimed, so an interrupted run still leaves the marker its re-run needs.
+      if (path === dataRoot)
+        await writeFile(join(dataRoot, defaults.dataRootMarker), "created by forge persistent install\n", {
+          flag: "wx",
+          mode: 0o600,
+        }).catch((error: NodeJS.ErrnoException) => {
+          if (error.code !== "EEXIST") throw error
+        })
     }
     await checkLayout(dataRoot)
     try {
@@ -386,24 +485,37 @@ const importSkipped = new Set(["log", "repos"])
 
 /**
  * Copies a staged data or config tree into the claimed data root and hands it to the service
- * account. The staging directory must be writable only by root, like an imported database, so the
- * account whose data this is cannot swap entries under root while they are read. Symlinks are
+ * account. The staging directory, its parents, and every entry in it must be owned by root with no
+ * group or other write on any directory, like an imported database, so the account whose data this is
+ * cannot swap entries under root while they are read. Symlinks are
  * copied as links, never followed; database files come from `VACUUM INTO`, not from here.
  */
-export async function importTree(source: string, destination: string, owner: { uid: number; gid: number }) {
+export async function importTree(
+  source: string,
+  destination: string,
+  owner: { uid: number; gid: number },
+  // Production trusts only root. The trusted uid and the parent check are parameters so a test that
+  // cannot be root can exercise each refusal on its own.
+  trusted: { uid: number; parentSafe: (path: string) => Promise<boolean> } = { uid: 0, parentSafe: writableOnlyByRoot },
+) {
   const real = await realpath(source).catch(() => {
     throw new Error(`${source} does not exist`)
   })
   if (!(await stat(real)).isDirectory()) throw new Error(`${source} is not a directory`)
-  if (!(await writableOnlyByRoot(dirname(real))))
+  if (!(await trusted.parentSafe(dirname(real))))
     throw new Error(
       `${source} is in a directory another account can write; copy it into a directory writable only by root and import that copy`,
     )
+  // Everything that will be copied is checked before anything is, so an entry the account can swap
+  // never reaches the lchown below.
+  const entries = (await readdir(real)).filter(
+    (entry) => !importSkipped.has(entry) && !/^forge[^/]*\.db(-wal|-shm|-journal|\.owner\.lock)?$/.test(entry),
+  )
+  await checkStaged(real, trusted.uid, entries)
   // The destination may be a managed directory the claim created; entries are copied one by one
   // into it, and any that already exist are an interrupted import that must start over.
   if (!(await lstat(destination).catch(() => undefined))) await mkdir(destination, { mode: 0o700 })
-  for (const entry of await readdir(real)) {
-    if (importSkipped.has(entry) || /^forge[^/]*\.db(-wal|-shm|-journal|\.owner\.lock)?$/.test(entry)) continue
+  for (const entry of entries) {
     if (await lstat(join(destination, entry)).catch(() => undefined))
       throw new Error(`${join(destination, entry)} already exists; remove the data root to retry an interrupted import`)
     await cp(join(real, entry), join(destination, entry), {
@@ -415,6 +527,17 @@ export async function importTree(source: string, destination: string, owner: { u
     })
     await chownTree(join(destination, entry), owner)
   }
+}
+
+/** Refuses entries the service account could have swapped: not root-owned, or a directory others can write. */
+async function checkStaged(path: string, uid: number, children?: string[]) {
+  // lstat, so a symlink is judged as the link itself and never followed.
+  const info = await lstat(path)
+  if (info.uid !== uid) throw new Error(`${path} is not owned by root; import a copy made by root`)
+  if (!info.isDirectory()) return
+  if ((info.mode & 0o022) !== 0)
+    throw new Error(`${path} is writable by another account; remove group and other write access or import a copy`)
+  for (const entry of children ?? (await readdir(path))) await checkStaged(join(path, entry), uid)
 }
 
 async function chownTree(root: string, owner: { uid: number; gid: number }) {

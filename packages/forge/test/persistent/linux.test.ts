@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import path from "node:path"
-import { lstat, mkdir, readFile, symlink, writeFile } from "node:fs/promises"
+import { chmod, lstat, mkdir, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises"
 import { Effect } from "effect"
 import { sql } from "drizzle-orm"
 import { Database } from "@turenlabs/core/database/database"
@@ -10,7 +10,16 @@ import { ServerOwner } from "@turenlabs/core/database/server-owner"
 import { VaultVerification } from "@turenlabs/core/database/vault-verification"
 import { SecretVault } from "@turenlabs/core/secret-vault"
 import { PersistentLinux } from "@/persistent/linux"
-import { placeDatabase } from "@/cli/cmd/persistent"
+import {
+  activate,
+  installLocked,
+  keyFromText,
+  placeDatabase,
+  renderUnit,
+  resolveKey,
+  waitForDescriptor,
+  withInstallLock,
+} from "@/cli/cmd/persistent"
 import { tmpdir } from "../fixture/fixture"
 
 const plan: PersistentLinux.Plan = {
@@ -36,10 +45,13 @@ const facts: PersistentLinux.Facts = {
   tpm2: false,
   user: { name: "turen", home: "/home/turen", uid: 1000, gid: 1000 },
   existingUnit: undefined,
+  dropIns: [],
   keyCredential: false,
   passwordCredential: false,
   database: false,
   dataRootOwner: undefined,
+  dataRootEmpty: true,
+  dataRootMarked: false,
   dataRootLink: false,
   dataRootParentSafe: true,
   forgeBinSafe: true,
@@ -68,8 +80,30 @@ describe("PersistentLinux", () => {
       user: "turen",
       dataRoot: "/var/lib/turenos",
       port: 4096,
+      forgeBin: "/usr/local/bin/forge",
     })
     expect(PersistentLinux.installed(undefined).serverID).toBeUndefined()
+  })
+
+  test("a re-run reads the installed forge binary back from the unit", () => {
+    const text = PersistentLinux.unit({ ...plan, forgeBin: "/opt/forge-1.2/bin/forge" })
+    expect(PersistentLinux.installed(text).forgeBin).toBe("/opt/forge-1.2/bin/forge")
+    expect(PersistentLinux.installed(undefined).forgeBin).toBeUndefined()
+  })
+
+  test("the unit stops restarting a binary or credential that cannot start", () => {
+    const text = PersistentLinux.unit(plan)
+    const [unit, service] = text.split("[Service]")
+    expect(unit).toContain("StartLimitIntervalSec=300")
+    expect(unit).toContain("StartLimitBurst=5")
+    expect(service).toContain("RestartPreventExitStatus=78")
+    expect(service).toContain("Environment=FORGE_PERSISTENT_UNIT=1")
+    expect(service).toContain("Restart=on-failure")
+  })
+
+  test("the unit omits HOME for an account without a home directory", () => {
+    expect(PersistentLinux.unit(plan)).toContain("Environment=HOME=/home/turen\n")
+    expect(PersistentLinux.unit({ ...plan, home: "" })).not.toContain("Environment=HOME=")
   })
 
   test("refuses a port another process holds, but not the installed service's own", () => {
@@ -103,6 +137,33 @@ describe("PersistentLinux", () => {
     expect(problems({}, { forgeBinSafe: false })).toEqual([
       "/usr/local/bin/forge must be a root-owned file in directories writable only by root; pass --forge-bin",
     ])
+  })
+
+  test("the unit refuses a control character in any value, so no caller can split a line", () => {
+    expect(() => PersistentLinux.unit({ ...plan, user: "alice\nExecStartPre=/bin/sh -c id" })).toThrow(
+      "user contains a control character",
+    )
+    expect(() => PersistentLinux.unit({ ...plan, forgeBin: "/usr/local/bin/forge\r" })).toThrow(
+      "forgeBin contains a control character",
+    )
+    expect(() => PersistentLinux.unit({ ...plan, serverID: "srv_test\0" })).toThrow("serverID")
+    // The dry run and `unit` show a fresh server's ID as a placeholder, which is not a control character.
+    expect(PersistentLinux.unit({ ...plan, serverID: "<assigned by install --apply>" })).toContain(
+      "Environment=FORGE_SERVER_ID=<assigned by install --apply>\n",
+    )
+  })
+
+  test("the unit command checks its plan like install and prints nothing for an unsafe one", async () => {
+    const passwd = async () => ({ code: 0, stdout: "turen:x:1000:1000::/home/turen:/bin/sh\n", stderr: "" })
+    const forgeBin = "/opt/test-forge/bin/forge"
+    const args = { "server-id": "srv_test", "data-root": "/var/lib/turenos", port: 4096, "forge-bin": forgeBin }
+    expect(await renderUnit({ ...args, user: "turen" }, passwd)).toBe(PersistentLinux.unit({ ...plan, forgeBin }))
+    for (const unsafe of [
+      { user: "alice\nExecStartPre=/bin/sh -c id" },
+      { user: "turen", "data-root": "/var/lib/x\nExecStartPre=/bin/sh" },
+      { user: "turen", port: 80 },
+    ])
+      await expect(renderUnit({ ...args, ...unsafe }, passwd)).rejects.toThrow("the unit was not printed")
   })
 
   test("the data root cannot redirect root through planted links", async () => {
@@ -192,6 +253,62 @@ describe("PersistentLinux", () => {
     expect(PersistentLinux.evaluate({ ...facts, dataRootOwner: 1000 }, plan).problems).toEqual([])
   })
 
+  test("refuses a systemd drop-in, which would override the unit the installer writes", () => {
+    const dropIn = "/etc/systemd/system/turenos.service.d/release-forge.conf"
+    expect(PersistentLinux.evaluate({ ...facts, dropIns: [] }, plan).problems).toEqual([])
+    expect(
+      PersistentLinux.evaluate({ ...facts, dropIns: [dropIn, "/run/systemd/system/service.d/x.conf"] }, plan).problems,
+    ).toEqual([
+      `systemd drop-in ${dropIn} would override the installed unit; remove it (the installer owns the whole service definition)`,
+      "systemd drop-in /run/systemd/system/service.d/x.conf would override the installed unit; remove it (the installer owns the whole service definition)",
+    ])
+  })
+
+  test("finds drop-ins from systemd and from the drop-in directories, even beside a missing unit file", async () => {
+    expect(PersistentLinux.parseDropInPaths("")).toEqual([])
+    expect(PersistentLinux.parseDropInPaths("/a/service.d/g.conf /b/turenos.service.d/x.conf\n")).toEqual([
+      "/a/service.d/g.conf",
+      "/b/turenos.service.d/x.conf",
+    ])
+    await using tmp = await tmpdir()
+    const directory = path.join(tmp.path, "turenos.service.d")
+    await mkdir(directory)
+    await writeFile(path.join(directory, "release-forge.conf"), "[Service]\n")
+    await writeFile(path.join(directory, "notes.txt"), "not a drop-in\n")
+    const shown = (code: number | null, stdout: string) => async (command: string, args: string[]) => {
+      expect([command, args]).toEqual(["systemctl", ["show", "-p", "DropInPaths", "--value", "turenos.service"]])
+      return { code, stdout, stderr: "" }
+    }
+    const listed = [directory, path.join(tmp.path, "missing.d")]
+    // systemd reports nothing for a unit file it cannot find; the directory listing still does.
+    expect(await PersistentLinux.findDropIns(shown(0, "\n"), listed)).toEqual([
+      path.join(directory, "release-forge.conf"),
+    ])
+    // A generic service.d drop-in is refused only where the operator owns it, never under the vendor's /usr/lib.
+    expect(
+      await PersistentLinux.findDropIns(
+        shown(0, "/etc/systemd/system/service.d/g.conf /usr/lib/systemd/system/service.d/10-timeout-abort.conf\n"),
+        listed,
+      ),
+    ).toEqual(["/etc/systemd/system/service.d/g.conf", path.join(directory, "release-forge.conf")])
+    expect(await PersistentLinux.findDropIns(shown(1, ""), [path.join(tmp.path, "missing.d")])).toEqual([])
+  })
+
+  test("an existing data root is taken only when empty, marked, or already the installed server's", () => {
+    const problems = (extra: Partial<PersistentLinux.Facts>, input: Partial<PersistentLinux.Plan> = {}) =>
+      PersistentLinux.evaluate({ ...facts, dataRootEmpty: false, ...extra }, { ...plan, ...input }).problems
+    const refused = ["/var/lib/turenos is not empty and was not created by this installer; choose another --data-root"]
+    expect(problems({ dataRootOwner: 0 })).toEqual(refused)
+    expect(problems({ dataRootOwner: 1000 })).toEqual(refused)
+    expect(problems({ dataRootOwner: 0, dataRootMarked: true })).toEqual([])
+    expect(problems({ dataRootOwner: 1000, dataRootMarked: true })).toEqual([])
+    expect(problems({ dataRootOwner: 1000, dataRootEmpty: true })).toEqual([])
+    expect(problems({ dataRootOwner: 1000, existingUnit: PersistentLinux.unit(plan) })).toEqual([])
+    expect(
+      problems({ dataRootOwner: 1000, existingUnit: PersistentLinux.unit({ ...plan, dataRoot: "/srv/other" }) }),
+    ).toEqual(refused)
+  })
+
   test("a root-owned data root is an interrupted setup, not another account's", () => {
     const evaluated = PersistentLinux.evaluate({ ...facts, dataRootOwner: 0 }, plan)
     expect(evaluated.problems).toEqual([])
@@ -211,6 +328,8 @@ describe("PersistentLinux", () => {
             expect(info.uid).toBe(0)
             expect(info.mode & 0o777).toBe(0o700)
           }
+          const marker = await lstat(path.join(root, PersistentLinux.defaults.dataRootMarker))
+          expect([marker.uid, marker.mode & 0o777]).toEqual([0, 0o600])
           await writeFile(PersistentLinux.databasePath(root), "fixture")
           throw new Error("work failed")
         }),
@@ -262,6 +381,67 @@ describe("PersistentLinux", () => {
     expect(await lstat(destination).catch(() => undefined)).toBeUndefined()
   })
 
+  // The parent check and the expected owner are injected so a non-root test controls both: "root" is
+  // a uid the staged tree does not have, or the test's own uid when the tree should pass.
+  const staged = async (root: string) => {
+    const source = path.join(root, "staged")
+    await mkdir(path.join(source, "data", "snapshot"), { recursive: true })
+    await writeFile(path.join(source, "data", "snapshot", "HEAD"), "ref: refs/heads/main\n")
+    await symlink("data", path.join(source, "link"))
+    await chmod(source, 0o755)
+    await chmod(path.join(source, "data"), 0o755)
+    await chmod(path.join(source, "data", "snapshot"), 0o755)
+    return source
+  }
+  const importTreeAs = (source: string, destination: string) =>
+    PersistentLinux.importTree(source, destination, self(), { uid: process.getuid!(), parentSafe: async () => true })
+  const self = () => ({ uid: process.getuid!(), gid: process.getgid!() })
+
+  test.skipIf(process.platform === "win32")(
+    "a staged tree whose root another account owns is refused even when its parent is safe",
+    async () => {
+      await using tmp = await tmpdir()
+      const source = await staged(tmp.path)
+      const destination = path.join(tmp.path, "root", "data", "forge")
+      await expect(
+        PersistentLinux.importTree(source, destination, self(), {
+          uid: process.getuid!() + 1,
+          parentSafe: async () => true,
+        }),
+      ).rejects.toThrow("not owned by root")
+      expect(await lstat(destination).catch(() => undefined)).toBeUndefined()
+    },
+  )
+
+  test.skipIf(process.platform === "win32")(
+    "a staged tree with a nested directory another account can write is refused before anything is copied",
+    async () => {
+      await using tmp = await tmpdir()
+      const source = await staged(tmp.path)
+      await chmod(path.join(source, "data", "snapshot"), 0o775)
+      const destination = path.join(tmp.path, "root", "data", "forge")
+      await expect(
+        PersistentLinux.importTree(source, destination, self(), {
+          uid: process.getuid!(),
+          parentSafe: async () => true,
+        }),
+      ).rejects.toThrow("writable by another account")
+      expect(await lstat(destination).catch(() => undefined)).toBeUndefined()
+    },
+  )
+
+  test.skipIf(process.platform === "win32")(
+    "a staged tree owned by root and closed to others is copied as links",
+    async () => {
+      await using tmp = await tmpdir()
+      const source = await staged(tmp.path)
+      const destination = path.join(tmp.path, "forge")
+      await importTreeAs(source, destination)
+      expect(await readFile(path.join(destination, "data", "snapshot", "HEAD"), "utf8")).toBe("ref: refs/heads/main\n")
+      expect((await lstat(path.join(destination, "link"))).isSymbolicLink()).toBe(true)
+    },
+  )
+
   test("an imported quick-connect database is copied read-only, verified, and promoted", async () => {
     await using tmp = await tmpdir()
     const source = path.join(tmp.path, "quick.db")
@@ -281,6 +461,12 @@ describe("PersistentLinux", () => {
     expect(wrong.verification).toBe("invalid")
 
     const before = await readFile(source)
+    // Creating the fixture may have left an owner lock; the import must not be blamed for that one.
+    await Promise.all(
+      (await readdir(tmp.path))
+        .filter((name) => name.startsWith("quick.db.owner.lock"))
+        .map((name) => rm(path.join(tmp.path, name))),
+    )
     await placeDatabase(
       { ...plan, dataRoot: tmp.path },
       facts,
@@ -288,6 +474,7 @@ describe("PersistentLinux", () => {
       source,
     )
     expect(await readFile(source)).toEqual(before)
+    expect((await readdir(tmp.path)).filter((name) => name.startsWith("quick.db.owner.lock"))).toEqual([])
 
     const release = await Database.acquireOwnerLock(target, {
       mode: "persistent",
@@ -357,5 +544,163 @@ describe("PersistentLinux", () => {
       })
       expect(yield* db.get(sql`SELECT count(*) AS count FROM migration`)).toEqual({ count: migrations.length })
     }).pipe(Effect.scoped, Effect.runPromise)
+  })
+
+  test("an import keeps an owner lock the source already had", async () => {
+    await using tmp = await tmpdir()
+    const source = path.join(tmp.path, "quick.db")
+    await mkdir(path.dirname(PersistentLinux.databasePath(tmp.path)), { recursive: true })
+    const key = { keyID: "desktop-key", key: new Uint8Array(32).fill(3) }
+    await Effect.gen(function* () {
+      const database = yield* Database.Service
+      const db = Database.primary(database.db)
+      yield* VaultVerification.verify(db, database.databaseUUID, SecretVault.make(key))
+      yield* ServerOwner.claim(db, { mode: "quick-connect", keyID: key.keyID })
+    }).pipe(Effect.provide(Database.layerFromPath(source)), Effect.scoped, Effect.runPromise)
+    ;(await Database.acquireOwnerLock(source))()
+    const lock = `${source}.owner.lock`
+    expect(await lstat(lock).then(() => true)).toBe(true)
+    await placeDatabase(
+      { ...plan, dataRoot: tmp.path },
+      facts,
+      { ...key, encoded: Buffer.from(key.key).toString("base64") },
+      source,
+    )
+    expect(await lstat(lock).then(() => true)).toBe(true)
+  })
+
+  test("the attach record is published only after the service is healthy and its key verified", async () => {
+    const key = { keyID: "k1", encoded: Buffer.alloc(32, 1).toString("base64"), key: new Uint8Array(32).fill(1) }
+    const log: string[] = []
+    const publish = async () => void log.push("publish")
+    const descriptor = (keyID: string) => ({ serverID: plan.serverID, keyID, mode: "persistent" })
+
+    await activate(plan, facts, key, "pw", {
+      start: async () => (log.push("start"), descriptor("k1")),
+      publish,
+    })
+    expect(log).toEqual(["start", "publish"])
+
+    log.length = 0
+    await expect(
+      activate(plan, facts, key, "pw", {
+        start: async () => {
+          log.push("start")
+          throw new Error("the service did not become healthy within 60 seconds")
+        },
+        publish,
+      }),
+    ).rejects.toThrow("did not become healthy")
+    expect(log).toEqual(["start"])
+
+    log.length = 0
+    await expect(
+      activate(plan, facts, key, "pw", { start: async () => (log.push("start"), descriptor("other")), publish }),
+    ).rejects.toThrow("expected k1")
+    expect(log).toEqual(["start"])
+  })
+
+  test("a health-check timeout names the last probe", async () => {
+    const runner: PersistentLinux.Runner = async () => ({ code: 0, stdout: "0", stderr: "" })
+    const wait = { timeout: 300, interval: 50 }
+    await using server = Bun.serve({ port: 0, fetch: () => new Response("not found\n  here", { status: 404 }) })
+    await expect(waitForDescriptor({ ...plan, port: server.port! }, "pw", runner, wait)).rejects.toThrow(
+      "(last probe: HTTP 404 not found here)",
+    )
+    const closed = Bun.serve({ port: 0, fetch: () => new Response() })
+    const port = closed.port!
+    await closed.stop(true)
+    await expect(waitForDescriptor({ ...plan, port }, "pw", runner, wait)).rejects.toThrow(
+      /did not become healthy within 0\.3 seconds \(last probe: .*(connect|refused)/i,
+    )
+  })
+
+  test("a second install fails fast while one holds the lock, and a crashed install's lock is taken over", async () => {
+    await using tmp = await tmpdir()
+    const lock = path.join(tmp.path, "install.lock")
+    const entered: string[] = []
+    await withInstallLock(lock, async () => {
+      await expect(withInstallLock(lock, async () => entered.push("second"))).rejects.toThrow(
+        "another install is running",
+      )
+    })
+    expect(entered).toEqual([])
+    expect(await lstat(lock).catch(() => undefined)).toBeUndefined()
+
+    const dead = Bun.spawn(["true"])
+    await dead.exited
+    await writeFile(lock, `${dead.pid}\n`)
+    await withInstallLock(lock, async () => entered.push("after crash"))
+    expect(entered).toEqual(["after crash"])
+    expect(await lstat(lock).catch(() => undefined)).toBeUndefined()
+
+    await writeFile(lock, "")
+    await expect(withInstallLock(lock, async () => entered.push("unknown owner"))).rejects.toThrow(
+      "another install is running",
+    )
+  })
+
+  test("a takeover waits for its guard and a release leaves a lock that is no longer this process's", async () => {
+    await using tmp = await tmpdir()
+    const lock = path.join(tmp.path, "install.lock")
+    const guard = `${lock}.takeover`
+    const dead = Bun.spawn(["true"])
+    await dead.exited
+    const entered: string[] = []
+
+    // Another contender is mid-takeover: the lock is not touched and this one backs off.
+    await writeFile(lock, `${dead.pid}\n`)
+    await writeFile(guard, "")
+    await expect(withInstallLock(lock, async () => entered.push("guarded"))).rejects.toThrow(
+      /another install is running.*install\.lock\.takeover/,
+    )
+    expect(entered).toEqual([])
+    expect(await readFile(lock, "utf8")).toBe(`${dead.pid}\n`)
+    await rm(guard)
+
+    // A takeover releases its guard, whether or not it won.
+    await withInstallLock(lock, async () => entered.push("taken over"))
+    expect(entered).toEqual(["taken over"])
+    expect(await lstat(guard).catch(() => undefined)).toBeUndefined()
+    await writeFile(lock, `${process.pid}\n`)
+    await expect(withInstallLock(lock, async () => entered.push("live owner"))).rejects.toThrow("another install")
+    expect(await lstat(guard).catch(() => undefined)).toBeUndefined()
+    await rm(lock)
+
+    // Whoever now holds the path owns it; the displaced run leaves it alone.
+    await withInstallLock(lock, async () => writeFile(lock, `${dead.pid}\n`))
+    expect(await readFile(lock, "utf8")).toBe(`${dead.pid}\n`)
+  })
+
+  test.skipIf(process.platform !== "linux" || process.getuid?.() === 0)(
+    "apply without root is refused as a preflight problem and never touches the lock",
+    async () => {
+      await using tmp = await tmpdir()
+      // A path whose parent is missing would fail with ENOENT if the lock were attempted.
+      const lock = path.join(tmp.path, "missing", "install.lock")
+      await expect(installLocked({ apply: true, user: "root" }, lock)).rejects.toThrow(
+        "preflight failed; nothing was changed",
+      )
+      expect(await lstat(path.dirname(lock)).catch(() => undefined)).toBeUndefined()
+    },
+  )
+
+  test("a key on stdin is exactly a key ID and a key, and rejections never echo it", () => {
+    const encoded = Buffer.alloc(32, 7).toString("base64")
+    expect(keyFromText(`desktop-key\n${encoded}\n`)).toMatchObject({ keyID: "desktop-key", encoded })
+    const extra = `desktop-key\n${encoded}\nsecret-trailing-line\n`
+    expect(() => keyFromText(extra)).toThrow("more than two lines")
+    expect(() => keyFromText(extra)).not.toThrow(encoded)
+    expect(() => keyFromText(extra)).not.toThrow("secret-trailing-line")
+  })
+
+  test("a recovery file left by a failed install says how to continue instead of deadlocking", async () => {
+    await using tmp = await tmpdir()
+    const recovery = path.join(tmp.path, "recovery.key")
+    await writeFile(recovery, "old-key\nold\n")
+    await expect(resolveKey({ "recovery-file": recovery }, facts, plan)).rejects.toThrow(
+      /already exists; refusing to replace it.*delete it and re-run.*--key-stdin/,
+    )
+    expect(await readFile(recovery, "utf8")).toBe("old-key\nold\n")
   })
 })

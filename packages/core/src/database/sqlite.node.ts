@@ -184,15 +184,8 @@ export const layer = (config: Config) => {
 
 export function acquireExclusiveLock(filename: string) {
   const native = new DatabaseSync(filename, { timeout: 0 })
-  try {
-    native.exec("PRAGMA busy_timeout = 0")
-    native.exec("CREATE TABLE IF NOT EXISTS owner_lock (id INTEGER PRIMARY KEY CHECK (id = 1), value TEXT NOT NULL)")
-    native.exec("INSERT OR IGNORE INTO owner_lock (id, value) VALUES (1, '')")
-    native.exec("BEGIN EXCLUSIVE")
-    native.exec("UPDATE owner_lock SET value = value WHERE id = 1")
-    return { close: () => native.close() }
-  } catch (error) {
-    native.close()
-    throw error
-  }
+  return Sqlite.exclusiveLock(
+    (sql) => native.exec(sql),
+    () => native.close(),
+  )
 }

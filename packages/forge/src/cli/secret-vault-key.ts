@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises"
 import { join } from "node:path"
 import { ServerMode } from "@/server/mode"
 import { ServerOwner } from "@turenlabs/core/database/server-owner"
+import { ProcessEnv } from "@turenlabs/core/process-env"
 
 type Key = { keyID: string; key: Uint8Array }
 
@@ -20,27 +21,31 @@ export async function loadSecretVaultKey(env = process.env, override?: string): 
   const persistent = ServerOwner.mode(env) === "persistent"
   ServerMode.assertNoSecretsInEnvironment(env)
   if (persistent && source !== "systemd-credentials")
-    throw new Error("persistent server requires the systemd-credentials secret vault key source")
+    throw new ServerMode.ConfigError("persistent server requires the systemd-credentials secret vault key source")
+
+  // Children inherit process.env, so the variables go in every branch, including systemd-credentials.
+  const keyID = env.FORGE_SECRET_VAULT_KEY_ID
+  const encodedKey = env.FORGE_SECRET_VAULT_KEY
+  if (env === process.env) ProcessEnv.remove(["FORGE_SECRET_VAULT_KEY_ID", "FORGE_SECRET_VAULT_KEY"])
 
   if (source === "systemd-credentials") {
     const directory = env.CREDENTIALS_DIRECTORY
-    if (!directory) throw new Error("systemd credential directory is unavailable")
-    const [keyID, encodedKey] = await Promise.all([
+    if (!directory) throw ServerMode.configError("systemd credential directory is unavailable", env)
+    const [id, encoded] = await Promise.all([
       readFile(join(directory, "forge-secret-vault-key-id"), "utf8").then((value) => value.trim()),
       readFile(join(directory, "forge-secret-vault-key"), "utf8").then((value) => value.trim()),
-    ])
-    return parseKey(keyID, encodedKey)
+    ]).catch((error: Error) => {
+      throw ServerMode.configError(`cannot read the secret vault key credential: ${error.message}`, env)
+    })
+    try {
+      return parseKey(id, encoded)
+    } catch (error) {
+      throw ServerMode.configError((error as Error).message, env)
+    }
   }
 
-  const keyID = env.FORGE_SECRET_VAULT_KEY_ID
-  const encodedKey = env.FORGE_SECRET_VAULT_KEY
   if (keyID === undefined && encodedKey === undefined) return undefined
-  const key = parseKey(keyID ?? "", encodedKey ?? "")
-  if (env === process.env) {
-    delete process.env.FORGE_SECRET_VAULT_KEY_ID
-    delete process.env.FORGE_SECRET_VAULT_KEY
-  }
-  return key
+  return parseKey(keyID ?? "", encodedKey ?? "")
 }
 
 export function parseKey(keyID: string, encodedKey: string): Key {

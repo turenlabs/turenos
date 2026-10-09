@@ -2,6 +2,7 @@ export * as ServerAuth from "./auth"
 
 import { ConfigService } from "@/effect/config-service"
 import { Flag } from "@turenlabs/core/flag/flag"
+import { ProcessEnv } from "@turenlabs/core/process-env"
 import { createHash, timingSafeEqual } from "node:crypto"
 import { Config as EffectConfig, Context, Layer, Option, Redacted } from "effect"
 
@@ -58,7 +59,7 @@ function safeEqual(a: string, b: string) {
  */
 export function claimPassword(password = process.env.FORGE_SERVER_PASSWORD ?? Flag.FORGE_SERVER_PASSWORD) {
   Flag.FORGE_SERVER_PASSWORD = password
-  delete process.env.FORGE_SERVER_PASSWORD
+  ProcessEnv.remove(["FORGE_SERVER_PASSWORD"])
   return password
 }
 

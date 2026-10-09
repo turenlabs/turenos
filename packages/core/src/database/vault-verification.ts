@@ -106,10 +106,23 @@ export function inspect(db: Database.Primary, databaseUUID: string | undefined, 
       const exit = yield* Effect.exit(vault.open(value.scope, value.key, value.value))
       opened.set(value.store, (opened.get(value.store) ?? true) && Exit.isSuccess(exit))
     }
-    const stored = sealed.find((value) => value.scope === verificationScope && value.key === verificationKey)
+    // Read the row itself: a live sentinel that is not an envelope never reaches `sealed`, and
+    // reporting it missing would let a corrupt database pass preflight and then fail every start.
+    // `SELECT *` for the same reason as the store query: unmigrated databases lack `deleted`.
+    const table = yield* db
+      .get<{ name: string }>(sql`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'storage_state'`)
+      .pipe(Effect.orDie)
+    const row = table
+      ? yield* db
+          .get<Record<string, string>>(
+            sql`SELECT * FROM storage_state WHERE scope = ${verificationScope} AND key = ${verificationKey}`,
+          )
+          .pipe(Effect.orDie)
+      : undefined
+    const stored = row && !Number(row.deleted ?? 0) ? { value: row.value! } : undefined
     const verification: Report["verification"] = !stored
       ? "missing"
-      : (yield* sentinelMatches(vault, stored.value, databaseUUID))
+      : vault.isSealed(stored.value) && (yield* sentinelMatches(vault, stored.value, databaseUUID))
         ? "valid"
         : "invalid"
     return {

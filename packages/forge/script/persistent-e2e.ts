@@ -2,13 +2,15 @@
 /**
  * End-to-end harness for `forge persistent` on a real Linux systemd host, driven over ssh.
  *
- *   bun script/persistent-e2e.ts --host user@linux-host [--bin dist/forge-linux-x64-baseline/bin]
- *   bun script/persistent-e2e.ts --host user@linux-host --restore
+ *   bun script/persistent-e2e.ts --host user@linux-host --disposable [--bin dist/forge-linux-x64-baseline/bin]
+ *   bun script/persistent-e2e.ts --host user@linux-host --disposable --restore
  *
- * The host needs passwordless sudo and must be disposable for testing: the harness owns the
- * fixed persistent-server paths (turenos.service, /etc/credstore*, /etc/turenos/attach.json) while it
- * runs. It moves whatever is installed there into /root/turenos-e2e-backup first and puts it back
- * afterwards; if a run dies before that, `--restore` finishes the job. It never touches the
+ * The host needs passwordless sudo and must be disposable for testing. The harness refuses to touch
+ * anything without --disposable and a /etc/turenos-e2e-disposable marker file on the host (create it
+ * with `sudo touch /etc/turenos-e2e-disposable` on a host you can lose). The harness owns the
+ * fixed persistent-server paths (turenos.service and its turenos.service.d drop-ins, /etc/credstore*,
+ * /etc/turenos/attach.json) while it runs. It moves whatever is installed there into
+ * /root/turenos-e2e-backup first and puts it back afterwards; if a run dies before that, `--restore` finishes the job. It never touches the
  * previously installed data root.
  */
 import path from "node:path"
@@ -22,6 +24,8 @@ const args = parseArgs({
     // Use a forge already installed on the host (root-owned, in root-only directories) instead of uploading.
     "remote-bin": { type: "string" },
     restore: { type: "boolean", default: false },
+    // The run stops and removes the real turenos.service on the host; see the header.
+    disposable: { type: "boolean", default: false },
   },
 }).values
 if (!args.host) throw new Error("--host user@linux-host is required")
@@ -36,6 +40,8 @@ const E2E = {
   lock: "/root/turenos-e2e.lock",
   quick: "/tmp/turenos-e2e-quick",
   unit: "/etc/systemd/system/turenos.service",
+  // systemd layers these over the unit, so an operator's override would run instead of what install wrote.
+  dropins: "/etc/systemd/system/turenos.service.d",
   attach: "/etc/turenos/attach.json",
   port: 4097,
   quickPort: 4190,
@@ -44,11 +50,23 @@ const forge = args["remote-bin"] ?? `${E2E.bin}/forge`
 const database = `${E2E.dataRoot}/data/forge/forge.db`
 const owned = [
   E2E.unit,
+  E2E.dropins,
   E2E.attach,
   "/etc/credstore/forge-secret-vault-key-id",
   "/etc/credstore.encrypted/forge-secret-vault-key",
   "/etc/credstore.encrypted/forge-server-password",
 ]
+
+const marker = "/etc/turenos-e2e-disposable"
+
+if (!args.disposable) {
+  console.error(
+    `Refusing to run: this harness stops and removes turenos.service, ${owned.slice(1).join(", ")} on ${args.host} ` +
+      `(backed up to ${E2E.backup} and restored afterwards, but the service is down meanwhile), and runs sudo over ssh.\n` +
+      `Re-run with --disposable against a host you can lose, after creating ${marker} on it.`,
+  )
+  process.exit(1)
+}
 
 const shq = (value: string) => `'${value.replaceAll("'", `'\\''`)}'`
 
@@ -87,6 +105,13 @@ async function ok(script: string, options?: { root?: boolean; input?: string }) 
   const result = await remote(script, options)
   if (result.code !== 0) throw new Error(`remote command failed (${result.code}): ${script}\n${result.output.trim()}`)
   return result.stdout.trim()
+}
+
+if ((await remote(`test -f ${marker}`, { root: false })).code !== 0) {
+  console.error(
+    `Refusing to run: ${args.host} has no ${marker}. Create it on a disposable host to allow this harness to run.`,
+  )
+  process.exit(1)
 }
 
 function expect(condition: unknown, message: string) {
@@ -146,7 +171,7 @@ async function reset() {
     [
       `systemctl disable --now turenos.service 2>/dev/null || true`,
       `systemctl reset-failed turenos.service 2>/dev/null || true`,
-      ...owned.map((file) => `rm -f ${file}`),
+      ...owned.map((file) => `rm -rf ${file}`),
       `if [ -f /etc/turenos ]; then rm -f /etc/turenos; fi`,
       // So each install creates it, and its mode is what install set rather than what an earlier run left.
       `rmdir /etc/turenos 2>/dev/null || true`,
@@ -386,6 +411,20 @@ const scenarios: Array<[string, () => Promise<void>]> = [
     },
   ],
   [
+    "a drop-in that overrides the unit is refused",
+    async () => {
+      await ok(`mkdir -p ${E2E.dropins} && printf '[Service]\\nExecStart=\\n' > ${E2E.dropins}/override.conf`)
+      try {
+        const result = await install(`--apply --recovery-file ${recoveryFile}`)
+        refused(result, "drop-in")
+        expect(result.output.includes(E2E.dropins), `the refusal does not name ${E2E.dropins}:\n${result.output}`)
+        expect((await remote(`test -e ${E2E.unit} -o -e ${recoveryFile}`)).code !== 0, "a refused install wrote files")
+      } finally {
+        await ok(`rm -rf ${E2E.dropins}`)
+      }
+    },
+  ],
+  [
     "verify-key accepts the right key and refuses another",
     async () => {
       await freshInstall()
@@ -540,7 +579,7 @@ scenarios.push([
     await ok(
       [
         `systemctl disable --now turenos.service`,
-        ...owned.map((file) => `rm -f ${file}`),
+        ...owned.map((file) => `rm -rf ${file}`),
         `systemctl daemon-reload`,
         `rm -rf ${E2E.dataRoot}`,
       ].join(" && "),

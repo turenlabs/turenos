@@ -9,13 +9,17 @@ export async function loadServerPassword(env = process.env): Promise<string | un
   ServerMode.assertNoSecretsInEnvironment(env)
   const name = env.FORGE_SERVER_PASSWORD_CREDENTIAL
   if (!name) {
-    if (persistent) throw new Error("persistent server requires FORGE_SERVER_PASSWORD_CREDENTIAL")
+    if (persistent) throw new ServerMode.ConfigError("persistent server requires FORGE_SERVER_PASSWORD_CREDENTIAL")
     return env.FORGE_SERVER_PASSWORD ?? Flag.FORGE_SERVER_PASSWORD
   }
-  if (!env.CREDENTIALS_DIRECTORY) throw new Error("systemd credential directory is unavailable")
-  if (name !== basename(name)) throw new Error("systemd credential names must be file names")
+  if (!env.CREDENTIALS_DIRECTORY) throw ServerMode.configError("systemd credential directory is unavailable", env)
+  if (name !== basename(name)) throw ServerMode.configError("systemd credential names must be file names", env)
   // systemd owns $CREDENTIALS_DIRECTORY and exposes credentials as 0440 in a service-private mount.
-  const password = (await readFile(join(env.CREDENTIALS_DIRECTORY, name), "utf8")).trim()
-  if (!password) throw new Error("server password credential is empty")
+  const password = (
+    await readFile(join(env.CREDENTIALS_DIRECTORY, name), "utf8").catch((error: Error) => {
+      throw ServerMode.configError(`cannot read the server password credential: ${error.message}`, env)
+    })
+  ).trim()
+  if (!password) throw ServerMode.configError("server password credential is empty", env)
   return password
 }

@@ -1,5 +1,6 @@
 import type { Argv } from "yargs"
-import { chmod, lstat, readFile, realpath, stat } from "node:fs/promises"
+import { constants } from "node:fs"
+import { chmod, lstat, mkdir, open, readFile, realpath, rm, stat } from "node:fs/promises"
 import { dirname, join, resolve } from "node:path"
 import { Effect } from "effect"
 import { sql } from "drizzle-orm"
@@ -35,7 +36,10 @@ const planOptions = (yargs: Argv) =>
       type: "number",
       describe: `loopback listener port (default: the installed unit's, or ${PersistentLinux.defaults.port})`,
     })
-    .option("forge-bin", { type: "string", describe: "forge binary the service runs (default: this binary)" })
+    .option("forge-bin", {
+      type: "string",
+      describe: "forge binary the service runs (default: the installed unit's, or this binary)",
+    })
     .option("server-id", {
       type: "string",
       describe: "stable server ID (defaults to the installed unit's, or a new one)",
@@ -60,6 +64,8 @@ async function plan(args: PlanArgs, runner = PersistentLinux.run) {
           : []),
       ]
     : []
+  // A re-run keeps the installed binary unless --forge-bin names another one.
+  const forgeBin = args["forge-bin"] ?? (sameServer ? installed.forgeBin : undefined) ?? process.execPath
   const passwd = await runner("getent", ["passwd", user])
   const target = {
     user,
@@ -68,7 +74,7 @@ async function plan(args: PlanArgs, runner = PersistentLinux.run) {
     port: args.port ?? (sameServer ? installed.port : undefined) ?? PersistentLinux.defaults.port,
     serverID: args["server-id"] ?? installed.serverID ?? PersistentLinux.newServerID(),
     // Resolved, so the unit names the checked file rather than a link that could be repointed later.
-    forgeBin: await realpath(args["forge-bin"] ?? process.execPath).catch(() => args["forge-bin"] ?? process.execPath),
+    forgeBin: await realpath(forgeBin).catch(() => forgeBin),
     group: PersistentLinux.defaults.group,
     unitPath: PersistentLinux.defaults.unitPath,
     attachPath: PersistentLinux.defaults.attachPath,
@@ -87,9 +93,15 @@ async function stdinText() {
   return Buffer.concat(chunks).toString("utf8")
 }
 
-function keyFromText(text: string) {
-  const [keyID = "", key = ""] = text.trim().split(/\r?\n/)
-  return { keyID: keyID.trim(), encoded: key.trim(), key: parseKey(keyID.trim(), key.trim()).key }
+export function keyFromText(text: string) {
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+  // Never echo the lines: any of them may be key material.
+  if (lines.length > 2) throw refuse("expected a key ID and a base64 key on stdin, but got more than two lines")
+  const [keyID = "", key = ""] = lines
+  return { keyID, encoded: key, key: parseKey(keyID, key).key }
 }
 
 function assertOpens(report: Awaited<ReturnType<typeof VaultVerification.inspectFile>>, keyID: string, label: string) {
@@ -142,12 +154,22 @@ const PreflightCommand = cmd<{}, PlanArgs>({
   },
 })
 
+/** The unit text for `forge persistent unit`; an operator may install it by hand, so it gets install's checks. */
+export async function renderUnit(args: PlanArgs, runner = PersistentLinux.run) {
+  const { target, shown, conflicts } = await plan(args, runner)
+  const problems = [...conflicts, ...PersistentLinux.validate(target)]
+  // On stderr: stdout carries the unit, and a redirect must never capture problem lines.
+  for (const problem of problems) console.error(`Problem:      ${problem}`)
+  if (problems.length) throw refuse("the unit was not printed")
+  return PersistentLinux.unit(shown)
+}
+
 const UnitCommand = cmd<{}, PlanArgs>({
   command: "unit",
   describe: "print the systemd unit for a persistent server",
   builder: planOptions as never,
   async handler(args) {
-    process.stdout.write(PersistentLinux.unit((await plan(args)).shown))
+    process.stdout.write(await renderUnit(args))
   },
 })
 
@@ -182,67 +204,127 @@ const InstallCommand = cmd<{}, InstallArgs>({
         type: "string",
         describe: "where to write the recovery copy of a newly generated key (required for a fresh key)",
       })) as never,
-  async handler(args) {
-    const { target, shown, conflicts } = await plan(args)
-    const facts = await PersistentLinux.gather(target)
-    const evaluated = PersistentLinux.evaluate(facts, target)
-    const problems = [...conflicts, ...evaluated.problems]
-    printSummary(args.apply ? target : shown, evaluated.notes)
-    if (problems.length) {
-      for (const problem of problems) console.log(`Problem:      ${problem}`)
-      throw refuse("preflight failed; nothing was changed")
-    }
-    if (!args.apply) {
-      console.log("\nDry run. Unit to install:\n")
-      process.stdout.write(PersistentLinux.unit(shown))
-      console.log("\nRe-run with --apply to make these changes.")
-      return
-    }
-
-    const { key, fresh } = await resolveKey(args, facts, target)
-    const imports: Imports = {
-      db: await importSource(args["import-db"]),
-      data: await importSource(args["import-data"]),
-      config: await importSource(args["import-config"]),
-    }
-    if ((imports.data || imports.config) && facts.database)
-      throw refuse(
-        `${PersistentLinux.databasePath(target.dataRoot)} already exists; data and config import only into a fresh data root`,
-      )
-    // The service is stopped before root works in its data root; any failure before the restart
-    // below brings a previously running service back rather than leaving it down.
-    const service = PersistentLinux.defaults.serviceName
-    // Preflight refuses an active service without this unit, so the unit covers every running case.
-    if (facts.existingUnit) {
-      const stopped = await PersistentLinux.run("systemctl", ["stop", service])
-      if (stopped.code !== 0) throw refuse(`could not stop ${service}: ${stopped.stderr.trim()}`)
-    }
-    const password = await Promise.resolve()
-      .then(async () => {
-        await prepareData(target, facts, key, imports)
-        const password = await writeCredentials(target, facts, key, fresh ? args["recovery-file"] : undefined)
-        await writeAttachAndUnit(target, password)
-        return password
-      })
-      .catch(async (error) => {
-        if (facts.serviceActive) await PersistentLinux.run("systemctl", ["start", service])
-        throw error
-      })
-    const descriptor = await startService(target, facts, password)
-    if (descriptor.keyID !== key.keyID) throw refuse(`service reports key ${descriptor.keyID}, expected ${key.keyID}`)
-    console.log(`\nPersistent server ${descriptor.serverID} is running with key ${descriptor.keyID}.`)
-    if (fresh)
-      console.log(
-        `Move the recovery copy in ${args["recovery-file"]} to offline storage, then delete it from this host.`,
-      )
-    console.log(
-      `Add users who may attach to the ${target.group} group. Reboot once and re-run preflight to confirm startup.`,
-    )
-  },
+  handler: (args) => installLocked(args),
 })
 
+// /run is writable only by root, unlike the sticky /run/lock, and is cleared on reboot.
+const installLockPath = "/run/turenos-install.lock"
+
+export function installLocked(args: InstallArgs, lockPath = installLockPath) {
+  // Off Linux or without root the lock cannot be taken, and install() reports that as a preflight
+  // problem before it changes anything, so the refusal is not replaced by an error from open().
+  if (!args.apply || process.platform !== "linux" || process.getuid?.() !== 0) return install(args)
+  // The lock covers planning too: facts gathered before another install finishes would be stale.
+  return withInstallLock(lockPath, () => install(args))
+}
+
+/**
+ * Two installs interleaving could pair one run's key ID with the other's key blob, so only one may
+ * run. The lock file holds the owner's PID; a file whose owner is gone is left over from a crash.
+ */
+export async function withInstallLock<T>(lockPath: string, work: () => Promise<T>) {
+  const guardPath = `${lockPath}.takeover`
+  const busy = () =>
+    refuse(`another install is running (lock ${lockPath}); if none is, delete that file (and ${guardPath}) and re-run`)
+  const create = (path: string) => open(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL, 0o600)
+  const handle = await create(lockPath).catch(async (error: NodeJS.ErrnoException) => {
+    if (error.code !== "EEXIST") throw error
+    // Deleting a lock cannot be made conditional on its content, so two contenders that both saw the
+    // same dead PID could each delete the other's fresh lock. Only the holder of this exclusive guard
+    // may delete one, and it checks the owner again after winning. A stale guard is never taken over,
+    // for the same reason; a crash inside this window leaves it for an operator to delete.
+    await create(guardPath).then(
+      (guard) => guard.close(),
+      (guardError: NodeJS.ErrnoException) => {
+        throw guardError.code === "EEXIST" ? busy() : guardError
+      },
+    )
+    try {
+      const pid = Number((await readFile(lockPath, "utf8").catch(() => "")).trim())
+      if (!(pid > 0) || isRunning(pid)) throw busy()
+      await rm(lockPath, { force: true })
+      return await create(lockPath).catch(() => {
+        throw busy()
+      })
+    } finally {
+      await rm(guardPath, { force: true })
+    }
+  })
+  await handle.writeFile(`${process.pid}\n`).finally(() => handle.close())
+  // Only the owner file this process wrote is removed; nothing can legitimately replace a live
+  // owner's file, so a changed one is somebody else's and stays.
+  return work().finally(async () => {
+    if ((await readFile(lockPath, "utf8").catch(() => "")).trim() === String(process.pid))
+      await rm(lockPath, { force: true })
+  })
+}
+
+function isRunning(pid: number) {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "EPERM"
+  }
+}
+
+async function install(args: InstallArgs) {
+  const { target, shown, conflicts } = await plan(args)
+  const facts = await PersistentLinux.gather(target)
+  const evaluated = PersistentLinux.evaluate(facts, target)
+  const problems = [...conflicts, ...evaluated.problems]
+  printSummary(args.apply ? target : shown, evaluated.notes)
+  if (problems.length) {
+    for (const problem of problems) console.log(`Problem:      ${problem}`)
+    throw refuse("preflight failed; nothing was changed")
+  }
+  if (!args.apply) {
+    console.log("\nDry run. Unit to install:\n")
+    process.stdout.write(PersistentLinux.unit(shown))
+    console.log("\nRe-run with --apply to make these changes.")
+    return
+  }
+
+  const { key, fresh } = await resolveKey(args, facts, target)
+  const imports: Imports = {
+    db: await importSource(args["import-db"]),
+    data: await importSource(args["import-data"]),
+    config: await importSource(args["import-config"]),
+  }
+  if ((imports.data || imports.config) && facts.database)
+    throw refuse(
+      `${PersistentLinux.databasePath(target.dataRoot)} already exists; data and config import only into a fresh data root`,
+    )
+  // The service is stopped before root works in its data root; any failure before the restart
+  // below brings a previously running service back rather than leaving it down.
+  const service = PersistentLinux.defaults.serviceName
+  // Preflight refuses an active service without this unit, so the unit covers every running case.
+  if (facts.existingUnit) {
+    const stopped = await PersistentLinux.run("systemctl", ["stop", service])
+    if (stopped.code !== 0) throw refuse(`could not stop ${service}: ${stopped.stderr.trim()}`)
+  }
+  const password = await Promise.resolve()
+    .then(async () => {
+      await prepareData(target, facts, key, imports)
+      const password = await writeCredentials(target, facts, key, fresh ? args["recovery-file"] : undefined)
+      await PersistentLinux.writeRestricted(target.unitPath, PersistentLinux.unit(target), 0o644)
+      return password
+    })
+    .catch(async (error) => {
+      if (facts.serviceActive) await PersistentLinux.run("systemctl", ["start", service])
+      throw error
+    })
+  const descriptor = await activate(target, facts, key, password)
+  console.log(`\nPersistent server ${descriptor.serverID} is running with key ${descriptor.keyID}.`)
+  if (fresh)
+    console.log(`Move the recovery copy in ${args["recovery-file"]} to offline storage, then delete it from this host.`)
+  console.log(
+    `Add users who may attach to the ${target.group} group. Reboot once and re-run preflight to confirm startup.`,
+  )
+}
+
 /** The key to install: imported on stdin, the installed one, or a new one when there is no data yet. */
-async function resolveKey(args: InstallArgs, facts: PersistentLinux.Facts, target: PersistentLinux.Plan) {
+export async function resolveKey(args: InstallArgs, facts: PersistentLinux.Facts, target: PersistentLinux.Plan) {
   if (args["key-stdin"] && facts.keyCredential)
     throw refuse("this host already has a vault key credential; refusing to replace it")
   if (args["key-stdin"]) return { key: keyFromText(await stdinText()), fresh: false }
@@ -259,17 +341,23 @@ async function resolveKey(args: InstallArgs, facts: PersistentLinux.Facts, targe
     throw refuse("existing data needs its original key (--key-stdin); a replacement key is never created")
   if (!args["recovery-file"])
     throw refuse("a fresh key needs --recovery-file so a recovery copy exists before first use")
-  // Another account able to write the directory could swap the file before it is moved into place.
-  if (!(await PersistentLinux.writableOnlyByRoot(dirname(resolve(args["recovery-file"])))))
-    throw refuse("--recovery-file must be in a directory writable only by root, such as /root")
-  // Installing replaces the path, which could destroy the only copy of an earlier key.
+  // Installing replaces the path, which could destroy the only copy of an earlier key. With no key
+  // credential and no database on this host, a file here is usually left by an install that failed
+  // before the key credential was written, which nothing was ever sealed with.
   if (
     await lstat(args["recovery-file"]).then(
       () => true,
       () => false,
     )
   )
-    throw refuse(`${args["recovery-file"]} already exists; refusing to replace it`)
+    throw refuse(
+      `${args["recovery-file"]} already exists; refusing to replace it. If it is left over from an install ` +
+        "that failed before finishing, no data was sealed with it: delete it and re-run. If it may hold " +
+        "a key you still need, keep it and import that key with --key-stdin instead",
+    )
+  // Another account able to write the directory could swap the file before it is moved into place.
+  if (!(await PersistentLinux.writableOnlyByRoot(dirname(resolve(args["recovery-file"])))))
+    throw refuse("--recovery-file must be in a directory writable only by root, such as /root")
   const generated = PersistentLinux.newKey()
   return { key: keyFromText(`${generated.keyID}\n${generated.key}`), fresh: true }
 }
@@ -321,6 +409,16 @@ export async function placeDatabase(
     // A quick-connect source is promoted under this server's ID; a persistent source is a backup
     // of this server and must be imported under its own ID.
     assertOwner(source, importDB, target.serverID)
+    // The lock is a SQLite file beside the source; leave the user's directory as it was found.
+    const lockFiles = ["", "-journal", "-wal", "-shm"].map((suffix) => `${importDB}.owner.lock${suffix}`)
+    const existed = await Promise.all(
+      lockFiles.map((file) =>
+        lstat(file).then(
+          () => true,
+          () => false,
+        ),
+      ),
+    )
     const release = await Database.acquireOwnerLock(importDB)
     try {
       await Effect.gen(function* () {
@@ -329,6 +427,7 @@ export async function placeDatabase(
       }).pipe(Effect.scoped, Effect.runPromise)
     } finally {
       release()
+      await Promise.all(lockFiles.filter((_, index) => !existed[index]).map((file) => rm(file, { force: true })))
     }
   }
   if (!importDB && facts.database) {
@@ -390,20 +489,38 @@ async function writeCredentials(
   return password
 }
 
-async function writeAttachAndUnit(target: PersistentLinux.Plan, password: string) {
+/**
+ * Starts the service, then publishes the attach record. Desktops treat a record as a promoted host and
+ * refuse quick connect, so a server that never became healthy must not leave one behind.
+ */
+export async function activate(
+  target: PersistentLinux.Plan,
+  facts: PersistentLinux.Facts,
+  key: Key,
+  password: string,
+  steps = { start: startService, publish: publishAttach },
+) {
+  const descriptor = await steps.start(target, facts, password)
+  if (descriptor.keyID !== key.keyID) throw refuse(`service reports key ${descriptor.keyID}, expected ${key.keyID}`)
+  await steps.publish(target, password)
+  return descriptor
+}
+
+async function publishAttach(target: PersistentLinux.Plan, password: string) {
   if ((await PersistentLinux.groupID(target.group)) === undefined) {
     const created = await PersistentLinux.run("groupadd", ["--system", target.group])
     if (created.code !== 0) throw new Error(`groupadd ${target.group} failed: ${created.stderr.trim()}`)
   }
   const gid = (await PersistentLinux.groupID(target.group))!
+  // Created under root's umask; a hardened 027 or 077 would hide the record from the operator group,
+  // and clients read an untraversable directory as "no persistent server here".
+  await mkdir(dirname(target.attachPath), { recursive: true, mode: 0o755 })
+  await chmod(dirname(target.attachPath), 0o755)
+  // Last, and replaced atomically, so a failure never leaves a partly published record.
   await PersistentLinux.writeRestricted(target.attachPath, PersistentLinux.attachRecord(target, password), 0o640, {
     uid: 0,
     gid,
   })
-  // Created under root's umask; a hardened 027 or 077 would hide the record from the operator group,
-  // and clients read an untraversable directory as "no persistent server here".
-  await chmod(dirname(target.attachPath), 0o755)
-  await PersistentLinux.writeRestricted(target.unitPath, PersistentLinux.unit(target), 0o644)
 }
 
 /** Restarts the service and waits for its descriptor. A new service that never becomes healthy is disabled. */
@@ -431,7 +548,12 @@ async function startService(target: PersistentLinux.Plan, facts: PersistentLinux
   })
 }
 
-async function waitForDescriptor(target: PersistentLinux.Plan, password: string, runner: PersistentLinux.Runner) {
+export async function waitForDescriptor(
+  target: PersistentLinux.Plan,
+  password: string,
+  runner: PersistentLinux.Runner,
+  wait = { timeout: 60_000, interval: 1000 },
+) {
   const authorization = `Basic ${Buffer.from(`forge:${password}`).toString("base64")}`
   const restarts = async () =>
     Number(
@@ -440,22 +562,30 @@ async function waitForDescriptor(target: PersistentLinux.Plan, password: string,
       ).stdout.trim(),
     ) || 0
   const baseline = await restarts()
-  const deadline = Date.now() + 60_000
+  const deadline = Date.now() + wait.timeout
+  // The timeout alone cannot say whether nothing listened, something else answered, or the server was too old.
+  let lastProbe = "no probe finished"
   while (Date.now() < deadline) {
     const response = await fetch(`http://127.0.0.1:${target.port}/global/server`, {
       headers: { authorization },
       signal: AbortSignal.timeout(3000),
-    }).catch(() => undefined)
+    }).catch((error: Error) => {
+      lastProbe = error.message
+    })
     if (response?.ok) {
       const descriptor = (await response.json()) as { serverID: string; keyID: string; mode: string }
       if (descriptor.serverID !== target.serverID || descriptor.mode !== "persistent")
         throw new Error(`port ${target.port} answers as ${descriptor.serverID}, not ${target.serverID}`)
       return descriptor
     }
+    if (response) {
+      const body = (await response.text().catch(() => "")).replaceAll(password, "***").replace(/\s+/g, " ").trim()
+      lastProbe = `HTTP ${response.status}${body ? ` ${body.slice(0, 200)}` : ""}`
+    }
     if ((await restarts()) - baseline >= 2) throw new Error("the service keeps exiting during startup")
-    await new Promise((resolve) => setTimeout(resolve, 1000))
+    await new Promise((resolve) => setTimeout(resolve, wait.interval))
   }
-  throw new Error("the service did not become healthy within 60 seconds")
+  throw new Error(`the service did not become healthy within ${wait.timeout / 1000} seconds (last probe: ${lastProbe})`)
 }
 
 const VerifyKeyCommand = cmd<{}, { db: string }>({

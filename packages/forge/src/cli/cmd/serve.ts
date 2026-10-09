@@ -3,6 +3,8 @@ import { Effect, Layer, ManagedRuntime } from "effect"
 import { cmd } from "./cmd"
 import { withNetworkOptions, resolveNetworkOptions, type NetworkOptions } from "../network"
 import { loadSecretVaultKey, selectedSource, sources } from "../secret-vault-key"
+import { ServerMode } from "@/server/mode"
+import { ProcessEnv } from "@turenlabs/core/process-env"
 import { loadServerPassword } from "../server-password"
 
 type ServeArgs = NetworkOptions & { "key-source"?: string }
@@ -19,9 +21,19 @@ export const ServeCommand = cmd<{}, ServeArgs>({
   async handler(args) {
     // The key and protected password load before anything can open the database;
     // Server.listen then takes the owner lock before building its graph.
+    ServerMode.assertPersistentUnit()
     const keySource = selectedSource(process.env, args["key-source"])
     const credentialVault = await loadSecretVaultKey(process.env, keySource)
     const password = await loadServerPassword()
+    // Tools, PTYs and MCP servers inherit the environment and would otherwise be told where the plaintext
+    // key and password files live. The files stay readable to the service uid; this removes the pointer.
+    ProcessEnv.remove([
+      "CREDENTIALS_DIRECTORY",
+      "FORGE_SERVER_PASSWORD_CREDENTIAL",
+      "FORGE_SERVER_PASSWORD",
+      "FORGE_SECRET_VAULT_KEY",
+      "FORGE_SECRET_VAULT_KEY_ID",
+    ])
 
     // Only config is needed here. Running under AppRuntime would build the whole app graph
     // (including MCP) a second time beside the listener's own graph.
