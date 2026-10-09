@@ -88,10 +88,10 @@ export function createTranscript(renderer: CliRenderer, main: BoxRenderable) {
   markdown.visible = false
   detail.add(markdown)
 
+  // The pane's height is known after its first layout, which fires `resize`; until then the anvil waits for it.
   function fitMark() {
-    if (welcomeRows === undefined) return void (mark.visible = false)
-    // Before its first layout the pane is the terminal less the header, title and footer rows.
-    const rows = (detail.viewport.height > 1 ? detail.viewport.height : renderer.height - 6) - welcomeRows
+    const height = detail.viewport.height
+    const rows = welcomeRows === undefined || height <= 1 ? 0 : height - welcomeRows
     mark.visible = rows >= 4
     if (mark.visible) Object.assign(mark, welcomeMark(rows))
   }
