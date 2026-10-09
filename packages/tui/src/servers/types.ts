@@ -32,6 +32,8 @@ export type Entry = { target: Target; group: Group; detail: string; url?: string
 export type Endpoint = {
   target: Target
   url: string
+  /** The Unix socket the server listens on, when it has no TCP port; `url` then only names the origin. */
+  socketPath?: string
   username: string
   password?: string
   version?: string
@@ -58,6 +60,8 @@ export type Options = {
   /** Overrides forge CLI discovery; null disables the headless server. */
   forge?: string | null
   persistentRecord?: string
+  /** The socket a version 2 persistent record must name; defaults to /run/turenos/server.sock. */
+  persistentSocket?: string
   username?: string
   /** Reads a /proc file as text; undefined when it cannot be read. An absent tcp6 table (no IPv6) reads as "". */
   readProc?: (path: string) => string | undefined
@@ -66,6 +70,8 @@ export type Options = {
 /** A server's address and credentials as published by its owner. */
 export type AttachRecord = {
   url: string
+  /** The Unix socket of a persistent server from TurenOS 1.0.44, which listens on no TCP port. */
+  socketPath?: string
   username: string
   password: string
   /** The identity its owner published; a server that names a different one is not the record's owner. */
@@ -81,6 +87,7 @@ export type Context = {
   configPath: string
   ssh: string
   persistentPath: string
+  persistentSocket: string
   forge: string | null | undefined
   username: string | undefined
   readProc: (path: string) => string | undefined

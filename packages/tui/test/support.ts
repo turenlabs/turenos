@@ -73,7 +73,10 @@ export function assistant(id: string, text: string, extra: Record<string, unknow
  * A TurenOS-shaped server with one session, `ses_<name>` in `/srv/<name>`. `routes` answers extra
  * or replaced "METHOD /path" keys. Every request is recorded, so a test proves exactly what was sent.
  */
-export function turen(options: { name?: string; password?: string; routes?: Record<string, Route> } = {}) {
+/** A fake TurenOS server on a loopback port, or on the Unix socket `socket` as a 1.0.44 persistent server listens. */
+export function turen(
+  options: { name?: string; password?: string; routes?: Record<string, Route>; socket?: string } = {},
+) {
   const name = options.name ?? "main"
   const id = `ses_${name}`
   const requests: { method: string; path: string; body?: unknown }[] = []
@@ -92,10 +95,8 @@ export function turen(options: { name?: string; password?: string; routes?: Reco
     [`GET /api/session/${id}/question`]: () => ({ data: [] }),
     [`GET /api/session/${id}/input`]: () => ({ data: [] }),
   }
-  const listener = Bun.serve({
-    hostname: "127.0.0.1",
-    port: 0,
-    async fetch(request) {
+  const serve = {
+    async fetch(request: Request) {
       const url = new URL(request.url)
       const body = ["GET", "DELETE"].includes(request.method) ? undefined : await request.text()
       requests.push({ method: request.method, path: url.pathname, body: body ? JSON.parse(body) : undefined })
@@ -107,11 +108,14 @@ export function turen(options: { name?: string; password?: string; routes?: Reco
       const result = await route(new Request(request.url, { method: request.method, body }), url)
       return result instanceof Response ? result : Response.json(result)
     },
-  })
+  }
+  const listener = options.socket
+    ? Bun.serve({ unix: options.socket, ...serve })
+    : Bun.serve({ hostname: "127.0.0.1", port: 0, ...serve })
   cleanup.push(() => listener.stop(true))
   return {
     listener,
-    url: listener.url.origin,
+    url: options.socket ? "http://localhost" : listener.url.origin,
     requests,
     paths: () => requests.map((item) => item.path),
     sent: (path: string) => requests.filter((item) => item.path === path),

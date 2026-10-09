@@ -1,5 +1,6 @@
 import { checkDirectory, isRecord, parseResponse } from "./response-validation"
 import { readBounded } from "./response-validation/body"
+import { dial } from "./server/proxy"
 
 type Options = {
   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
@@ -21,9 +22,9 @@ type Options = {
  * them through its legacy SDK). Callers validate the shapes they display; this layer bounds size
  * and nesting, never follows redirects, and turns HTTP failures into readable errors.
  */
-export function createApi(input: { url: URL; headers: Headers; signal: AbortSignal }) {
+export function createApi(input: { url: URL; headers: Headers; signal: AbortSignal; socketPath?: string }) {
   const loopback = input.url.hostname === "127.0.0.1" || input.url.hostname === "[::1]"
-  const secure = input.url.protocol === "https:" || loopback
+  const secure = input.url.protocol === "https:" || loopback || input.socketPath !== undefined
   return async function request(path: string, options: Options = {}): Promise<unknown> {
     if (options.secret && !secure)
       throw new Error("Credentials require HTTPS, or HTTP on 127.0.0.1 or [::1] for an SSH tunnel.")
@@ -49,6 +50,7 @@ export function createApi(input: { url: URL; headers: Headers; signal: AbortSign
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
       signal,
       redirect: "error",
+      ...dial(input.socketPath),
     }).catch(() => {
       throw new Error(signal.aborted ? "The server did not answer in time." : "Connection failed. Check the server.")
     })

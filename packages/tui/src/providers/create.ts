@@ -4,7 +4,7 @@ import { catalog } from "./catalog"
 import { providerConnection } from "./request"
 import type { AuthMethod } from "./validation"
 
-export function createProviders(options: { url: URL; headers: Headers; signal: AbortSignal }) {
+export function createProviders(options: { url: URL; headers: Headers; signal: AbortSignal; socketPath?: string }) {
   const { request, secure } = providerConnection(options)
   return {
     async list(selected: string) {

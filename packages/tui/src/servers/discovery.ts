@@ -77,7 +77,7 @@ async function localEntries(ctx: Context, state: State) {
     local.push({
       target: { kind: "persistent", id: "persistent", name: "Persistent server" },
       group: "This computer",
-      detail: "turenos.service · /etc/turenos/attach.json",
+      detail: `turenos.service · ${persistent.socketPath ?? "/etc/turenos/attach.json"}`,
       url: persistent.url,
     })
   // TurenOS exports its own sidecar's password to every shell it starts, and that sidecar is not on 4096.

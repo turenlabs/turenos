@@ -64,10 +64,13 @@ export async function connectSsh(
   ]
   const remote = await findRemote(ctx, target, [...base, "--", destination, "sh -s"], signal, progress)
   progress?.(`Opening a tunnel to ${target.name}…`)
-  const tunnel = await openTunnel(ctx, base, destination, Number(new URL(remote.url).port), signal)
+  // A persistent server from 1.0.44 listens only on its socket, so the forward ends there, as the desktop's does.
+  const end = remote.socketPath ?? `127.0.0.1:${new URL(remote.url).port}`
+  const tunnel = await openTunnel(ctx, base, destination, end, signal)
   return verified(
     target,
-    { ...remote, url: tunnel.url },
+    // The tunnel's loopback end is the endpoint now; the remote socket path means nothing on this computer.
+    { url: tunnel.url, username: remote.username, password: remote.password, serverID: remote.serverID },
     signal,
     `The tunnel to ${target.name} opened, but its server is not answering.`,
     tunnel.close,
@@ -128,7 +131,8 @@ async function startRemote(
   return state
 }
 
-async function openTunnel(ctx: Context, base: string[], destination: string, remotePort: number, signal: AbortSignal) {
+/** `remote` is where the forward ends on the host: `127.0.0.1:<port>`, or the persistent server's socket. */
+async function openTunnel(ctx: Context, base: string[], destination: string, remote: string, signal: AbortSignal) {
   // A private socket forward behind a loopback proxy: no other local user can bind the tunnel first.
   const directory = await mkdtemp(join(tmpdir(), "turen-tui-"))
   const socketPath = join(directory, "s")
@@ -144,7 +148,7 @@ async function openTunnel(ctx: Context, base: string[], destination: string, rem
       "-o",
       "ServerAliveCountMax=2",
       "-L",
-      `${socketPath}:127.0.0.1:${remotePort}`,
+      `${socketPath}:${remote}`,
       "--",
       destination,
     ],

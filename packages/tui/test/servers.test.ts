@@ -325,12 +325,13 @@ test("SSH destinations cannot smuggle options", () => {
 })
 
 describe("SSH servers", () => {
-  async function fakeSsh(stdout: string | ((stdin: string) => string)) {
+  /** A fake `ssh`; a forward to a host socket path in `sockets` goes to the local socket it maps to. */
+  async function fakeSsh(stdout: string | ((stdin: string) => string), sockets: Record<string, string> = {}) {
     const directory = await scratch()
     const log = join(directory, "ssh.log")
     const replies = join(directory, "replies.json")
     const script = join(directory, "ssh")
-    await writeFile(replies, JSON.stringify(typeof stdout === "string" ? { default: stdout } : {}))
+    await writeFile(replies, JSON.stringify({ ...(typeof stdout === "string" ? { default: stdout } : {}), sockets }))
     await writeFile(
       script,
       `#!${process.execPath}
@@ -342,9 +343,13 @@ const stdin = forward === -1 ? await Bun.stdin.text() : ""
 appendFileSync(${JSON.stringify(log)}, JSON.stringify({ args, stdin, env: Object.keys(process.env) }) + "\\n")
 if (forward !== -1) {
   const spec = args[forward + 1]
-  const at = spec.lastIndexOf(":127.0.0.1:")
+  const at = spec.indexOf(":")
+  const remote = spec.slice(at + 1)
+  const sockets = JSON.parse(readFileSync(${JSON.stringify(replies)}, "utf8")).sockets
   createServer((socket) => {
-    const upstream = connect(Number(spec.slice(at + 11)), "127.0.0.1")
+    const upstream = remote.startsWith("/")
+      ? connect(sockets[remote] ?? remote)
+      : connect(Number(remote.slice("127.0.0.1:".length)), "127.0.0.1")
     socket.pipe(upstream).pipe(socket)
   }).listen(spec.slice(0, at))
   const lifetime = Number(JSON.parse(readFileSync(${JSON.stringify(replies)}, "utf8")).tunnelLifetime)
@@ -532,6 +537,32 @@ if (forward !== -1) {
     const socket = tunnel.args[tunnel.args.indexOf("-L") + 1]!.split(":127.0.0.1:")[0]!
     await Bun.sleep(500)
     expect(await stat(dirname(socket)).then(() => true, () => false)).toBe(false)
+  })
+
+  test("a 1.0.44 persistent server on the host is reached by forwarding to its socket", async () => {
+    const directory = await scratch()
+    const socketPath = join(directory, "server.sock")
+    const listener = Bun.serve({
+      unix: socketPath,
+      fetch(request) {
+        if (request.headers.get("authorization") !== `Basic ${btoa("forge:secret")}`) return new Response(null, { status: 401 })
+        const path = new URL(request.url).pathname
+        if (path === "/global/health") return Response.json({ healthy: true, version: "1.0.44" })
+        return path === "/global/server" ? Response.json({ serverID: "srv_1" }) : new Response(null, { status: 404 })
+      },
+    })
+    cleanup.push(() => listener.stop(true))
+    const record = { version: 2, serverID: "srv_1", socketPath: "/run/turenos/server.sock", username: "forge", password: "secret" }
+    const ssh = await fakeSsh(`FORGE_ATTACH readable ${JSON.stringify(record)}\n`, { "/run/turenos/server.sock": socketPath })
+    const { servers, target } = await lab(ssh.script)
+    const endpoint = await open(servers, target)
+    // The tunnel's loopback end is the endpoint; the host's socket path means nothing on this computer.
+    expect(endpoint.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/)
+    expect(endpoint.socketPath).toBeUndefined()
+    expect(endpoint.version).toBe("1.0.44")
+    expect(await healthy(endpoint)).toBe(200)
+    const tunnel = (await ssh.calls()).find((call) => call.args.includes("-L"))!
+    expect(tunnel.args[tunnel.args.indexOf("-L") + 1]).toEndWith(":/run/turenos/server.sock")
   })
 
   test("a host without TurenOS points to the desktop installer", async () => {

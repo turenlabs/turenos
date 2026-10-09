@@ -112,7 +112,13 @@ async function connectDashboard(
 /** The connection for a verified endpoint; a refused configuration releases the endpoint's tunnel. */
 function open(endpoint: Endpoint, directory: string | undefined) {
   try {
-    return connect({ url: endpoint.url, username: endpoint.username, password: endpoint.password, directory })
+    return connect({
+      url: endpoint.url,
+      socketPath: endpoint.socketPath,
+      username: endpoint.username,
+      password: endpoint.password,
+      directory,
+    })
   } catch (error) {
     endpoint.close?.()
     throw error

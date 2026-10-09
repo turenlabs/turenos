@@ -1,6 +1,6 @@
 import { isRecord } from "../response-validation"
 import { boundedText } from "../response-validation/body"
-import { bypassLoopbackProxy } from "../server/proxy"
+import { bypassLoopbackProxy, dial } from "../server/proxy"
 import { parseJSON } from "./text"
 import { PasswordRequired, type AttachRecord, type Endpoint, type Target } from "./types"
 
@@ -33,6 +33,7 @@ export async function verified(
   return {
     target,
     url: record.url,
+    ...(record.socketPath && { socketPath: record.socketPath }),
     username: record.username,
     password: record.password || undefined,
     version: result.version,
@@ -58,6 +59,7 @@ function request(record: AttachRecord, path: string, signal: AbortSignal) {
       : {},
     redirect: "error",
     signal: AbortSignal.any([signal, AbortSignal.timeout(5000)]),
+    ...dial(record.socketPath),
   }).catch(() => undefined)
 }
 

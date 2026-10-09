@@ -1,8 +1,14 @@
 import { invalid } from "../response-validation"
+import { dial } from "../server/proxy"
 import { newFrames, pushByte } from "./frames"
 
 /** The data of each server-sent event on `/api/event`, unparsed. */
-export async function* eventStream(baseURL: URL, headers: Headers, signal: AbortSignal): AsyncIterable<string> {
+export async function* eventStream(
+  baseURL: URL,
+  headers: Headers,
+  signal: AbortSignal,
+  socketPath?: string,
+): AsyncIterable<string> {
   const guard = createGuard(signal)
   const controller = guard.controller
   try {
@@ -15,6 +21,7 @@ export async function* eventStream(baseURL: URL, headers: Headers, signal: Abort
       headers: requestHeaders,
       signal: controller.signal,
       redirect: "error",
+      ...dial(socketPath),
     })
     guard.reader = response.body?.getReader()
     controller.signal.throwIfAborted()

@@ -30,8 +30,13 @@ function durable(value: unknown) {
   return { aggregateID: value.aggregateID, seq: value.seq, version: value.version }
 }
 
-export async function* liveEvents(baseURL: URL, headers: Headers, signal: AbortSignal): AsyncIterable<LiveEvent> {
-  for await (const data of eventStream(baseURL, headers, signal)) {
+export async function* liveEvents(
+  baseURL: URL,
+  headers: Headers,
+  signal: AbortSignal,
+  socketPath?: string,
+): AsyncIterable<LiveEvent> {
+  for await (const data of eventStream(baseURL, headers, signal, socketPath)) {
     const event = envelope(data)
     if (event) yield event
   }

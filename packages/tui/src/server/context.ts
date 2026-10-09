@@ -4,6 +4,8 @@ import type { createWorkingFolders } from "../working-folders"
 
 export type ConnectionOptions = {
   url: string
+  /** The Unix socket a persistent server listens on; requests go there, and `url` only names the origin. */
+  socketPath?: string
   directory?: string
   username?: string
   password?: string

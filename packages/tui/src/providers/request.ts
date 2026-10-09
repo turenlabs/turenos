@@ -1,6 +1,6 @@
 import { checkDirectory, invalid, parseResponse } from "../response-validation"
 import { readBounded } from "../response-validation/body"
-import { bypassLoopbackProxy } from "../server/proxy"
+import { bypassLoopbackProxy, dial } from "../server/proxy"
 
 export type RequestInput = {
   method?: "PUT" | "PATCH" | "POST"
@@ -15,12 +15,12 @@ export type RequestInput = {
 export type ProviderRequest = (path: string, input?: RequestInput) => Promise<unknown>
 
 /** The provider adapter's connection: a validated origin, its request function, and whether it may carry secrets. */
-export function providerConnection(options: { url: URL; headers: Headers; signal: AbortSignal }) {
+export function providerConnection(options: { url: URL; headers: Headers; signal: AbortSignal; socketPath?: string }) {
   const url = providerOrigin(options.url)
   const headers = new Headers(options.headers)
   headers.set("Accept", "application/json")
   const loopback = url.hostname === "127.0.0.1" || url.hostname === "[::1]"
-  const secure = url.protocol === "https:" || loopback
+  const secure = url.protocol === "https:" || loopback || options.socketPath !== undefined
   bypassLoopbackProxy(url)
   async function request(path: string, input: RequestInput = {}): Promise<unknown> {
     if (!secure && (input.secret || headers.has("authorization") || headers.has("cookie")))
@@ -50,6 +50,7 @@ export function providerConnection(options: { url: URL; headers: Headers; signal
       body: input.body ? JSON.stringify(input.body) : undefined,
       signal,
       redirect: "error",
+      ...dial(options.socketPath),
     }).catch(() => {
       throw failed()
     })

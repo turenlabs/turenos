@@ -3,6 +3,7 @@ import { open, readlink } from "node:fs/promises"
 import { hostname } from "node:os"
 import { isAbsolute, join } from "node:path"
 import { isRecord } from "../response-validation"
+import { SOCKET_ORIGIN } from "../server/proxy"
 import { writtenSinceStart } from "./freshness"
 import { parseJSON, validUsername } from "./text"
 import type { AttachRecord, Context } from "./types"
@@ -49,7 +50,7 @@ export async function shimRecord(ctx: Context) {
 
 export async function persistentRecord(ctx: Context) {
   const text = await readPrivate(ctx.persistentPath, ctx.uid, "root")
-  const record = text === undefined ? undefined : attachRecord(parseJSON(text))
+  const record = text === undefined ? undefined : attachRecord(parseJSON(text), ctx.persistentSocket)
   if (!record) throw new Error("The persistent server's attach record is missing or unreadable.")
   return record
 }
@@ -62,7 +63,8 @@ export async function trustedRecord(ctx: Context, origin: string) {
     shimRecord(ctx),
     ctx.platform === "linux" ? persistentRecord(ctx).catch(() => undefined) : undefined,
   ])
-  return records.find((record) => record?.url === origin)
+  // A socket record has no TCP origin; its placeholder must never lend its credentials to a typed URL.
+  return records.find((record) => record?.url === origin && !record.socketPath)
 }
 
 export function forgeBinary(ctx: Context) {
@@ -100,7 +102,19 @@ export function shimState(lines: string[]): AttachRecord | undefined {
   }
 }
 
-export function attachRecord(value: unknown): AttachRecord | undefined {
+/** Where a persistent server from TurenOS 1.0.44 listens; its version 2 record may name no other path. */
+export const PERSISTENT_SOCKET = "/run/turenos/server.sock"
+
+/**
+ * A persistent server's published record. Version 1 (TurenOS 1.0.43) names a loopback URL; version 2 names the
+ * fixed Unix socket, which only `turenos-operators` can open.
+ */
+export function attachRecord(value: unknown, socket = PERSISTENT_SOCKET): AttachRecord | undefined {
+  if (isRecord(value) && value.version === 2) {
+    if (value.socketPath !== socket) return undefined
+    const credentials = recordCredentials(value)
+    return credentials && { url: SOCKET_ORIGIN, socketPath: socket, ...credentials }
+  }
   if (!isRecord(value) || value.version !== 1 || typeof value.url !== "string") return undefined
   const url = URL.parse(value.url)
   if (
@@ -114,10 +128,16 @@ export function attachRecord(value: unknown): AttachRecord | undefined {
     url.username
   )
     return undefined
+  const credentials = recordCredentials(value)
+  return credentials && { url: url.origin, ...credentials }
+}
+
+/** A record's username, password and server identity, as both record versions publish them. */
+function recordCredentials(value: Record<string, unknown>) {
   if (typeof value.password !== "string" || !value.password || value.password.length > 1024) return undefined
   if (typeof value.username !== "string" || !validUsername(value.username)) return undefined
   const serverID = typeof value.serverID === "string" && value.serverID ? value.serverID : undefined
-  return { url: url.origin, username: value.username, password: value.password, ...(serverID && { serverID }) }
+  return { username: value.username, password: value.password, ...(serverID && { serverID }) }
 }
 
 /** Opens a file only when its owner could not have been another user and nobody else can rewrite it. */

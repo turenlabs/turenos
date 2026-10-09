@@ -18,7 +18,12 @@ export async function openServer(values: Values, io: Io) {
     throw usage("--server must name a saved server.")
   const address = serverAddress(values, io.env)
   const endpoint = address ? await explicit(address, values, io) : await local(values, io)
-  const connection = connect({ url: endpoint.url, username: endpoint.username, password: endpoint.password })
+  const connection = connect({
+    url: endpoint.url,
+    socketPath: endpoint.socketPath,
+    username: endpoint.username,
+    password: endpoint.password,
+  })
   return {
     connection,
     /** Whether the server shares this computer's folders, so the folder the command runs in means the same there. */
@@ -55,6 +60,7 @@ async function explicit(address: string, values: Values, io: Io) {
   return {
     here: onThisComputer(cliTarget(url)),
     url: url.href,
+    socketPath: undefined,
     username: checkUsername(auth.username),
     password: auth.password || undefined,
     unauthorized: `The server at ${url.origin} requires a password. Set FORGE_SERVER_PASSWORD in the environment (there is no password flag) and retry.`,
@@ -74,6 +80,7 @@ async function recorded(url: URL, values: Values, io: Io) {
   return {
     here: onThisComputer(target),
     url: endpoint.url,
+    socketPath: endpoint.socketPath,
     username: checkUsername(endpoint.username),
     password: endpoint.password,
     unauthorized: undefined,
@@ -101,6 +108,7 @@ async function local(values: Values, io: Io) {
   return {
     here: onThisComputer(target),
     url: endpoint.url,
+    socketPath: endpoint.socketPath,
     username: checkUsername(endpoint.username),
     password: endpoint.password,
     unauthorized: undefined,

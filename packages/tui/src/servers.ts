@@ -2,7 +2,7 @@ import { homedir } from "node:os"
 import { join } from "node:path"
 import { preferred, scan } from "./servers/discovery"
 import { readProc } from "./servers/listener"
-import { trustedRecord } from "./servers/records"
+import { PERSISTENT_SOCKET, trustedRecord } from "./servers/records"
 import { resolve } from "./servers/resolve"
 import { add, importDesktop, load, remove } from "./servers/saved"
 import type { Context, Options, State, Target } from "./servers/types"
@@ -24,6 +24,7 @@ export function createServers(options: Options = {}) {
     configPath: options.config ?? join(env.XDG_CONFIG_HOME || join(home, ".config"), "turen-tui", "servers.json"),
     ssh: options.ssh ?? env.TURENOS_SSH ?? (platform === "win32" ? "ssh.exe" : "ssh"),
     persistentPath: options.persistentRecord ?? "/etc/turenos/attach.json",
+    persistentSocket: options.persistentSocket ?? PERSISTENT_SOCKET,
     forge: options.forge,
     username: options.username,
     readProc: options.readProc ?? readProc,

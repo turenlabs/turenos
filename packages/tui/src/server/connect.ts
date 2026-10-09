@@ -20,24 +20,25 @@ import { worktree } from "./worktree"
 import type { Folder } from "../working-folders/folder"
 
 export function connect(options: ConnectionOptions) {
-  const { url, username } = validateConnection(options)
+  const { url, username, socketPath } = validateConnection(options)
   const controller = new AbortController()
   const headers = basicAuthHeaders(username, options.password)
-  const transport = createTransport(controller)
+  const transport = createTransport(controller, socketPath)
   const client = Forge.make({ baseUrl: url.href, headers, fetch: transport })
   const folders = createWorkingFolders({ url, headers, transport })
-  const api = createApi({ url, headers, signal: controller.signal })
+  const api = createApi({ url, headers, signal: controller.signal, socketPath })
   const missingFiles = new Set<string>()
   const ctx: Context = { url, headers, controller, options, transport, client, folders, api, missingFiles }
-  const providers = createProviders({ url, headers, signal: controller.signal })
+  const providers = createProviders({ url, headers, signal: controller.signal, socketPath })
   return {
-    address: url.origin,
+    address: socketPath ? `unix:${socketPath}` : url.origin,
     providers,
     folders,
     client,
     api,
     missingFiles,
-    events: (signal: AbortSignal) => liveEvents(url, headers, AbortSignal.any([controller.signal, signal])),
+    events: (signal: AbortSignal) =>
+      liveEvents(url, headers, AbortSignal.any([controller.signal, signal]), socketPath),
     snapshot: (folder?: Folder) => snapshot(ctx, folder),
     searchSessions: (input: SessionSearch, signal?: AbortSignal) => searchSessions(ctx, input, signal),
     updateSession: (session: Session, change: SessionChange) => updateSession(ctx, session, change),
