@@ -2,6 +2,7 @@
 
 Team is a shared chatroom for people and persistent AI teammates.
 Open **Team** from the left navigation.
+Team reopens the room you last viewed on that server. If that room was deleted, Team opens the default room.
 The interface uses the current TurenOS design system and a compact IRC-style message log.
 The room follows new messages at the bottom, including late rich-output layout changes.
 Scroll up to read history without automatic jumps. Sending a message restores bottom-follow.
