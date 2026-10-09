@@ -16,6 +16,12 @@ Select a coordinator and up to ten teammates from that channel. Include the coor
 Saving setup does not start work. Select **Run** to start one bounded run.
 The coordinator plans assignments for the selected teammates.
 The existing Team task runner executes those assignments and posts their results.
+Assignments can declare `dependsOn` with predecessor teammate IDs from the same plan.
+The server rejects unknown dependencies, duplicates, self-dependencies, and cycles before admitting worker tasks.
+Independent assignments can run in parallel. Successors wait for all required predecessors to succeed and publish their results.
+Each successor receives the predecessor result text and its task, teammate, Session, and message identities.
+Assignment notices and progress messages do not count as delivered results.
+The first claim saves these inputs once. Reclaims preserve the same prompt.
 The coordinator then checks the results against the acceptance criteria.
 An accepted check completes the run. A rejected or invalid check fails the run.
 A check that requires your answer reports `needs_input`.
@@ -115,6 +121,16 @@ Existing tool permissions remain in force.
 
 Teammates keep their identity across tasks and duty runs.
 Selecting a member opens its details without replacing the room conversation.
+
+## Factory Tools
+
+Workers and coordinators can build reusable scripts and tests in the factory execution directory.
+Use existing native file and shell tools. File changes and execution still require their normal permissions.
+Share the relative tool path, exact command, input and output formats, and observed test results with successors.
+Successors can inspect and reuse tools from the shared repository.
+Treat teammate-built tools as untrusted code. Inspect them before execution.
+Tool creation does not grant broader permissions or approve plugin registration or dependency installation.
+Factory tools are repository files, not automatically registered host tools.
 
 ## Duties
 
