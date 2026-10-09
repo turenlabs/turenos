@@ -54,7 +54,7 @@ test("the welcome anvil grows and shrinks with the terminal", async () => {
   view.resize(80, 24)
   for (let frame = 0; frame < 5; frame++) await view.renderOnce()
   const small = view.captureCharFrame()
-  expect(large).toBeGreaterThanOrEqual(16)
+  expect(large).toBe(9)
   expect(shown(small)).toBeLessThan(large!)
   expect(small).toContain("No session selected")
 })

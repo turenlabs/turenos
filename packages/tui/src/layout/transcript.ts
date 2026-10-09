@@ -72,8 +72,14 @@ export function createTranscript(renderer: CliRenderer, main: BoxRenderable) {
     contentOptions: { flexDirection: "column", paddingRight: 2 },
   })
   main.add(detail)
-  // The anvil above the welcome text, as large as the pane leaves room for; other content hides it.
-  const mark = new TextRenderable(renderer, { ...welcomeMark(0), visible: false, flexShrink: 0, wrapMode: "none" })
+  // Keep the welcome mark secondary to the text, with two clear rows beneath it.
+  const mark = new TextRenderable(renderer, {
+    ...welcomeMark(0),
+    visible: false,
+    flexShrink: 0,
+    marginBottom: 2,
+    wrapMode: "none",
+  })
   detail.add(mark)
   /** The welcome text's rows while the welcome shows, which the anvil leaves room for. */
   let welcomeRows: number | undefined
@@ -91,7 +97,7 @@ export function createTranscript(renderer: CliRenderer, main: BoxRenderable) {
   // The pane's height is known after its first layout, which fires `resize`; until then the anvil waits for it.
   function fitMark() {
     const height = detail.viewport.height
-    const rows = welcomeRows === undefined || height <= 1 ? 0 : height - welcomeRows
+    const rows = welcomeRows === undefined ? 0 : Math.min(9, Math.floor(height / 3), height - welcomeRows - 2)
     mark.visible = rows >= 4
     if (mark.visible) Object.assign(mark, welcomeMark(rows))
   }
