@@ -131,7 +131,11 @@ export function plan(messages: Message[], tools: string[]): Plan {
   // A delegated child answers plainly; otherwise it would see the trigger word and delegate again.
   if (messages.some((message) => message.role === "user" && text(message.content).includes(childMarker)))
     return { kind: "text", text: "Child summary: README.md introduces the sandbox project.", delay: 10 }
-  const lower = prompt.toLowerCase()
+  // A Team task wraps the request in the teammate's mission and the room's history; only the request picks a
+  // scenario, or a mission such as "Write summaries" or a past "Factory run …" would fire a tool on every task.
+  const request = prompt.split(/\n\n(?:Earlier|Waiting) room messages[^\n]*untrusted context/)[0]!
+  const asked = request.includes("User message: ") ? request.slice(request.lastIndexOf("User message: ")) : request
+  const lower = asked.toLowerCase()
   const scenario = scenarios.find((item) => item.trigger.test(lower))
   const after = messages.slice(messages.lastIndexOf(user!) + 1)
   // A tool result after the prompt means the call already ran: finish instead of calling again.

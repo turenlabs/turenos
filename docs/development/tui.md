@@ -69,7 +69,7 @@ bun run sandbox attach demo                   # a person watches or takes over; 
 
 ### Scripted model
 
-The latest user message chooses the reply: the first row of the table below whose word the message contains (the three factory rows come first, because a factory prompt carries the outcome and room text, which may hold any other word), not the first word in the message (`write and run` runs, because `run` comes first). Anything else gets a short reply that lists the words. A message that begins with `<` is a server notice (a child's result, room updates) and gets `Noted.`, so a quoted trigger word cannot loop.
+The latest user message chooses the reply: the first row of the table below whose word the message contains (the three factory rows come first, because a factory prompt carries the outcome and room text, which may hold any other word), not the first word in the message (`write and run` runs, because `run` comes first). Anything else gets a short reply that lists the words. A message that begins with `<` is a server notice (a child's result, room updates) and gets `Noted.`, so a quoted trigger word cannot loop. A Team task's prompt is matched only from its `User message:` up to the room history marked as untrusted context, so a teammate's mission ("Write summaries") or an earlier `Factory run …` line does not fire a tool on every task.
 
 | Word                                          | Reply                                                                                                                   |
 | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
