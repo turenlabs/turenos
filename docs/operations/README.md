@@ -8,6 +8,7 @@ Procedures for running and shipping TurenOS: where the backend runs and how rele
 - [Persistent server](./persistent-server.md): one host-owned server and vault key that every client attaches to, with
   systemd setup, key import, and recovery.
 - [WSL backends](./wsl.md): installing `forge` into a WSL distro and running the Desktop's backend there on Windows.
+- [1Password](./onepassword.md): approved secret use for agents and factories through local environment mounts.
 - [Releases](./releases/README.md): the operator checklist for cutting a release (version bump, dispatch,
   verification, and recovery).
   - [Automated releases](./releases/automation.md): one-dispatch private builds, verified public publication, Homebrew

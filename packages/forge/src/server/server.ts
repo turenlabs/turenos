@@ -8,6 +8,7 @@ import { MCP } from "@/mcp"
 import { HttpRouter, HttpServer } from "effect/unstable/http"
 import { OpenApi } from "effect/unstable/httpapi"
 import { performance } from "node:perf_hooks"
+import { chmod } from "node:fs/promises"
 import { MDNS } from "./mdns"
 import { HttpApiApp } from "./routes/instance/httpapi/server"
 import { disposeMiddleware } from "./routes/instance/httpapi/lifecycle"
@@ -34,6 +35,7 @@ import type { SecurityProxy } from "@turenlabs/schema/security-proxy"
 globalThis.AI_SDK_LOG_WARNINGS = false
 
 export type Listener = {
+  socketPath?: string
   hostname: string
   port: number
   url: URL
@@ -47,6 +49,7 @@ type ServerApp = {
 }
 
 type ListenOptions = CorsOptions & {
+  socketPath?: string
   port: number
   hostname: string
   /** Basic auth password. Defaults to FORGE_SERVER_PASSWORD, which listen moves from process.env into Flag. */
@@ -103,7 +106,7 @@ export async function listen(opts: ListenOptions): Promise<Listener> {
   Heap.start({ announce: true })
   // Binding a non-loopback interface exposes every privileged API on the LAN, so a
   // password is mandatory there unless the caller explicitly opts into insecure mode.
-  if (!password && !opts.insecure && !isLoopbackHostname(opts.hostname)) {
+  if (!opts.socketPath && !password && !opts.insecure && !isLoopbackHostname(opts.hostname)) {
     throw new Error(
       `Refusing to listen on ${opts.hostname} without FORGE_SERVER_PASSWORD. ` +
         "Set FORGE_SERVER_PASSWORD, bind a loopback hostname, or pass --insecure to override.",
@@ -117,6 +120,7 @@ export async function listen(opts: ListenOptions): Promise<Listener> {
     }
     const listener = await Effect.runPromise(listenEffect({ ...opts, password, username }, facts))
     return {
+      socketPath: listener.socketPath,
       hostname: listener.hostname,
       port: listener.port,
       url: listener.url,
@@ -153,17 +157,21 @@ const listenEffect = Effect.fn("Server.listen")(function* (opts: ListenOptions, 
       Effect.sync(() => intelScheduler.stop()),
     )
   }
-  const address = yield* tcpAddress(state)
-  const listenerUrl = makeURL(opts.hostname, address.port)
-  const unpublishMdns = yield* setupMdns(opts, address.port, state.scope)
+  const port = opts.socketPath ? 0 : (yield* tcpAddress(state)).port
+  const listenerUrl = opts.socketPath ? new URL("http://localhost") : makeURL(opts.hostname, port)
+  const unpublishMdns = opts.socketPath ? Effect.void : yield* setupMdns(opts, port, state.scope)
   url = listenerUrl
-  facts.listener = listenerUrl.toString()
-  if (ServerOwner.mode() === "persistent" && !(yield* ServerDescriptor.read(state.database, facts)))
+  facts.listener = opts.socketPath ? `unix:${opts.socketPath}` : listenerUrl.toString()
+  if (ServerOwner.mode() === "persistent" && !(yield* ServerDescriptor.read(state.database, facts))) {
+    yield* Scope.close(state.scope, Exit.void).pipe(Effect.ignore)
+    if (url === listenerUrl) url = undefined
     return yield* Effect.die(new Error("persistent server started without an owner record"))
+  }
 
   return {
     hostname: opts.hostname,
-    port: address.port,
+    socketPath: opts.socketPath,
+    port,
     url: listenerUrl,
     stop: yield* makeStop(state, unpublishMdns, listenerUrl),
     securityProxy: (command: SecurityProxy.StoreCommand) => Effect.runPromise(state.securityProxy.execute(command)),
@@ -199,7 +207,7 @@ function listenerLayer(opts: ListenOptions, port: number, facts: ServerDescripto
     Layer.provideMerge(AppNodeBuilder.build(WebSocketTracker.node)),
     Layer.provideMerge(AppNodeBuilder.build(Database.node)),
     Layer.provideMerge(AppNodeBuilder.build(SecurityProxyStore.node, [[SecretVault.node, secretVault]])),
-    Layer.provideMerge(serverLayer({ port, hostname: opts.hostname })),
+    Layer.provideMerge(serverLayer({ port, hostname: opts.hostname, socketPath: opts.socketPath })),
     // Install a fresh `ConfigProvider` per listener so `Config.string(...)`
     // reads reflect the current `process.env`. Effect's default
     // `ConfigProvider` snapshots `process.env` on first read and caches the
@@ -222,6 +230,7 @@ function listenerEnv(opts: ListenOptions) {
 }
 
 function startWithPortFallback(opts: ListenOptions, facts: ServerDescriptor.ListenerFacts) {
+  if (opts.socketPath) return startListener(opts, 0, facts)
   if (opts.port !== 0) return startListener(opts, opts.port, facts)
   // Match the legacy listener port-resolution behavior: explicit `0` prefers
   // 4096 first, then any free port.
@@ -273,6 +282,7 @@ function startListener(opts: ListenOptions, port: number, facts: ServerDescripto
   const startedAt = performance.now()
   return Layer.buildWithMemoMap(listenerLayer(opts, port, facts), memoMap, scope).pipe(
     Effect.provide(HttpApiApp.context),
+    Effect.tap(() => (opts.socketPath ? Effect.tryPromise(() => chmod(opts.socketPath!, 0o660)) : Effect.void)),
     Effect.tap(() => startupTrace("listener-layer-ready", startedAt)),
     Effect.tap(() => checkSingleMcp(memoMap)),
     Effect.onError(() => Scope.close(scope, Exit.void).pipe(Effect.ignore)),
@@ -404,7 +414,8 @@ function startupTrace(stage: string, startedAt: number) {
   return Effect.logInfo("server startup stage", { stage, elapsedMs: performance.now() - startedAt })
 }
 
-function serverLayer(opts: { port: number; hostname: string }) {
+function serverLayer(opts: { port: number; hostname: string; socketPath?: string }) {
+  if (opts.socketPath) return BunHttpServer.layer({ unix: opts.socketPath, gracefulShutdownTimeout: "1 second" })
   return BunHttpServer.layer({ port: opts.port, hostname: opts.hostname, gracefulShutdownTimeout: "1 second" })
 }
 

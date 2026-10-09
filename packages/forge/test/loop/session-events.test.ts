@@ -103,7 +103,7 @@ for (const scenario of [
       })
       const processed = yield* Deferred.make<void>()
       const sessionID = SessionV2.ID.make("ses_probe_source")
-      const event = { data: { sessionID, finish: "stop" } }
+      const event = { data: { sessionID, outcome: scenario.failure ? "failure" : "success" } }
       const dependencies = Layer.mergeAll(
         Layer.succeed(Loop.Service, loops),
         Layer.succeed(TeamWorkspace.Service, team),
@@ -111,13 +111,10 @@ for (const scenario of [
           goal: { get: unexpected, set: unexpected, edit: unexpected, status: unexpected, clear: unexpected },
           revert: { stage: unexpected, clear: unexpected, commit: unexpected },
           get: (id) =>
-            scenario.missing || id !== sessionID
-              ? Effect.fail(new SessionV2.NotFoundError({ sessionID: id }))
-              : Effect.succeed({
-                  id: sessionID,
-                  location: { directory },
-                  agent: scenario.sourceAgent,
-                } as SessionV2.Info),
+            Effect.gen(function* () {
+              if (scenario.missing || id !== sessionID) return yield* new SessionV2.NotFoundError({ sessionID: id })
+              return { id: sessionID, location: { directory }, agent: scenario.sourceAgent } as SessionV2.Info
+            }),
           create: () => Effect.never,
           interrupt: () => Effect.void,
         }),
@@ -129,7 +126,7 @@ for (const scenario of [
         ),
         Layer.mock(EventV2.Service, {
           subscribe: ((definition: { type: string }) =>
-            definition.type === (scenario.failure ? SessionEvent.Step.Failed.type : SessionEvent.Step.Ended.type)
+            definition.type === SessionEvent.ExecutionSettled.type
               ? Stream.concat(
                   Stream.make(event),
                   Stream.fromEffect(Deferred.succeed(processed, undefined)).pipe(Stream.drain),

@@ -16,7 +16,6 @@ import { PersistentLinux } from "../../persistent/linux"
 type PlanArgs = {
   user?: string
   "data-root"?: string
-  port?: number
   "forge-bin"?: string
   "server-id"?: string
 }
@@ -24,17 +23,13 @@ type PlanArgs = {
 const refuse = (message: string) => new CliError({ message })
 
 // No yargs defaults: an unset option falls back to the installed unit, so re-running setup never
-// silently moves an installed server to a different data root, account, or port.
+// silently moves an installed server to a different data root or account.
 const planOptions = (yargs: Argv) =>
   yargs
     .option("user", { type: "string", describe: "account the service runs as (required for a new service)" })
     .option("data-root", {
       type: "string",
       describe: `pinned data root (default: the installed unit's, or ${PersistentLinux.defaults.dataRoot})`,
-    })
-    .option("port", {
-      type: "number",
-      describe: `loopback listener port (default: the installed unit's, or ${PersistentLinux.defaults.port})`,
     })
     .option("forge-bin", {
       type: "string",
@@ -71,7 +66,6 @@ async function plan(args: PlanArgs, runner = PersistentLinux.run) {
     user,
     home: passwd.code === 0 ? (passwd.stdout.trim().split(":")[5] ?? "") : "",
     dataRoot,
-    port: args.port ?? (sameServer ? installed.port : undefined) ?? PersistentLinux.defaults.port,
     serverID: args["server-id"] ?? installed.serverID ?? PersistentLinux.newServerID(),
     // Resolved, so the unit names the checked file rather than a link that could be repointed later.
     forgeBin: await realpath(forgeBin).catch(() => forgeBin),
@@ -135,7 +129,7 @@ function printSummary(target: PersistentLinux.Plan, notes: string[]) {
   console.log(`Server ID:    ${target.serverID}`)
   console.log(`Data root:    ${target.dataRoot}`)
   console.log(`Database:     ${PersistentLinux.databasePath(target.dataRoot)}`)
-  console.log(`Listener:     http://127.0.0.1:${target.port} (loopback only)`)
+  console.log(`Listener:     ${PersistentLinux.defaults.socketPath} (Unix socket only)`)
   console.log(`Key source:   systemd credentials in ${target.credstoreEncrypted}`)
   console.log(`Attach file:  ${target.attachPath} (0640 root:${target.group})`)
   for (const note of notes) console.log(`Note:         ${note}`)
@@ -295,6 +289,11 @@ async function install(args: InstallArgs) {
     throw refuse(
       `${PersistentLinux.databasePath(target.dataRoot)} already exists; data and config import only into a fresh data root`,
     )
+  // Create the operator group before stopping an existing service.
+  if ((await PersistentLinux.groupID(target.group)) === undefined) {
+    const created = await PersistentLinux.run("groupadd", ["--system", target.group])
+    if (created.code !== 0) throw new Error(`groupadd ${target.group} failed: ${created.stderr.trim()}`)
+  }
   // The service is stopped before root works in its data root; any failure before the restart
   // below brings a previously running service back rather than leaving it down.
   const service = PersistentLinux.defaults.serviceName
@@ -507,10 +506,6 @@ export async function activate(
 }
 
 async function publishAttach(target: PersistentLinux.Plan, password: string) {
-  if ((await PersistentLinux.groupID(target.group)) === undefined) {
-    const created = await PersistentLinux.run("groupadd", ["--system", target.group])
-    if (created.code !== 0) throw new Error(`groupadd ${target.group} failed: ${created.stderr.trim()}`)
-  }
   const gid = (await PersistentLinux.groupID(target.group))!
   // Created under root's umask; a hardened 027 or 077 would hide the record from the operator group,
   // and clients read an untraversable directory as "no persistent server here".
@@ -553,6 +548,7 @@ export async function waitForDescriptor(
   password: string,
   runner: PersistentLinux.Runner,
   wait = { timeout: 60_000, interval: 1000 },
+  probe: (url: string, options: RequestInit & { unix: string }) => Promise<Response> = fetch,
 ) {
   const authorization = `Basic ${Buffer.from(`forge:${password}`).toString("base64")}`
   const restarts = async () =>
@@ -566,7 +562,8 @@ export async function waitForDescriptor(
   // The timeout alone cannot say whether nothing listened, something else answered, or the server was too old.
   let lastProbe = "no probe finished"
   while (Date.now() < deadline) {
-    const response = await fetch(`http://127.0.0.1:${target.port}/global/server`, {
+    const response = await probe("http://localhost/global/server", {
+      unix: PersistentLinux.defaults.socketPath,
       headers: { authorization },
       signal: AbortSignal.timeout(3000),
     }).catch((error: Error) => {
@@ -575,7 +572,9 @@ export async function waitForDescriptor(
     if (response?.ok) {
       const descriptor = (await response.json()) as { serverID: string; keyID: string; mode: string }
       if (descriptor.serverID !== target.serverID || descriptor.mode !== "persistent")
-        throw new Error(`port ${target.port} answers as ${descriptor.serverID}, not ${target.serverID}`)
+        throw new Error(
+          `socket ${PersistentLinux.defaults.socketPath} answers as ${descriptor.serverID} (${descriptor.mode}), expected ${target.serverID} (persistent)`,
+        )
       return descriptor
     }
     if (response) {

@@ -1,4 +1,4 @@
-import { describe, expect } from "bun:test"
+import { describe, expect, test } from "bun:test"
 import { Cause, Deferred, Effect, Fiber, Layer } from "effect"
 import { LobbySession } from "@turenlabs/schema/lobby-session"
 import { AgentV2 } from "@turenlabs/core/agent"
@@ -9,6 +9,7 @@ import { EventV2 } from "@turenlabs/core/event"
 import { Location } from "@turenlabs/core/location"
 import { PermissionV2 } from "@turenlabs/core/permission"
 import { PermissionChecks } from "@turenlabs/core/permission-checks"
+import { ShellSafety } from "@turenlabs/core/shell-safety"
 import { Storage } from "@turenlabs/core/storage"
 import { PermissionTable } from "@turenlabs/core/permission/sql"
 import { PermissionSaved } from "@turenlabs/core/permission/saved"
@@ -42,6 +43,22 @@ const it = testEffect(
     [[Location.node, current]],
   ),
 )
+
+describe("ShellSafety.commands", () => {
+  test("retains redirection on a compound loop", async () => {
+    const resources = await Effect.runPromise(
+      ShellSafety.commands({ command: "for i in 1; do git status; done > .env", shell: "bash" }),
+    )
+    expect(resources).toContain("for i in 1; do git status; done > .env")
+  })
+
+  test("keeps loop body commands available for policy matching", async () => {
+    const resources = await Effect.runPromise(
+      ShellSafety.commands({ command: "for i in 1 2; do git status; done", shell: "bash" }),
+    )
+    expect(resources).toContain("git status")
+  })
+})
 
 const watcher = { polls: 0, started: 0, stopped: 0 }
 const abortIt = testEffect(
@@ -471,6 +488,16 @@ describe("PermissionV2", () => {
 
   authorityIt.effect("matches task shell commands exactly even when an allowed command contains glob characters", () =>
     Effect.gen(function* () {
+      const setCommands = (commands: string[]) => {
+        taskAuthority = SessionTaskV2.Authority.make({
+          parentPermissions: [{ action: "*", resource: "*", effect: "allow" }],
+          ancestorPermissionSets: [],
+          childPermissions: [{ action: "*", resource: "*", effect: "allow" }],
+          hardPermissions: [{ action: "*", resource: "*", effect: "allow" }],
+          writeRoots: [],
+          commands,
+        })
+      }
       yield* setup([{ action: "*", resource: "*", effect: "allow" }])
       yield* (yield* PermissionChecks.Service).set(false)
       yield* (yield* PermissionSaved.Service).add({
@@ -478,26 +505,48 @@ describe("PermissionV2", () => {
         action: "bash",
         resources: ["rg secret.ts"],
       })
-      taskAuthority = SessionTaskV2.Authority.make({
-        parentPermissions: [{ action: "*", resource: "*", effect: "allow" }],
-        ancestorPermissionSets: [],
-        childPermissions: [{ action: "*", resource: "*", effect: "allow" }],
-        hardPermissions: [{ action: "*", resource: "*", effect: "allow" }],
-        writeRoots: [],
-        commands: ["rg *.ts"],
-      })
+      setCommands(["rg *.ts"])
       const service = yield* PermissionV2.Service
 
       expect(
-        yield* service.ask(assertion({ action: "bash", resources: ["rg *.ts"], metadata: { workdir: "." } })),
+        yield* service.ask(
+          assertion({
+            action: "bash",
+            resources: ["rg *.ts"],
+            metadata: { workdir: ".", command: "rg *.ts" },
+          }),
+        ),
       ).toMatchObject({ effect: "allow" })
+      setCommands(["git status && git diff"])
+      expect(
+        yield* service.ask(
+          assertion({
+            action: "bash",
+            resources: ["git status", "git diff"],
+            metadata: { workdir: ".", command: "git status && git diff" },
+          }),
+        ),
+      ).toMatchObject({ effect: "allow" })
+      setCommands(["git status"])
+      expect(
+        yield* service.ask(
+          assertion({
+            action: "bash",
+            resources: ["git status"],
+            metadata: { workdir: ".", command: "for i in 1 2; do git status; done" },
+          }),
+        ),
+      ).toMatchObject({ effect: "deny" })
+      expect(
+        yield* service.ask(assertion({ action: "bash", resources: ["git status"], metadata: { workdir: "." } })),
+      ).toMatchObject({ effect: "deny" })
       for (const input of [
-        assertion({ action: "bash", resources: ["rg secret.ts"], metadata: { workdir: "." } }),
-        assertion({ action: "bash", resources: [" rg *.ts"], metadata: { workdir: "." } }),
-        assertion({ action: "bash", resources: ["rg *.ts "], metadata: { workdir: "." } }),
-        assertion({ action: "bash", resources: ["TOKEN=value rg *.ts"], metadata: { workdir: "." } }),
-        assertion({ action: "bash", resources: ["rg *.ts"], metadata: { workdir: "src" } }),
-        assertion({ action: "bash", resources: ["rg *.ts"], metadata: { workdir: "/tmp" } }),
+        assertion({ action: "bash", resources: ["rg secret.ts"], metadata: { workdir: ".", command: "rg secret.ts" } }),
+        assertion({ action: "bash", resources: [" rg *.ts"], metadata: { workdir: ".", command: " rg *.ts" } }),
+        assertion({ action: "bash", resources: ["rg *.ts "], metadata: { workdir: ".", command: "rg *.ts " } }),
+        assertion({ action: "bash", resources: ["TOKEN=value rg *.ts"], metadata: { workdir: ".", command: "TOKEN=value rg *.ts" } }),
+        assertion({ action: "bash", resources: ["rg *.ts"], metadata: { workdir: "src", command: "rg *.ts" } }),
+        assertion({ action: "bash", resources: ["rg *.ts"], metadata: { workdir: "/tmp", command: "rg *.ts" } }),
       ])
         expect(yield* service.ask(input)).toMatchObject({ effect: "deny" })
     }),

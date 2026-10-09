@@ -20,11 +20,9 @@ import {
   writeFile,
   type FileHandle,
 } from "node:fs/promises"
-import { createServer } from "node:net"
 import { basename, dirname, join } from "node:path"
 
-// The data root and port stay clear of the quick-connect shim, which uses the default XDG data path
-// and prefers port 4096, and of any older manual setup that used /var/lib/turenos as a home directory.
+// The data root stays separate from quick-connect and older manual home-directory setups.
 export const defaults = {
   serviceName: "turenos.service",
   unitPath: "/etc/systemd/system/turenos.service",
@@ -34,9 +32,9 @@ export const defaults = {
   dataRootMarker: ".turenos-persistent",
   group: "turenos-operators",
   attachPath: "/etc/turenos/attach.json",
+  socketPath: "/run/turenos/server.sock",
   credstore: "/etc/credstore",
   credstoreEncrypted: "/etc/credstore.encrypted",
-  port: 4097,
 } as const
 
 export const credentials = {
@@ -49,7 +47,6 @@ export type Plan = {
   user: string
   home: string
   dataRoot: string
-  port: number
   serverID: string
   forgeBin: string
   group: string
@@ -78,7 +75,6 @@ export type Facts = {
   dataRootLink: boolean
   dataRootParentSafe: boolean
   forgeBinSafe: boolean
-  portInUse: boolean
   serviceActive: boolean
 }
 
@@ -131,6 +127,9 @@ export function unit(plan: Plan) {
     "[Service]",
     "Type=simple",
     `User=${plan.user}`,
+    `Group=${plan.group}`,
+    "RuntimeDirectory=turenos",
+    "RuntimeDirectoryMode=0710",
     // Without a passwd home systemd leaves HOME unset, which is better than an empty value.
     ...(plan.home ? [`Environment=HOME=${plan.home}`] : []),
     `Environment=XDG_DATA_HOME=${join(plan.dataRoot, "data")}`,
@@ -145,7 +144,7 @@ export function unit(plan: Plan) {
     `LoadCredentialEncrypted=${credentials.key}:${encrypted(credentials.key)}`,
     `LoadCredential=${credentials.keyID}:${join(plan.credstore, credentials.keyID)}`,
     `LoadCredentialEncrypted=${credentials.password}:${encrypted(credentials.password)}`,
-    `ExecStart=${plan.forgeBin} serve --key-source systemd-credentials --hostname 127.0.0.1 --port ${plan.port}`,
+    `ExecStart=${plan.forgeBin} serve --key-source systemd-credentials --socket-path ${defaults.socketPath}`,
     "Restart=on-failure",
     // EX_CONFIG: the server found a configuration error that a restart cannot fix.
     "RestartPreventExitStatus=78",
@@ -161,9 +160,9 @@ export function unit(plan: Plan) {
 
 export function attachRecord(plan: Plan, password: string) {
   return `${JSON.stringify({
-    version: 1,
+    version: 2,
     serverID: plan.serverID,
-    url: `http://127.0.0.1:${plan.port}`,
+    socketPath: defaults.socketPath,
     username: "forge",
     password,
   })}\n`
@@ -173,13 +172,11 @@ export function attachRecord(plan: Plan, password: string) {
 export function installed(text: string | undefined) {
   const line = (pattern: RegExp) => (text ? pattern.exec(text)?.[1] : undefined)
   const dataHome = line(/^Environment=XDG_DATA_HOME=(\S+)$/m)
-  const port = line(/^ExecStart=\S+ serve .*--port (\d+)/m)
   return {
     forgeBin: line(/^ExecStart=(\S+) serve /m),
     serverID: line(/^Environment=FORGE_SERVER_ID=(\S+)$/m),
     user: line(/^User=(\S+)$/m),
     dataRoot: dataHome ? dirname(dataHome) : undefined,
-    port: port ? Number(port) : undefined,
   }
 }
 
@@ -191,6 +188,7 @@ const UNIT_PATH = /^(\/[A-Za-z0-9._+-]+)+$/
 export function validate(plan: Plan) {
   const problems: string[] = []
   if (!USER_NAME.test(plan.user)) problems.push(`invalid service user name: ${plan.user}`)
+  if (!USER_NAME.test(plan.group)) problems.push(`invalid operator group name: ${plan.group}`)
   if (!SERVER_ID.test(plan.serverID)) problems.push(`server ID may contain only letters, digits, ".", "_", and "-"`)
   const paths: Array<[string, string]> = [
     ["data root", plan.dataRoot],
@@ -200,8 +198,6 @@ export function validate(plan: Plan) {
   for (const [label, value] of paths)
     if (!UNIT_PATH.test(value) || value.split("/").some((part) => part === "." || part === ".."))
       problems.push(`${label} must be an absolute path of letters, digits, ".", "_", "+", and "-": ${value}`)
-  if (!Number.isInteger(plan.port) || plan.port < 1024 || plan.port > 65535)
-    problems.push(`port must be an integer from 1024 to 65535: ${plan.port}`)
   return problems
 }
 
@@ -258,9 +254,6 @@ export function evaluate(facts: Facts, plan: Plan) {
     problems.push(`${plan.unitPath} already exists for a different server; it was left untouched`)
   if (facts.serviceActive && facts.existingUnit === undefined)
     problems.push(`${defaults.serviceName} is active without ${plan.unitPath}; refusing to stop an unknown service`)
-  const ownPort =
-    facts.serviceActive && existingID === plan.serverID && installed(facts.existingUnit).port === plan.port
-  if (facts.portInUse && !ownPort) problems.push(`127.0.0.1:${plan.port} is already in use; choose another --port`)
   if (facts.database && !facts.keyCredential)
     notes.push("a database already exists at the pinned data root; its key must be imported with --key-stdin")
   notes.push(
@@ -322,7 +315,6 @@ export async function gather(plan: Plan, runner: Runner = run): Promise<Facts> {
         info.isFile() && info.uid === 0 && (info.mode & 0o022) === 0 && writableOnlyByRoot(dirname(plan.forgeBin)),
       () => false,
     ),
-    portInUse: await portInUse(plan.port),
     serviceActive: (await runner("systemctl", ["is-active", "--quiet", defaults.serviceName])).code === 0,
   }
 }
@@ -370,14 +362,6 @@ export async function findDropIns(runner: Runner, directories: readonly string[]
   return [
     ...new Set([...(shown.code === 0 ? parseDropInPaths(shown.stdout) : []), ...listed.flat()].filter(refusedDropIn)),
   ].toSorted()
-}
-
-function portInUse(port: number) {
-  return new Promise<boolean>((resolve) => {
-    const server = createServer()
-    server.once("error", () => resolve(true))
-    server.listen(port, "127.0.0.1", () => server.close(() => resolve(false)))
-  })
 }
 
 export async function writableOnlyByRoot(path: string) {
@@ -486,8 +470,8 @@ const importSkipped = new Set(["log", "repos"])
 /**
  * Copies a staged data or config tree into the claimed data root and hands it to the service
  * account. The staging directory, its parents, and every entry in it must be owned by root with no
- * group or other write on any directory, like an imported database, so the account whose data this is
- * cannot swap entries under root while they are read. Symlinks are
+ * group or other write on directories or regular files. This prevents other accounts from replacing
+ * entries or changing file contents while root reads them. Symlinks are
  * copied as links, never followed; database files come from `VACUUM INTO`, not from here.
  */
 export async function importTree(
@@ -529,14 +513,14 @@ export async function importTree(
   }
 }
 
-/** Refuses entries the service account could have swapped: not root-owned, or a directory others can write. */
+/** Refuses entries not owned by root, and directories or regular files other accounts can write. */
 async function checkStaged(path: string, uid: number, children?: string[]) {
   // lstat, so a symlink is judged as the link itself and never followed.
   const info = await lstat(path)
   if (info.uid !== uid) throw new Error(`${path} is not owned by root; import a copy made by root`)
-  if (!info.isDirectory()) return
-  if ((info.mode & 0o022) !== 0)
+  if ((info.isDirectory() || info.isFile()) && (info.mode & 0o022) !== 0)
     throw new Error(`${path} is writable by another account; remove group and other write access or import a copy`)
+  if (!info.isDirectory()) return
   for (const entry of children ?? (await readdir(path))) await checkStaged(join(path, entry), uid)
 }
 

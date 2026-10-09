@@ -504,6 +504,48 @@ describe("SessionRunCoordinator", () => {
     ),
   )
 
+  it.effect("settles only after a successor drains following failure", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const firstGate = yield* Deferred.make<void>()
+        const successorStarted = yield* Deferred.make<void>()
+        const successorGate = yield* Deferred.make<void>()
+        const settled = yield* Deferred.make<void>()
+        const failure = new Error("failed")
+        let runs = 0
+        const settlements: Exit.Exit<void, Error>[] = []
+        const coordinator = yield* SessionRunCoordinator.make<string, Error>({
+          drain: () =>
+            Effect.sync(() => ++runs).pipe(
+              Effect.flatMap((run) =>
+                run === 1
+                  ? Deferred.await(firstGate).pipe(Effect.andThen(Effect.fail(failure)))
+                  : Deferred.succeed(successorStarted, undefined).pipe(
+                      Effect.andThen(Deferred.await(successorGate)),
+                    ),
+              ),
+            ),
+          onSettled: (_key, exit) =>
+            Effect.sync(() => settlements.push(exit)).pipe(Effect.andThen(Deferred.succeed(settled, undefined))),
+        })
+
+        const resumed = yield* coordinator.run("session").pipe(Effect.forkChild)
+        yield* Effect.yieldNow
+        yield* coordinator.wake("session")
+        yield* Deferred.succeed(firstGate, undefined)
+        yield* Deferred.await(successorStarted)
+
+        expect(yield* Fiber.join(resumed).pipe(Effect.flip)).toBe(failure)
+        expect(settlements).toEqual([])
+
+        yield* Deferred.succeed(successorGate, undefined)
+        yield* Deferred.await(settled)
+        expect(settlements).toHaveLength(1)
+        expect(Exit.isSuccess(settlements[0]!)).toBeTrue()
+      }),
+    ),
+  )
+
   it.effect("does not cancel execution when a joined waiter is interrupted", () =>
     Effect.scoped(
       Effect.gen(function* () {

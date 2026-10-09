@@ -26,7 +26,6 @@ const plan: PersistentLinux.Plan = {
   user: "turen",
   home: "/home/turen",
   dataRoot: "/var/lib/turenos",
-  port: 4096,
   serverID: "srv_test",
   forgeBin: "/usr/local/bin/forge",
   group: "turenos-operators",
@@ -55,7 +54,6 @@ const facts: PersistentLinux.Facts = {
   dataRootLink: false,
   dataRootParentSafe: true,
   forgeBinSafe: true,
-  portInUse: false,
   serviceActive: false,
 }
 
@@ -63,8 +61,12 @@ describe("PersistentLinux", () => {
   test("the unit pins the data root and reads secrets only through systemd credentials", () => {
     const text = PersistentLinux.unit(plan)
     expect(text).toContain(
-      "ExecStart=/usr/local/bin/forge serve --key-source systemd-credentials --hostname 127.0.0.1 --port 4096",
+      "ExecStart=/usr/local/bin/forge serve --key-source systemd-credentials --socket-path /run/turenos/server.sock",
     )
+    expect(text).toContain("Group=turenos-operators\n")
+    expect(text).toContain("RuntimeDirectory=turenos\nRuntimeDirectoryMode=0710\n")
+    expect(text).toContain("UMask=0077\n")
+    expect(text).not.toMatch(/--hostname|--port/)
     expect(text).toContain("Environment=FORGE_DB=/var/lib/turenos/data/forge/forge.db")
     expect(text).toContain(
       "LoadCredentialEncrypted=forge-secret-vault-key:/etc/credstore.encrypted/forge-secret-vault-key",
@@ -79,7 +81,6 @@ describe("PersistentLinux", () => {
       serverID: "srv_test",
       user: "turen",
       dataRoot: "/var/lib/turenos",
-      port: 4096,
       forgeBin: "/usr/local/bin/forge",
     })
     expect(PersistentLinux.installed(undefined).serverID).toBeUndefined()
@@ -106,18 +107,12 @@ describe("PersistentLinux", () => {
     expect(PersistentLinux.unit({ ...plan, home: "" })).not.toContain("Environment=HOME=")
   })
 
-  test("refuses a port another process holds, but not the installed service's own", () => {
-    expect(PersistentLinux.evaluate({ ...facts, portInUse: true }, plan).problems).toEqual([
-      "127.0.0.1:4096 is already in use; choose another --port",
-    ])
-    const running = { ...facts, portInUse: true, serviceActive: true, existingUnit: PersistentLinux.unit(plan) }
+  test("an active service must have its installed unit", () => {
+    const running = { ...facts, serviceActive: true, existingUnit: PersistentLinux.unit(plan) }
     expect(PersistentLinux.evaluate(running, plan).problems).toEqual([])
     expect(PersistentLinux.evaluate({ ...facts, serviceActive: true }, plan).problems).toContain(
       "turenos.service is active without /etc/systemd/system/turenos.service; refusing to stop an unknown service",
     )
-    expect(PersistentLinux.evaluate(running, { ...plan, port: 4099 }).problems).toEqual([
-      "127.0.0.1:4099 is already in use; choose another --port",
-    ])
   })
 
   test("refuses values that could inject unit lines, a root service, and an unsafe data root", () => {
@@ -128,7 +123,7 @@ describe("PersistentLinux", () => {
     expect(problems({ forgeBin: "forge" })).toHaveLength(1)
     expect(problems({ serverID: "srv x" })).toHaveLength(1)
     expect(problems({ user: "turen\nUser=root" })).toHaveLength(1)
-    expect(problems({ port: 80 })).toHaveLength(1)
+    expect(problems({ group: "operators x" })).toHaveLength(1)
     expect(problems({}, { user: { name: "root", home: "/root", uid: 0, gid: 0 } })).toEqual([
       "the service must not run as root; choose an unprivileged --user",
     ])
@@ -156,12 +151,11 @@ describe("PersistentLinux", () => {
   test("the unit command checks its plan like install and prints nothing for an unsafe one", async () => {
     const passwd = async () => ({ code: 0, stdout: "turen:x:1000:1000::/home/turen:/bin/sh\n", stderr: "" })
     const forgeBin = "/opt/test-forge/bin/forge"
-    const args = { "server-id": "srv_test", "data-root": "/var/lib/turenos", port: 4096, "forge-bin": forgeBin }
+    const args = { "server-id": "srv_test", "data-root": "/var/lib/turenos", "forge-bin": forgeBin }
     expect(await renderUnit({ ...args, user: "turen" }, passwd)).toBe(PersistentLinux.unit({ ...plan, forgeBin }))
     for (const unsafe of [
       { user: "alice\nExecStartPre=/bin/sh -c id" },
       { user: "turen", "data-root": "/var/lib/x\nExecStartPre=/bin/sh" },
-      { user: "turen", port: 80 },
     ])
       await expect(renderUnit({ ...args, ...unsafe }, passwd)).rejects.toThrow("the unit was not printed")
   })
@@ -200,11 +194,11 @@ describe("PersistentLinux", () => {
     ).rejects.toThrow("forge.db-journal is not a regular file")
   })
 
-  test("the attach record names the loopback listener", () => {
+  test("the version 2 attach record names only the protected Unix socket", () => {
     expect(JSON.parse(PersistentLinux.attachRecord(plan, "pw"))).toEqual({
-      version: 1,
+      version: 2,
       serverID: "srv_test",
-      url: "http://127.0.0.1:4096",
+      socketPath: "/run/turenos/server.sock",
       username: "forge",
       password: "pw",
     })
@@ -431,6 +425,22 @@ describe("PersistentLinux", () => {
   )
 
   test.skipIf(process.platform === "win32")(
+    "a staged tree with a regular file another account can write is refused before anything is copied",
+    async () => {
+      await using tmp = await tmpdir()
+      const source = await staged(tmp.path)
+      const file = path.join(source, "data", "snapshot", "HEAD")
+      const destination = path.join(tmp.path, "forge")
+      for (const mode of [0o664, 0o646]) {
+        await chmod(file, mode)
+        expect((await lstat(file)).mode & 0o777).toBe(mode)
+        await expect(importTreeAs(source, destination)).rejects.toThrow(`${file} is writable by another account`)
+        expect(await lstat(destination).catch(() => undefined)).toBeUndefined()
+      }
+    },
+  )
+
+  test.skipIf(process.platform === "win32")(
     "a staged tree owned by root and closed to others is copied as links",
     async () => {
       await using tmp = await tmpdir()
@@ -601,17 +611,44 @@ describe("PersistentLinux", () => {
   })
 
   test("a health-check timeout names the last probe", async () => {
+    await using tmp = await tmpdir()
     const runner: PersistentLinux.Runner = async () => ({ code: 0, stdout: "0", stderr: "" })
     const wait = { timeout: 300, interval: 50 }
-    await using server = Bun.serve({ port: 0, fetch: () => new Response("not found\n  here", { status: 404 }) })
-    await expect(waitForDescriptor({ ...plan, port: server.port! }, "pw", runner, wait)).rejects.toThrow(
+    const socket = path.join(tmp.path, "server.sock")
+    const probe = (url: string, options: RequestInit & { unix: string }) => {
+      expect(url).toBe("http://localhost/global/server")
+      expect(options.unix).toBe(PersistentLinux.defaults.socketPath)
+      expect(new Headers(options.headers).get("authorization")).toBe(
+        `Basic ${Buffer.from("forge:pw").toString("base64")}`,
+      )
+      return fetch(url, { ...options, unix: socket })
+    }
+    await using server = Bun.serve({ unix: socket, fetch: () => new Response("not found\n  here", { status: 404 }) })
+    await expect(waitForDescriptor(plan, "pw", runner, wait, probe)).rejects.toThrow(
       "(last probe: HTTP 404 not found here)",
     )
-    const closed = Bun.serve({ port: 0, fetch: () => new Response() })
-    const port = closed.port!
-    await closed.stop(true)
-    await expect(waitForDescriptor({ ...plan, port }, "pw", runner, wait)).rejects.toThrow(
-      /did not become healthy within 0\.3 seconds \(last probe: .*(connect|refused)/i,
+    await server.stop(true)
+    await expect(waitForDescriptor(plan, "pw", runner, wait, probe)).rejects.toThrow(
+      /did not become healthy within 0\.3 seconds \(last probe: /,
+    )
+  })
+
+  test("a Unix socket health probe verifies the persistent server identity", async () => {
+    await using tmp = await tmpdir()
+    const runner: PersistentLinux.Runner = async () => ({ code: 0, stdout: "0", stderr: "" })
+    const socket = path.join(tmp.path, "identity.sock")
+    const descriptor = { serverID: plan.serverID, keyID: "k1", mode: "persistent" }
+    await using _server = Bun.serve({ unix: socket, fetch: () => Response.json(descriptor) })
+    const probe = (url: string, options: RequestInit & { unix: string }) => fetch(url, { ...options, unix: socket })
+    expect(await waitForDescriptor(plan, "pw", runner, { timeout: 300, interval: 50 }, probe)).toEqual(descriptor)
+    await expect(
+      waitForDescriptor({ ...plan, serverID: "srv_other" }, "pw", runner, { timeout: 300, interval: 50 }, probe),
+    ).rejects.toThrow(
+      "socket /run/turenos/server.sock answers as srv_test (persistent), expected srv_other (persistent)",
+    )
+    descriptor.mode = "quick-connect"
+    await expect(waitForDescriptor(plan, "pw", runner, { timeout: 300, interval: 50 }, probe)).rejects.toThrow(
+      "socket /run/turenos/server.sock answers as srv_test (quick-connect), expected srv_test (persistent)",
     )
   })
 

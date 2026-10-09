@@ -30,7 +30,7 @@
     },
     "packages/app": {
       "name": "@turenlabs/app",
-      "version": "1.0.43",
+      "version": "1.0.44",
       "dependencies": {
         "@dnd-kit/abstract": "0.5.0",
         "@dnd-kit/dom": "0.5.0",
@@ -153,7 +153,7 @@
     },
     "packages/codemode": {
       "name": "@turenlabs/codemode",
-      "version": "1.0.43",
+      "version": "1.0.44",
       "dependencies": {
         "acorn": "8.15.0",
         "effect": "catalog:",
@@ -168,7 +168,7 @@
     },
     "packages/core": {
       "name": "@turenlabs/core",
-      "version": "1.0.43",
+      "version": "1.0.44",
       "dependencies": {
         "@ai-sdk/alibaba": "1.0.17",
         "@ai-sdk/amazon-bedrock": "4.0.112",
@@ -197,7 +197,7 @@
         "@effect/sql-sqlite-bun": "catalog:",
         "@ff-labs/fff-bun": "0.9.4",
         "@lydell/node-pty": "catalog:",
-        "@modelcontextprotocol/sdk": "1.29.0",
+        "@modelcontextprotocol/sdk": "1.31.0",
         "@npmcli/arborist": "9.4.0",
         "@npmcli/config": "10.8.1",
         "@openrouter/ai-sdk-provider": "2.9.0",
@@ -319,7 +319,7 @@
     },
     "packages/desktop": {
       "name": "@turenlabs/desktop",
-      "version": "1.0.43",
+      "version": "1.0.44",
       "dependencies": {
         "@turenlabs/binwalk-scan-wasm": "workspace:*",
         "@turenlabs/debug-symbols-wasm": "workspace:*",
@@ -396,7 +396,7 @@
     },
     "packages/effect-drizzle-sqlite": {
       "name": "@turenlabs/effect-drizzle-sqlite",
-      "version": "1.0.43",
+      "version": "1.0.44",
       "dependencies": {
         "drizzle-orm": "catalog:",
         "effect": "catalog:",
@@ -410,7 +410,7 @@
     },
     "packages/effect-sqlite-node": {
       "name": "@turenlabs/effect-sqlite-node",
-      "version": "1.0.43",
+      "version": "1.0.44",
       "dependencies": {
         "effect": "catalog:",
       },
@@ -446,7 +446,7 @@
     },
     "packages/forge": {
       "name": "@turenlabs/forge",
-      "version": "1.0.43",
+      "version": "1.0.44",
       "bin": {
         "forge": "./bin/forge",
       },
@@ -479,7 +479,7 @@
         "@effect/platform-bun": "catalog:",
         "@effect/platform-node": "catalog:",
         "@ff-labs/fff-bun": "0.9.4",
-        "@modelcontextprotocol/sdk": "1.29.0",
+        "@modelcontextprotocol/sdk": "1.31.0",
         "@octokit/graphql": "9.0.2",
         "@octokit/rest": "catalog:",
         "@openrouter/ai-sdk-provider": "2.9.0",
@@ -589,7 +589,7 @@
     },
     "packages/http-recorder": {
       "name": "@turenlabs/http-recorder",
-      "version": "1.0.43",
+      "version": "1.0.44",
       "dependencies": {
         "@effect/platform-node": "4.0.0-beta.83",
         "@effect/platform-node-shared": "4.0.0-beta.83",
@@ -644,7 +644,7 @@
     },
     "packages/llm": {
       "name": "@turenlabs/llm",
-      "version": "1.0.43",
+      "version": "1.0.44",
       "dependencies": {
         "@smithy/eventstream-codec": "4.2.14",
         "@smithy/util-utf8": "4.2.2",
@@ -679,7 +679,7 @@
     },
     "packages/plugin": {
       "name": "@turenlabs/plugin",
-      "version": "1.0.43",
+      "version": "1.0.44",
       "dependencies": {
         "@ai-sdk/provider": "3.0.14",
         "@turenlabs/sdk": "workspace:*",
@@ -734,7 +734,7 @@
     },
     "packages/script": {
       "name": "@turenlabs/script",
-      "version": "1.0.43",
+      "version": "1.0.44",
       "dependencies": {
         "semver": "^7.6.3",
       },
@@ -766,7 +766,7 @@
     },
     "packages/sdk/js": {
       "name": "@turenlabs/sdk",
-      "version": "1.0.43",
+      "version": "1.0.44",
       "dependencies": {
         "cross-spawn": "catalog:",
       },
@@ -781,7 +781,7 @@
     },
     "packages/server": {
       "name": "@turenlabs/server",
-      "version": "1.0.43",
+      "version": "1.0.44",
       "dependencies": {
         "@turenlabs/core": "workspace:*",
         "@turenlabs/protocol": "workspace:*",
@@ -797,7 +797,7 @@
     },
     "packages/session-ui": {
       "name": "@turenlabs/session-ui",
-      "version": "1.0.43",
+      "version": "1.0.44",
       "dependencies": {
         "@kobalte/core": "catalog:",
         "@pierre/diffs": "catalog:",
@@ -895,7 +895,7 @@
     },
     "packages/ui": {
       "name": "@turenlabs/ui",
-      "version": "1.0.43",
+      "version": "1.0.44",
       "dependencies": {
         "@hugeicons/core-free-icons": "4.2.3",
         "@kobalte/core": "catalog:",
@@ -986,9 +986,9 @@
     "@pierre/trees@1.0.0-beta.4": "patches/@pierre%2Ftrees@1.0.0-beta.4.patch",
     "@tanstack/virtual-core@3.17.3": "patches/@tanstack%2Fvirtual-core@3.17.3.patch",
     "@ai-sdk/xai@3.0.102": "patches/@ai-sdk%2Fxai@3.0.102.patch",
-    "@modelcontextprotocol/sdk@1.29.0": "patches/@modelcontextprotocol%2Fsdk@1.29.0.patch",
     "gcp-metadata@8.1.2": "patches/gcp-metadata@8.1.2.patch",
     "@ff-labs/fff-bun@0.9.4": "patches/@ff-labs%2Ffff-bun@0.9.4.patch",
+    "@modelcontextprotocol/sdk@1.31.0": "patches/@modelcontextprotocol%2Fsdk@1.31.0.patch",
     "pacote@21.5.1": "patches/pacote@21.5.1.patch",
     "effect@4.0.0-beta.83": "patches/effect@4.0.0-beta.83.patch",
     "@npmcli/agent@4.0.2": "patches/@npmcli%2Fagent@4.0.2.patch",
@@ -1526,7 +1526,7 @@
 
     "@mixmark-io/domino": ["@mixmark-io/domino@2.2.0", "", {}, "sha512-Y28PR25bHXUg88kCV7nivXrP2Nj2RueZ3/l/jdx6J9f8J4nsEGcgX0Qe6lt7Pa+J79+kPiJU3LguR6O/6zrLOw=="],
 
-    "@modelcontextprotocol/sdk": ["@modelcontextprotocol/sdk@1.29.0", "", { "dependencies": { "@hono/node-server": "^1.19.9", "ajv": "^8.17.1", "ajv-formats": "^3.0.1", "content-type": "^1.0.5", "cors": "^2.8.5", "cross-spawn": "^7.0.5", "eventsource": "^3.0.2", "eventsource-parser": "^3.0.0", "express": "^5.2.1", "express-rate-limit": "^8.2.1", "hono": "^4.11.4", "jose": "^6.1.3", "json-schema-typed": "^8.0.2", "pkce-challenge": "^5.0.0", "raw-body": "^3.0.0", "zod": "^3.25 || ^4.0", "zod-to-json-schema": "^3.25.1" }, "peerDependencies": { "@cfworker/json-schema": "^4.1.1" }, "optionalPeers": ["@cfworker/json-schema"] }, "sha512-zo37mZA9hJWpULgkRpowewez1y6ML5GsXJPY8FI0tBBCd77HEvza4jDqRKOXgHNn867PVGCyTdzqpz0izu5ZjQ=="],
+    "@modelcontextprotocol/sdk": ["@modelcontextprotocol/sdk@1.31.0", "", { "dependencies": { "@hono/node-server": "^1.19.9 || ^2.0.5", "ajv": "^8.17.1", "ajv-formats": "^3.0.1", "content-type": "^1.0.5", "cors": "^2.8.5", "cross-spawn": "^7.0.5", "eventsource": "^3.0.2", "eventsource-parser": "^3.0.0", "express": "^5.2.1", "express-rate-limit": "^8.2.1", "hono": "^4.11.4", "jose": "^6.1.3", "json-schema-typed": "^8.0.2", "pkce-challenge": "^5.0.0", "raw-body": "^3.0.0", "zod": "^3.25 || ^4.0", "zod-to-json-schema": "^3.25.1" }, "peerDependencies": { "@cfworker/json-schema": "^4.1.1" }, "optionalPeers": ["@cfworker/json-schema"] }, "sha512-UvTMgnNlnIBO/22ob2RcVGDlcvOslQs8T59+FTGdA0L27a39fdGF/EDETNtDVK4DZGpwomlsYpRdA8UXcVL/pw=="],
 
     "@msgpackr-extract/msgpackr-extract-darwin-arm64": ["@msgpackr-extract/msgpackr-extract-darwin-arm64@3.0.4", "", { "os": "darwin", "cpu": "arm64" }, "sha512-LCkGo6JDfaBhgST7UpPWgNgLINpcpabaHfyz5OBx75nUYxBsaEPxjnyNjWpeb/xBup/682QnBfRBy2/LvPutZQ=="],
 

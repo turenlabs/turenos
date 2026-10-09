@@ -1,7 +1,31 @@
 import { describe, expect, test } from "bun:test"
-import { ownsTeamResponse, pendingFactoryOperation, pendingMessage, timeLabel } from "./model"
+import type { Team } from "@turenlabs/schema/team"
+import { ownsTeamResponse, pendingFactoryOperation, pendingMessage, roomActivity, timeLabel } from "./model"
+
+const teammate = (handle: string) => ({ handle }) as Team.Teammate
 
 describe("team room model", () => {
+  test("shows room activity through queued, starting, and running tasks", () => {
+    const mate = { ...teammate("moss"), id: "mate-moss", name: "Moss" }
+    const task = { id: "task", roomID: "room", teammateID: mate.id, status: "queued" } as Team.Task
+    expect(roomActivity("room", [task], [mate])).toBe("Moss is getting ready...")
+    expect(roomActivity("room", [{ ...task, status: "claimed" }], [mate])).toBe("Moss is getting ready...")
+    expect(roomActivity("room", [{ ...task, status: "running" }], [mate])).toBe("Moss is working...")
+    for (const status of ["succeeded", "failed", "cancelled", "stale"] as const)
+      expect(roomActivity("room", [{ ...task, status }], [mate])).toBeUndefined()
+    expect(roomActivity("other-room", [task], [mate])).toBeUndefined()
+    expect(roomActivity("room", [], [mate])).toBeUndefined()
+  })
+
+  test("deduplicates teammates and keeps multi-agent activity compact", () => {
+    const mates = ["Moss", "Iris", "Rae"].map((name) => ({ ...teammate(name), id: name, name }))
+    const tasks = mates.map((mate) => ({ roomID: "room", teammateID: mate.id, status: "running" }) as Team.Task)
+    expect(roomActivity("room", [tasks[0]!, tasks[0]!], mates)).toBe("Moss is working...")
+    expect(roomActivity("room", tasks.slice(0, 2), mates)).toBe("Moss and Iris are working...")
+    expect(roomActivity("room", tasks, mates)).toBe("Moss, Iris and 1 more are working...")
+    expect(roomActivity("room", [tasks[0]!], [])).toBe("A teammate is working...")
+  })
+
   test("keeps an exact message retry target if the selected room changes", () => {
     const client = {}
     const pending = { id: "message-id", roomID: "room-a", text: "original", client, generation: 1 }

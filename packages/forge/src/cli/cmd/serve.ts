@@ -7,16 +7,21 @@ import { ServerMode } from "@/server/mode"
 import { ProcessEnv } from "@turenlabs/core/process-env"
 import { loadServerPassword } from "../server-password"
 
-type ServeArgs = NetworkOptions & { "key-source"?: string }
+type ServeArgs = NetworkOptions & { "key-source"?: string; "socket-path"?: string }
 
 export const ServeCommand = cmd<{}, ServeArgs>({
   command: "serve",
   builder: ((yargs: Argv) =>
-    withNetworkOptions(yargs).option("key-source", {
-      type: "string",
-      choices: sources,
-      describe: "where to load the secret vault key (defaults to FORGE_SECRET_VAULT_KEY_SOURCE)",
-    })) as never,
+    withNetworkOptions(yargs)
+      .option("key-source", {
+        type: "string",
+        choices: sources,
+        describe: "where to load the secret vault key (defaults to FORGE_SECRET_VAULT_KEY_SOURCE)",
+      })
+      .option("socket-path", {
+        type: "string",
+        describe: "absolute Unix socket path instead of a TCP listener",
+      })) as never,
   describe: "starts a headless forge server",
   async handler(args) {
     // The key and protected password load before anything can open the database;
@@ -56,9 +61,19 @@ export const ServeCommand = cmd<{}, ServeArgs>({
         // Without an explicit source the key comes from the environment; Server.listen would
         // otherwise report any passed key as desktop-supplied.
         const server = yield* Effect.promise(() =>
-          Server.listen({ ...opts, keySource: keySource ?? "env", credentialVault, password }),
+          Server.listen({
+            ...opts,
+            socketPath: args["socket-path"],
+            keySource: keySource ?? "env",
+            credentialVault,
+            password,
+          }),
         )
-        console.log(`forge server listening on http://${server.hostname}:${server.port}`)
+        console.log(
+          server.socketPath
+            ? `forge server listening on unix:${server.socketPath}`
+            : `forge server listening on http://${server.hostname}:${server.port}`,
+        )
 
         yield* Effect.never
       }).pipe(Effect.withSpan("Cli.serve")),

@@ -520,6 +520,139 @@ describe("TeamRuntime dispatch", () => {
       ).toBe(true)
     }))
 
+  it("delivers factory predecessors and shares a worker-built tool with the boss", () =>
+    Effect.gen(function* () {
+      const llm = yield* TestLLMServer
+      const tmp = yield* setup(llm.url, true)
+      const room = (yield* state(tmp.path)).room
+      const members = yield* Effect.forEach(["builder", "verifier", "boss"], (handle) =>
+        Effect.promise(() =>
+          request("/api/team/teammate", tmp.path, "POST", {
+            roomID: room.id,
+            name: handle,
+            handle,
+            role: "Factory teammate",
+            mission: "Build and verify a reusable repository tool.",
+            directory: tmp.path,
+            model: { id: "chat", providerID: "team-fixture" },
+          }),
+        ).pipe(
+          Effect.flatMap((response) => Effect.promise(() => response.json())),
+          Effect.map(Schema.decodeUnknownSync(Team.Teammate)),
+        ),
+      )
+      const configured = yield* Effect.promise(() =>
+        request(`/api/team/room/${room.id}/factory`, tmp.path, "PUT", {
+          outcome: "Build and independently verify a repository guard tool.",
+          parameters: {},
+          constraints: "Use the shared repository. Do not publish externally.",
+          acceptanceCriteria: "Verifier and boss must run the worker-built tool.",
+          directory: tmp.path,
+          coordinatorTeammateID: members[2]!.id,
+          teammateIDs: members.map((member) => member.id),
+        }),
+      )
+      expect(configured.status).toBe(200)
+      const planning = (hit: { body: Record<string, unknown> }) =>
+        JSON.stringify(hit.body).includes("Return only FactoryPlan JSON")
+      const checking = (hit: { body: Record<string, unknown> }) =>
+        JSON.stringify(hit.body).includes("Return only FactoryCheck JSON")
+      const assignment = (text: string) => (hit: { body: Record<string, unknown> }) =>
+        JSON.stringify(hit.body).includes(`Assignment: ${text}`)
+      yield* llm.pushMatch(
+        planning,
+        reply()
+          .text(
+            JSON.stringify({
+              assignments: [
+                { teammateID: members[2]!.id, prompt: "Approve the verified guard.", dependsOn: [members[1]!.id] },
+                { teammateID: members[1]!.id, prompt: "Independently run the guard.", dependsOn: [members[0]!.id] },
+                { teammateID: members[0]!.id, prompt: "Build the guard tool." },
+              ],
+            }),
+          )
+          .stop(),
+      )
+      yield* llm.pushMatch(
+        assignment("Build the guard tool."),
+        reply().tool("write", {
+          path: "factory-guard.ts",
+          content: 'console.log("factory-guard-ok")\n',
+        }),
+      )
+      yield* llm.pushMatch(
+        assignment("Build the guard tool."),
+        reply().text("Builder ledger: factory-guard.ts; invoke bun factory-guard.ts; output factory-guard-ok.").stop(),
+      )
+      yield* llm.pushFactory(assignment("Independently run the guard."), (hit) => {
+        expect(JSON.stringify(hit.body)).toContain("Builder ledger: factory-guard.ts")
+        return reply().tool("bash", { command: "bun factory-guard.ts" })
+      })
+      yield* llm.pushFactory(assignment("Independently run the guard."), (hit) => {
+        expect(JSON.stringify(hit.body)).toContain("factory-guard-ok")
+        return reply()
+          .text("Verification record: independently ran bun factory-guard.ts; observed factory-guard-ok.")
+          .stop()
+      })
+      yield* llm.pushFactory(assignment("Approve the verified guard."), (hit) => {
+        expect(JSON.stringify(hit.body)).toContain("Verification record: independently ran")
+        return reply().tool("write", {
+          path: "factory-review.ts",
+          content: 'import "./factory-guard"\nconsole.log("factory-review-ok")\n',
+        })
+      })
+      yield* llm.pushMatch(
+        assignment("Approve the verified guard."),
+        reply().tool("bash", { command: "bun factory-review.ts" }),
+      )
+      yield* llm.pushFactory(assignment("Approve the verified guard."), (hit) => {
+        const messages = Schema.decodeUnknownSync(
+          Schema.Array(Schema.Struct({ role: Schema.String, content: Schema.Unknown })),
+        )(hit.body.messages)
+        expect(String(messages.findLast((message) => message.role === "tool")?.content)).toContain("factory-review-ok")
+        return reply()
+          .text("Editorial draft: approved after inspecting the verification record and running the guard.")
+          .stop()
+      })
+      yield* llm.pushFactory(checking, (hit) => {
+        expect(JSON.stringify(hit.body)).toContain("Builder ledger: factory-guard.ts")
+        expect(JSON.stringify(hit.body)).toContain("Verification record: independently ran")
+        expect(JSON.stringify(hit.body)).toContain("Editorial draft: approved")
+        return reply()
+          .text(
+            JSON.stringify({
+              status: "accepted",
+              summary: "All predecessor outputs delivered; tool reused and verified.",
+            }),
+          )
+          .stop()
+      })
+      const started = yield* Effect.promise(() =>
+        request(`/api/team/room/${room.id}/factory/run`, tmp.path, "POST", { id: "frun_dependency_tool" }),
+      )
+      expect(started.status).toBe(200)
+      const run = Schema.decodeUnknownSync(Team.FactoryRun)(yield* Effect.promise(() => started.json()))
+      const settled = yield* pollWithTimeout(
+        Effect.gen(function* () {
+          const response = yield* Effect.promise(() => request(`/api/team/factory-run/${run.id}`, tmp.path))
+          const value = Schema.decodeUnknownSync(Team.FactoryRun)(yield* Effect.promise(() => response.json()))
+          return value.status === "running" ? undefined : value
+        }),
+        "Factory dependency chain did not finish",
+        "40 seconds",
+      )
+      expect(settled.status, JSON.stringify(settled)).toBe("succeeded")
+      expect(yield* Effect.promise(() => Bun.file(path.join(tmp.path, "factory-guard.ts")).text())).toContain(
+        "factory-guard-ok",
+      )
+      expect(yield* Effect.promise(() => Bun.file(path.join(tmp.path, "factory-review.ts")).text())).toContain(
+        "factory-review-ok",
+      )
+      expect(
+        (yield* llm.inputs).filter((input) => assignment("Approve the verified guard.")({ body: input })),
+      ).toHaveLength(3)
+    }))
+
   it("fails a factory plan that assigns an unselected teammate", () =>
     Effect.gen(function* () {
       const llm = yield* TestLLMServer

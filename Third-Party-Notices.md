@@ -164,7 +164,7 @@ Each row identifies a resolved package and version, its declared license, and it
 | `@mermaid-js/parser` | `0.6.3` | MIT | [source](https://github.com/mermaid-js/mermaid.git) |
 | `@mermaid-js/parser` | `1.2.1` | MIT | [source](https://github.com/mermaid-js/mermaid.git) |
 | `@mixmark-io/domino` | `2.2.0` | BSD-2-Clause | [source](https://github.com/mixmark-io/domino.git) |
-| `@modelcontextprotocol/sdk` | `1.29.0` | MIT | [source](git+https://github.com/modelcontextprotocol/typescript-sdk.git) |
+| `@modelcontextprotocol/sdk` | `1.31.0` | MIT | [source](git+https://github.com/modelcontextprotocol/typescript-sdk.git) |
 | `@msgpackr-extract/msgpackr-extract-linux-x64` | `3.0.4` | MIT | [source](http://github.com/kriszyp/msgpackr-extract) |
 | `@nodable/entities` | `2.1.1` | MIT | [source](git+https://github.com/nodable/val-parsers.git) |
 | `@npmcli/agent` | `4.0.2` | ISC | [source](git+https://github.com/npm/agent.git) |

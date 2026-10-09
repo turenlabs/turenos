@@ -187,7 +187,8 @@ const layer = Layer.effect(
       if (
         configuration.exactCommands &&
         input.action === "bash" &&
-        (input.resources.some((resource) => !configuration.exactCommands?.includes(resource)) ||
+        (typeof input.metadata?.command !== "string" ||
+          !configuration.exactCommands.includes(input.metadata.command) ||
           input.metadata?.workdir !== ".")
       )
         return true

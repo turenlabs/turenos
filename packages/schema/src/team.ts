@@ -51,7 +51,13 @@ export const FactoryRun = Schema.Struct({
 export interface FactoryRun extends Schema.Schema.Type<typeof FactoryRun> {}
 
 export const FactoryPlan = Schema.Struct({
-  assignments: Schema.Array(Schema.Struct({ teammateID: requiredText(256), prompt: requiredText(8_000) })),
+  assignments: Schema.Array(
+    Schema.Struct({
+      teammateID: requiredText(256),
+      prompt: requiredText(8_000),
+      dependsOn: Schema.Array(requiredText(256)).pipe(Schema.check(Schema.isMaxLength(10)), optional),
+    }),
+  ).pipe(Schema.check(Schema.isMaxLength(10))),
 }).annotate({ identifier: "Team.FactoryPlan" })
 export interface FactoryPlan extends Schema.Schema.Type<typeof FactoryPlan> {}
 

@@ -3,6 +3,11 @@
 Vendored WebAssembly build of the ripgrep engine used by `@turenlabs/core`'s
 `Ripgrep.Service` as a drop-in replacement for spawning the `rg` binary.
 
+Core uses it whenever the asset resolves and `FORGE_RIPGREP_WASM` is not `0`.
+The spawned binary stays behind it: a job that fails outright, such as a trapped
+or unstartable worker, is logged and retried on `rg`. Invalid patterns and
+aborted jobs are not retried.
+
 The module is not a reimplementation: it compiles the actual libripgrep crates
 (`ignore`, `grep-regex`, `grep-searcher`, `grep-matcher`, `globset`) to
 `wasm32-unknown-unknown`. Search semantics (gitignore precedence, `.ignore` /
@@ -39,6 +44,12 @@ through `host.*` imports implemented by
 `fs_stat_kind`/`fs_devino` for `--follow` resolution and loop detection, and
 `fs_cancelled` polled at traversal/batch boundaries (driven by a
 `SharedArrayBuffer` flag in worker mode).
+
+`fs_read_files(paths, len, buf, cap)` writes as many whole records as fit in
+`[buf, buf + cap)` and returns the bytes written relative to `buf`; the module
+calls again for the paths it has not received. When the first record alone does
+not fit, it returns that record's size negated. Returning an absolute end pointer
+instead breaks every candidate list larger than one batch.
 
 Exports: `grep`, `grep_many`, `collect`, `collect_shards`, `filter_paths`,
 `line_count`, plus `alloc`/`dealloc` and result accessors

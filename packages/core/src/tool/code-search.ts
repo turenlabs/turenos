@@ -66,7 +66,14 @@ const layer = Layer.effectDiscard(
                 source: { type: "tool", messageID: context.assistantMessageID, callID: context.toolCallID },
               })
               return yield* search.search({ queries: input.queries, path: input.path, limit: input.limit })
-            }).pipe(Effect.mapError(() => new ToolFailure({ message: `Unable to search for ${input.queries[0]}` }))),
+            }).pipe(
+              Effect.mapError(
+                (error) =>
+                  new ToolFailure({
+                    message: `Unable to search for ${input.queries[0]}${error instanceof Error ? `: ${error.message}` : ""}`,
+                  }),
+              ),
+            ),
         }),
       })
       .pipe(Effect.orDie)

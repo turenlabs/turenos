@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test"
 import net from "node:net"
+import { lstat, realpath, symlink, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { pathToFileURL } from "node:url"
 import { Flag } from "@turenlabs/core/flag/flag"
@@ -175,6 +176,59 @@ async function openPtySocket(listener: Awaited<ReturnType<typeof startListener>>
 }
 
 describe("HttpApi Server.listen", () => {
+  testPty("starts an authenticated Unix socket and removes it on stop", async () => {
+    await using tmp = await tmpdir({ config: { formatter: false, lsp: false } })
+    const socketPath = path.join(await realpath(tmp.path), "listener.sock")
+    const listener = await Server.listen({
+      hostname: "127.0.0.1",
+      port: 0,
+      socketPath,
+      username: auth.username,
+      password: auth.password,
+    })
+    try {
+      expect(listener.socketPath).toBe(socketPath)
+      expect(listener.port).toBe(0)
+      expect(listener.url.toString()).toBe("http://localhost/")
+      expect((await lstat(socketPath)).isSocket()).toBe(true)
+      expect((await lstat(socketPath)).mode & 0o777).toBe(0o660)
+      expect((await fetch(new URL(GlobalPaths.health, listener.url), { unix: socketPath })).status).toBe(401)
+      expect(
+        (
+          await fetch(new URL(GlobalPaths.health, listener.url), {
+            unix: socketPath,
+            headers: { authorization: authorization() },
+          })
+        ).status,
+      ).toBe(200)
+    } finally {
+      await stop(listener, "Unix listener stop")
+    }
+    await expect(lstat(socketPath)).rejects.toMatchObject({ code: "ENOENT" })
+    const restarted = await Server.listen({ hostname: "127.0.0.1", port: 0, socketPath, password: auth.password })
+    await stop(restarted, "restarted Unix listener stop")
+  })
+
+  testPty("does not replace an existing socket target or follow a symlink parent", async () => {
+    await using tmp = await tmpdir()
+    const parent = await realpath(tmp.path)
+    const socketPath = path.join(parent, "occupied.sock")
+    await writeFile(socketPath, "keep")
+    await expect(
+      Server.listen({ hostname: "127.0.0.1", port: 0, socketPath, password: auth.password }),
+    ).rejects.toThrow("socket path already exists")
+    expect(await Bun.file(socketPath).text()).toBe("keep")
+    await symlink(parent, path.join(parent, "linked"))
+    await expect(
+      Server.listen({
+        hostname: "127.0.0.1",
+        port: 0,
+        socketPath: path.join(parent, "linked", "server.sock"),
+        password: auth.password,
+      }),
+    ).rejects.toThrow("without symlinks")
+  })
+
   test("owns private proxy storage without exposing an HTTP proxy API", async () => {
     await using tmp = await tmpdir({ config: { formatter: false, lsp: false } })
     // Separate listener scopes intentionally do not share an in-memory database.

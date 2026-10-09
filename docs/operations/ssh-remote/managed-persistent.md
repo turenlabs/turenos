@@ -14,18 +14,27 @@ send it a key. That is why `connectSshRemote` checks for one **before** it write
 
    | Result                | Meaning                                                                                                         | Action                                                |
    | --------------------- | --------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
-   | `attach-existing`     | A well-formed attach record names a loopback listener                                                           | Tunnel to it. No shim write, no `ensure`, no key sent |
+   | `attach-existing`     | A valid version 2 attach record names `/run/turenos/server.sock`                                                | Tunnel to it. No shim write, no `ensure`, no key sent |
    | `start-quick-connect` | No record, and the target was never persistent                                                                  | The quick-connect path                                |
    | `conflict`            | Record unreadable or malformed, a saved persistent target has no record, or the record names a different server | Fail closed with an actionable message                |
 
-3. For `attach-existing`, the desktop opens the tunnel to the record's port and reads the authenticated
-   `GET /global/server` descriptor. It keeps the connection only if the descriptor's `serverID` matches the record and
-   `mode` is `persistent`. A rejected request fails at once rather than waiting out the health timeout.
+3. For `attach-existing`, SSH forwards a private local Unix socket to the remote Unix socket.
+   The reserved desktop loopback TCP listener proxies the local socket.
+   The desktop reads the authenticated `GET /global/server` descriptor.
+   It keeps the connection only if `serverID` matches the record and `mode` is `persistent`.
+   A rejected request fails at once rather than waiting out the health timeout.
+
+The version 2 record contains `serverID`, `socketPath`, `username`, and `password`, not `url`.
+Only `/run/turenos/server.sock` is accepted. Version 1 TCP records are rejected.
+The remote persistent service has no TCP listener. Quick connect keeps its existing transport.
+Basic auth remains defense in depth. A copied password cannot bypass remote Unix socket permissions.
 
 The probe runs for every SSH user, so a promoted host offers no quick connect: members of `turenos-operators` attach to
-the shared server, and every other user gets the unreadable conflict. The probe reuses the ssh master, whose login keeps
-the groups it started with, so a user newly added to the group connects only after that master has been idle for
-`ControlPersist` (10 minutes) and a new login starts. See
+the shared server, and every other user gets the unreadable conflict. The probe reuses the SSH control master.
+An existing login keeps its original groups. After a group change, close the old SSH login and start a new one.
+The master can also expire after `ControlPersist` (10 minutes) without active channels.
+To revoke access, remove group membership and disconnect existing SSH channels and sessions.
+Group removal alone does not close existing connections. See
 [Persistent server known limits](../persistent-server.md#known-limits).
 
 ## After the first attach

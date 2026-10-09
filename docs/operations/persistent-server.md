@@ -13,9 +13,13 @@ source) and promoting an SSH quick-connect remote from the desktop haven't shipp
 - **Vault key.** It lives in the host's protected store: systemd encrypted credentials on Linux. `forge` reads it
   itself, and it never appears in argv, the environment, the unit file, logs, or HTTP responses.
 - **HTTP password.** It is stable, stored separately from the key, and handed to authorized SSH users through the
-  attach record.
+  attach record. Basic auth remains defense in depth. A copied password cannot bypass Unix socket permissions.
+- **Unix socket.** The persistent service listens only on `/run/turenos/server.sock`, not TCP.
+  `/run/turenos` is `0710`, owned by the service user and `turenos-operators`. The socket is `0660` with the same ownership.
+  Operators can connect but cannot replace the socket through that directory.
 - **Scope.** Agent tools run as the service account and can read whatever that account can. The vault protects data at
-  rest, backups, other local users, and clients. It does not isolate tools.
+  rest and backups. The service account and its tools are trusted. They can read the key and password and replace the socket.
+  This setup does not isolate tools from the service.
 
 ### Setup runs as root
 
@@ -35,7 +39,7 @@ redirecting root's work:
 - **Service binary and recovery copy.** The binary the unit runs (`--forge-bin`, default: the installed unit's binary,
   else the running `forge`, resolved through links) must be a root-owned file in directories only root can write, since it receives the key and
   password. The `--recovery-file` directory must also be writable only by root.
-- **Unit values.** Values written into the unit (account, server ID, paths, port) are limited to characters that can't
+- **Unit values.** Values written into the unit (account, server ID, paths) are limited to characters that can't
   split or reinterpret a unit line.
 - **Credential files.** Credential blobs are kept `0600`. Files with secrets are written through the opened file,
   never by path.
@@ -52,10 +56,9 @@ redirecting root's work:
 - **No quick connect on a promoted host.** Every SSH user's desktop checks for the attach record first. Operators
   attach to the shared server; any other user gets a conflict instead of a private quick-connect server. Falling back
   would restart the quick-connect database the host was promoted from and split its data.
-- **Other local users and the port.** The listener is a loopback TCP port, so while the service is down another local
-  user could bind it and collect the password from a client that connects. The desktop checks the descriptor's server
-  ID and mode, but only after it has sent credentials. Quick connect has the same limit. A Unix-socket listener with
-  group permissions would remove it.
+- **Revoking operator access.** Remove the user from `turenos-operators`, then disconnect existing SSH channels and sessions.
+  Existing logins keep their group state. A new SSH login must load the changed group state before revocation takes effect.
+  Removing group membership alone does not close existing connections. A copied HTTP password does not grant socket access.
 - **Credentials inside the service.** The credential files are readable by the service account, and so by agent
   tools, as described under Scope. After loading them `serve` removes `CREDENTIALS_DIRECTORY` and
   `FORGE_SERVER_PASSWORD_CREDENTIAL` from the environment, so tools, PTYs, and MCP servers are not told where they are.
@@ -68,12 +71,14 @@ redirecting root's work:
 
 - **Descriptor.** `GET /global/server` (authenticated). Fields: `serverID`, `dataIdentity { databasePath, databaseUUID }`,
   `keyID`, `mode`, `keySource`, `listener`, `version`. It never contains key bytes or the password.
-- **Attach record.** `{ "version": 1, "serverID", "url", "username", "password" }`, where `url` is the host loopback
-  listener, at `/etc/turenos/attach.json` (`0640 root:turenos-operators`). Clients read this record, never a process
-  environment.
+- **Attach record.** Version 2 contains `serverID`, `socketPath`, `username`, and `password`, not `url`.
+  `socketPath` is fixed at `/run/turenos/server.sock`.
+  The record lives at `/etc/turenos/attach.json` (`0640 root:turenos-operators`). Clients read it, never a process environment.
 - **Ownership.** The owner lock sits beside the database. The owner record inside the database refuses any other
   process on a persistent database, before migrations run. See
   [Secure storage](../systems/secure-storage.md#database-identity-ownership-and-verification).
+- **ACP ownership.** `forge acp` also takes the database owner lock. It cannot run beside the persistent service on the same database.
+  This exclusion is deliberate. The Unix socket change does not change ACP ownership.
 
 ## Linux (systemd)
 
@@ -93,10 +98,9 @@ sudo forge persistent install --user alice --apply \
   --recovery-file /root/turenos-recovery.key
 ```
 
-`--data-root` (default `/var/lib/turenos-server`) and `--port` (default 4097) choose the pinned data root and the
-loopback listener port; preflight asks for one of them when the default belongs to another account or is in use. On a
-re-run they default to the installed unit's values, and moving an installed server to another data root or account
-is refused.
+`--data-root` selects the pinned data root (default `/var/lib/turenos-server`). On a re-run it defaults to the installed value.
+Moving an installed server to another data root or account is refused.
+Persistent commands have no `--port` option. The socket path is fixed.
 
 `install --apply` does the following:
 
@@ -107,9 +111,9 @@ is refused.
    `/etc/credstore/forge-secret-vault-key-id`, then encrypts the key into
    `/etc/credstore.encrypted/forge-secret-vault-key` through `systemd-creds encrypt` on stdin.
 3. Generates the HTTP password and encrypts it as `forge-server-password`.
-4. Writes `/etc/systemd/system/turenos.service`, then enables and restarts the service.
+4. Creates `turenos-operators` if needed. Writes `/etc/systemd/system/turenos.service`, then enables and restarts the service.
 5. Waits for `/global/server` and checks the server ID, key ID, and mode.
-6. Only then writes `/etc/turenos/attach.json` (`0640 root:turenos-operators`, creating the group if needed). A server
+6. Only then writes `/etc/turenos/attach.json` (`0640 root:turenos-operators`). A server
    that never became healthy leaves no record, so it cannot block quick connect on this host.
 
 Only one `install --apply` runs at a time. The lock is a file holding the owner's PID at `/run/turenos-install.lock`
@@ -128,9 +132,11 @@ Add every user who may attach to `turenos-operators`, then reboot once and confi
 same key ID.
 
 The unit (`forge persistent unit --user alice` prints it) runs
-`forge serve --key-source systemd-credentials --hostname 127.0.0.1 --port 4097` with
+`forge serve --key-source systemd-credentials --socket-path /run/turenos/server.sock` with
 `FORGE_SERVER_MODE=persistent`, `FORGE_SERVER_ID`, and `FORGE_SERVER_PASSWORD_CREDENTIAL`, loading the key through
-`LoadCredentialEncrypted=`. No wrapper script exports anything. Preflight refuses any systemd drop-in for
+`LoadCredentialEncrypted=`. It sets `Group=turenos-operators`, `RuntimeDirectory=turenos`, and `RuntimeDirectoryMode=0710`.
+The server sets the socket mode to `0660`. No TCP listener starts. No wrapper script exports anything.
+Preflight refuses any systemd drop-in for
 `turenos.service` (`turenos.service.d/*.conf` under `/etc/systemd/system`, `/run/systemd/system`, or
 `/usr/local/lib/systemd/system`), and any generic `service.d/*.conf` under `/etc/systemd/system` or
 `/run/systemd/system`, because a drop-in can replace `ExecStart`, the account, or the environment of the unit
@@ -205,22 +211,21 @@ printf '%s\n%s\n' "$KEY_ID" "$KEY_BASE64" | sudo forge persistent install --user
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Status and logs            | `systemctl status turenos`, `journalctl -u turenos`                                                                                                                                                                                                                                                                                                                 |
 | Stop or retire the service | `systemctl disable --now turenos`. Clients never stop a persistent server                                                                                                                                                                                                                                                                                           |
-| Re-run or upgrade          | `sudo forge persistent install --apply` with no other options reuses the installed unit's account, data root, port, server ID, and forge binary (pass `--forge-bin` to switch binaries), then restarts the service. It refuses to replace an existing key, to change the account or data root of an installed server, or to overwrite a unit for a different server |
+| Re-run or upgrade          | `sudo forge persistent install --apply` reuses the installed account, data root, server ID, and binary, then restarts. Use `--forge-bin` to switch binaries. It refuses key replacement, account or data root changes, and a unit for another server. |
 | Check what a key opens     | `forge persistent verify-key --db <path>` (key on stdin)                                                                                                                                                                                                                                                                                                            |
 
 ### Failure behavior
 
 A missing credential, wrong key bytes, several key IDs, a database owned by another server, or a key or password in the
 environment all stop startup before the server accepts work. Configuration errors (missing or invalid credentials, a
-key or password in the environment, a unit without `FORGE_PERSISTENT_UNIT=1`, a non-loopback `--hostname`, or `--mdns`)
+key or password in the environment, a unit without `FORGE_PERSISTENT_UNIT=1`, a missing or unsafe socket path, or `--mdns`)
 exit with status 78 and a one-line message saying what to fix.
 
 If a step fails before the restart, `install` starts a service that was running again. If a newly installed service
 doesn't become healthy, `install` names the last health-check result (for example `HTTP 404` or a refused connection),
 prints the last journal lines, then stops and disables the service so it doesn't keep
-restarting. It doesn't disable a service that was already installed. Preflight refuses a
-port another process holds (quick connect prefers 4096, so the default here is 4097) and a data root that belongs to
-another account. The unit restarts the service on failure, at most five times in 300 seconds, and never after exit
+restarting. It doesn't disable a service that was already installed. Preflight refuses a data root that belongs to another account.
+The unit restarts the service on failure, at most five times in 300 seconds, and never after exit
 status 78 (a configuration error such as a missing credential or a unit written by a different forge). Fix the cause,
 then re-run `install --apply` or `systemctl reset-failed turenos` and start the service.
 
@@ -231,6 +236,7 @@ the next `install --apply` finishes handing it back.
 
 ## Clients
 
-A desktop that adds this host over SSH detects the attach record before touching the shim, tunnels to the loopback
-listener, and verifies the descriptor. It never sends its own key. Removing or disconnecting the client leaves the
+A desktop detects the attach record before touching the shim. SSH forwards a private local Unix socket to the remote Unix socket.
+The reserved desktop loopback TCP listener proxies that local socket. The desktop verifies the descriptor and never sends its own key.
+Removing or disconnecting the client leaves the
 server running. See [Managed persistent servers](./ssh-remote/managed-persistent.md).

@@ -368,7 +368,7 @@ describe("ExtensionCatalog", () => {
   })
 
   test("derives write confirmation actions from MCP manifests", () => {
-    expect(ExtensionCatalog.writeToolActions).not.toContain("onepassword_create_environment")
+    expect(ExtensionCatalog.writeToolActions).toContain("onepassword_create_environment")
     expect(ExtensionCatalog.writeToolActions).toContain("notion_notion-create-pages")
     expect(ExtensionCatalog.writeToolActions).toContain("forge-security_linear_call")
     expect(ExtensionCatalog.writeToolActions).not.toContain("notion_notion-search")
@@ -678,6 +678,37 @@ describe("ExtensionCatalog", () => {
       if (contribution?.type !== "mcp") continue
       expect(contribution.tools).toEqual({ allow, write: [] })
     }
+  })
+
+  test("keeps 1Password secret access local and environment changes opt-in", () => {
+    const contribution = ExtensionCatalog.get("turenlabs/onepassword")?.contributions[0]
+    expect(contribution).toMatchObject({
+      type: "mcp",
+      adapter: "mcp:onepassword",
+      authentication: "desktop",
+      localOnly: true,
+      defaultEnabled: false,
+      secrets: [],
+      deployment: { type: "local", command: "1password-mcp", platforms: ["darwin", "linux"] },
+      tools: {
+        allow: [
+          "authenticate",
+          "list_environments",
+          "list_variables",
+          "list_local_env_files",
+          "create_environment",
+          "rename_environment",
+          "append_variables",
+          "create_local_env_file",
+        ],
+        write: ["create_environment", "rename_environment", "append_variables", "create_local_env_file"],
+      },
+    })
+    if (contribution?.type !== "mcp") throw new Error("1Password MCP contribution is missing")
+    for (const tool of contribution.tools.write) {
+      expect(ExtensionCatalog.writeToolActions).toContain(`onepassword_${tool}`)
+    }
+    expect(ExtensionCatalog.writeToolActions).not.toContain("onepassword_list_variables")
   })
 
   test("ships Automox as a pinned one-click read-only MCP package", () => {

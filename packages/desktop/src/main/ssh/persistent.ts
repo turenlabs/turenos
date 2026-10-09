@@ -2,11 +2,12 @@ import type { SshServerConfig } from "../../preload/types"
 
 /** Where a managed Linux persistent server publishes its attach record, readable by the operator group. */
 export const ATTACH_RECORD_PATH = "/etc/turenos/attach.json"
+export const PERSISTENT_SOCKET_PATH = "/run/turenos/server.sock"
 
 export type AttachRecord = {
-  version: 1
+  version: 2
   serverID: string
-  url: string
+  socketPath: string
   username: string
   password: string
 }
@@ -50,30 +51,24 @@ export function parseAttachRecord(text: string): AttachRecord | undefined {
   try {
     const value = JSON.parse(text) as Record<string, unknown>
     if (
-      value.version !== 1 ||
+      value.version !== 2 ||
       typeof value.serverID !== "string" ||
       !value.serverID ||
-      typeof value.url !== "string" ||
+      value.socketPath !== PERSISTENT_SOCKET_PATH ||
+      "url" in value ||
       typeof value.username !== "string" ||
       typeof value.password !== "string" ||
       !value.password
     )
       return
-    const url = new URL(value.url)
-    // The SSH tunnel forwards to remote 127.0.0.1, so only that exact listener can be attached.
-    if (
-      url.protocol !== "http:" ||
-      url.hostname !== "127.0.0.1" ||
-      !url.port ||
-      Number(url.port) === 0 ||
-      url.username ||
-      url.password ||
-      url.pathname !== "/" ||
-      url.search ||
-      url.hash
-    )
-      return
-    return { version: 1, serverID: value.serverID, url: value.url, username: value.username, password: value.password }
+    // The managed directory prevents an untrusted user from replacing the remote listener.
+    return {
+      version: 2,
+      serverID: value.serverID,
+      socketPath: PERSISTENT_SOCKET_PATH,
+      username: value.username,
+      password: value.password,
+    }
   } catch {
     return
   }

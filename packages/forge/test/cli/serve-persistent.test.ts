@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { mkdir, writeFile } from "node:fs/promises"
+import { chmod, mkdir, realpath, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { tmpdir } from "../fixture/fixture"
 
@@ -9,6 +9,9 @@ const password = "persistent-http-password"
 const cli = path.resolve(import.meta.dir, "../../src/index.ts")
 
 async function setup(root: string) {
+  const sockets = path.join(await realpath(root), "sockets")
+  await mkdir(sockets, { mode: 0o700 })
+  await chmod(sockets, 0o700)
   // Stand-ins for the directories systemd mounts at $CREDENTIALS_DIRECTORY.
   const credentials = async (name: string, vaultKey: string) => {
     const dir = path.join(root, name)
@@ -28,6 +31,7 @@ async function setup(root: string) {
     ),
   )
   Object.assign(env, {
+    TEST_SOCKET_DIRECTORY: sockets,
     NODE_ENV: "production",
     FORGE_SERVER_MODE: "persistent",
     FORGE_PERSISTENT_UNIT: "1",
@@ -43,13 +47,29 @@ async function setup(root: string) {
   return { dirs, env }
 }
 
+let socketSequence = 0
 function serve(env: Record<string, string>, ...extra: string[]) {
-  return Bun.spawn([process.execPath, cli, "serve", "--key-source", "systemd-credentials", "--port", "0", ...extra], {
-    cwd: path.resolve(import.meta.dir, "../.."),
-    env,
-    stdout: "pipe",
-    stderr: "pipe",
-  })
+  return Bun.spawn(
+    [
+      process.execPath,
+      cli,
+      "serve",
+      "--key-source",
+      "systemd-credentials",
+      "--port",
+      "0",
+      ...(extra.includes("--socket-path")
+        ? []
+        : ["--socket-path", path.join(env.TEST_SOCKET_DIRECTORY, `${++socketSequence}.sock`)]),
+      ...extra,
+    ],
+    {
+      cwd: path.resolve(import.meta.dir, "../.."),
+      env,
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+  )
 }
 
 async function listening(child: ReturnType<typeof serve>) {
@@ -59,7 +79,7 @@ async function listening(child: ReturnType<typeof serve>) {
     const next = await reader.read()
     if (next.done) throw new Error(`serve exited before listening: ${output}${await new Response(child.stderr).text()}`)
     output += new TextDecoder().decode(next.value)
-    const url = /listening on (http:\/\/\S+)/.exec(output)?.[1]
+    const url = /listening on unix:(\S+)/.exec(output)?.[1]
     if (url) {
       reader.releaseLock()
       return url
@@ -78,7 +98,12 @@ async function configFailure(child: ReturnType<typeof serve>) {
   const [stdout, stderr] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text()])
   expect(await child.exited).toBe(78)
   expect(stdout).not.toContain("listening on")
-  expect(stderr.trim().split("\n").filter((line) => !line.startsWith("heap watchdog"))).toHaveLength(1)
+  expect(
+    stderr
+      .trim()
+      .split("\n")
+      .filter((line) => !line.startsWith("heap watchdog")),
+  ).toHaveLength(1)
   return stderr
 }
 
@@ -89,19 +114,21 @@ describe("persistent forge serve", () => {
 
     const first = serve(env)
     try {
-      const url = await listening(first)
-      const health = new URL("/global/health", url)
-      expect((await fetch(health)).status).toBe(401)
+      const socketPath = await listening(first)
+      const health = new URL("/global/health", "http://localhost")
+      expect((await fetch(health, { unix: socketPath })).status).toBe(401)
       const authorization = `Basic ${btoa(`forge:${password}`)}`
-      expect((await fetch(health, { headers: { authorization } })).status).toBe(200)
+      expect((await fetch(health, { unix: socketPath, headers: { authorization } })).status).toBe(200)
 
-      const descriptor = await (await fetch(new URL("/global/server", url), { headers: { authorization } })).json()
+      const descriptor = await (
+        await fetch("http://localhost/global/server", { unix: socketPath, headers: { authorization } })
+      ).json()
       expect(descriptor).toMatchObject({
         serverID: "persistent-test",
         keyID: "host-key",
         mode: "persistent",
         keySource: "systemd-credentials",
-        listener: url.replace(/\/$/, "") + "/",
+        listener: `unix:${socketPath}`,
         dataIdentity: { databasePath: env.FORGE_DB },
       })
       expect(JSON.stringify(descriptor)).not.toContain(password)
@@ -180,14 +207,31 @@ describe("persistent forge serve", () => {
     expect(await configFailure(serve(env, "--hostname", "127.0.0.1", "--mdns"))).toContain("must not publish over mDNS")
   }, 90_000)
 
+  test("rejects TCP, unsafe socket parents, and existing targets with exit 78", async () => {
+    await using tmp = await tmpdir()
+    const { env } = await setup(tmp.path)
+    expect(await configFailure(serve(env, "--socket-path", ""))).toContain("TCP listeners are not permitted")
+    expect(await configFailure(serve(env, "--socket-path", "relative.sock"))).toContain("socket path must be absolute")
+    await chmod(env.TEST_SOCKET_DIRECTORY, 0o770)
+    expect(await configFailure(serve(env))).toContain("must not allow group or other write access")
+    await chmod(env.TEST_SOCKET_DIRECTORY, 0o707)
+    expect(await configFailure(serve(env))).toContain("must not allow group or other write access")
+    await chmod(env.TEST_SOCKET_DIRECTORY, 0o700)
+    const occupied = path.join(env.TEST_SOCKET_DIRECTORY, "occupied.sock")
+    await writeFile(occupied, "keep")
+    expect(await configFailure(serve(env, "--socket-path", occupied))).toContain("socket path already exists")
+    expect(await Bun.file(occupied).text()).toBe("keep")
+  }, 90_000)
+
   test("keeps the credential locations and key variables away from spawned processes", async () => {
     await using tmp = await tmpdir()
     const { env } = await setup(tmp.path)
     const dumped = path.join(tmp.path, "child-env")
     const child = serve(env)
     try {
-      const url = await listening(child)
-      const response = await fetch(new URL("/pty", url), {
+      const socketPath = await listening(child)
+      const response = await fetch("http://localhost/pty", {
+        unix: socketPath,
         method: "POST",
         headers: {
           authorization: `Basic ${btoa(`forge:${password}`)}`,
@@ -199,7 +243,9 @@ describe("persistent forge serve", () => {
       expect(response.status).toBe(200)
       let output = ""
       for (let attempt = 0; attempt < 100 && !output.includes("FORGE_PID"); attempt++) {
-        output = await Bun.file(dumped).text().catch(() => "")
+        output = await Bun.file(dumped)
+          .text()
+          .catch(() => "")
         await Bun.sleep(50)
       }
       expect(output).toContain("FORGE_PID")

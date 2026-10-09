@@ -180,6 +180,7 @@ export function update(adapter: Adapter, event: SessionEvent.Event) {
         )
       },
       // Neither renaming nor relocating a Session changes what was said in it.
+      "session.execution.settled": () => Effect.void,
       "session.next.title.updated": () => Effect.void,
       "session.next.moved": () => Effect.void,
       "session.next.harness.proposal.created": () => Effect.void,

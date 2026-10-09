@@ -180,13 +180,14 @@ export const resolveOnePasswordCommand = Effect.fn("McpIntegration.resolveOnePas
   if (!candidate) return undefined
   return yield* Effect.promise(() =>
     Promise.all([realpath(candidate), stat(candidate)])
-      .then(([resolved, info]) =>
+      .then(async ([resolved, info]) =>
         trustedOnePasswordExecutable({
           platform: process.platform,
           path: resolved,
           uid: info.uid,
           mode: info.mode,
           file: info.isFile(),
+          vendorSigned: process.platform === "darwin" && (await verifyOnePasswordSignature(resolved)),
         })
           ? resolved
           : undefined,
@@ -195,18 +196,36 @@ export const resolveOnePasswordCommand = Effect.fn("McpIntegration.resolveOnePas
   )
 })
 
+export async function verifyOnePasswordSignature(executable: string) {
+  if (executable !== "/Applications/1Password.app/Contents/MacOS/1password-mcp") return false
+  // Pin the Developer ID chain, vendor team, and executable identity.
+  const verification = Bun.spawn(
+    [
+      "/usr/bin/codesign",
+      "--verify",
+      "--strict",
+      "-R",
+      '=anchor apple generic and identifier "1password-mcp" and certificate 1[field.1.2.840.113635.100.6.2.6] exists and certificate leaf[field.1.2.840.113635.100.6.1.13] exists and certificate leaf[subject.OU] = "2BUA8C4S2C"',
+      executable,
+    ],
+    { stdin: "ignore", stdout: "ignore", stderr: "ignore", timeout: 10_000 },
+  )
+  return (await verification.exited) === 0
+}
+
 export function trustedOnePasswordExecutable(input: {
   readonly platform: NodeJS.Platform
   readonly path: string
   readonly uid: number
   readonly mode: number
   readonly file: boolean
+  readonly vendorSigned?: boolean
 }) {
-  if (!input.file || input.uid !== 0 || (input.mode & 0o022) !== 0) return false
+  if (!input.file || (input.mode & 0o022) !== 0) return false
   if (input.platform === "darwin") {
-    return input.path === "/Applications/1Password.app/Contents/MacOS/1password-mcp"
+    return input.path === "/Applications/1Password.app/Contents/MacOS/1password-mcp" && input.vendorSigned === true
   }
-  if (input.platform !== "linux") return false
+  if (input.platform !== "linux" || input.uid !== 0) return false
   return ["/usr/bin/", "/usr/local/bin/", "/opt/1Password/", "/opt/1password/"].some((root) =>
     input.path.startsWith(root),
   )

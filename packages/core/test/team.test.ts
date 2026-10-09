@@ -153,6 +153,196 @@ describe("TeamWorkspace", () => {
     }),
   )
 
+  it.effect("delivers exact factory predecessor outputs and keeps blocked work from starving independent tasks", () =>
+    Effect.gen(function* () {
+      const team = yield* TeamWorkspace.Service
+      const room = yield* team.createRoom({ name: "factory-handoffs" })
+      const members = yield* Effect.forEach(["lead", "first", "second", "joiner", "independent"], (handle) =>
+        team.createTeammate({ roomID: room.id, name: handle, handle, role: "Builder", mission: "Build" }),
+      )
+      yield* team.configureFactory({
+        roomID: room.id,
+        config: {
+          outcome: "Build",
+          parameters: {},
+          constraints: "Safe",
+          acceptanceCriteria: "Pass",
+          directory: "/tmp/factory",
+          coordinatorTeammateID: members[0]!.id,
+          teammateIDs: members.map((member) => member.id),
+        },
+      })
+      const run = yield* team.startFactoryRun({ id: "frun_handoffs", roomID: room.id })
+      const [plan] = yield* team.claimTasks({ owner: "handoff-plan" })
+      yield* team.startTask({ id: plan!.id, owner: "handoff-plan" })
+      yield* team.finishTask({
+        id: plan!.id,
+        owner: "handoff-plan",
+        status: "succeeded",
+        text: JSON.stringify({
+          assignments: [
+            { teammateID: members[1]!.id, prompt: "First step" },
+            { teammateID: members[2]!.id, prompt: "Second step", dependsOn: [members[1]!.id] },
+            {
+              teammateID: members[3]!.id,
+              prompt: "Join both results",
+              dependsOn: [members[1]!.id, members[2]!.id],
+            },
+            { teammateID: members[4]!.id, prompt: "Independent step" },
+          ],
+        }),
+      })
+      yield* team.syncFactoryRuns()
+
+      const firstWave = yield* team.claimTasks({ owner: "handoff-wave", limit: 2 })
+      expect(firstWave.map((task) => task.teammateID).sort()).toEqual([members[1]!.id, members[4]!.id].sort())
+      expect(firstWave.every((task) => task.execution.predecessorEvidence === undefined)).toBe(true)
+      yield* Effect.forEach(firstWave, (task) => team.startTask({ id: task.id, owner: "handoff-wave" }), {
+        discard: true,
+      })
+      const firstTask = firstWave.find((task) => task.teammateID === members[1]!.id)!
+      yield* team.finishTask({
+        id: firstTask.id,
+        owner: "handoff-wave",
+        status: "succeeded",
+        text: "Exact first result",
+      })
+      const secondWave = yield* team.claimTasks({ owner: "handoff-second", limit: 2 })
+      expect(secondWave.map((task) => task.teammateID)).toEqual([members[2]!.id])
+      expect(secondWave[0]!.execution.predecessorEvidence).toMatchObject([
+        { taskID: firstTask.id, teammateID: members[1]!.id, result: "Exact first result" },
+      ])
+      expect(secondWave[0]!.execution.prompt).toContain("Exact first result")
+      const database = yield* Database.Service
+      yield* Database.primary(database.db)
+        .update(TeamTaskTable)
+        .set({ lease_expires_at: Date.now() - 1 })
+        .where(eq(TeamTaskTable.id, secondWave[0]!.id))
+        .run()
+      const [reclaimed] = yield* team.claimTasks({ owner: "handoff-second-reclaim" })
+      expect(reclaimed!.execution.predecessorEvidence).toEqual(secondWave[0]!.execution.predecessorEvidence)
+      expect(reclaimed!.execution.prompt).toBe(secondWave[0]!.execution.prompt)
+      expect(reclaimed!.execution.prompt.match(/Predecessor task outputs/g)).toHaveLength(1)
+      yield* team.startTask({ id: reclaimed!.id, owner: "handoff-second-reclaim" })
+      yield* team.finishTask({
+        id: reclaimed!.id,
+        owner: "handoff-second-reclaim",
+        status: "succeeded",
+        text: "Exact second result",
+      })
+      const joiner = yield* team.claimTasks({ owner: "handoff-joiner" })
+      expect(joiner).toHaveLength(1)
+      expect(joiner[0]!.teammateID).toBe(members[3]!.id)
+      expect(joiner[0]!.execution.predecessorEvidence?.map((item) => item.result)).toEqual([
+        "Exact first result",
+        "Exact second result",
+      ])
+      expect(joiner[0]!.execution.prompt).toContain("Exact first result")
+      expect(joiner[0]!.execution.prompt).toContain("Exact second result")
+      expect((yield* team.getFactoryRun(run.id)).phase).toBe("work")
+    }),
+  )
+
+  it.effect("rejects invalid factory dependencies before admitting assignment tasks", () =>
+    Effect.gen(function* () {
+      const team = yield* TeamWorkspace.Service
+      const foreign = yield* team.createTeammate({
+        name: "Foreign",
+        handle: "foreign",
+        role: "Builder",
+        mission: "Build",
+      })
+      const invalidPlans = [
+        (ids: ReadonlyArray<string>) => [{ teammateID: ids[1]!, prompt: "Missing", dependsOn: ["unknown"] }],
+        (ids: ReadonlyArray<string>) => [{ teammateID: ids[1]!, prompt: "Foreign", dependsOn: [foreign.id] }],
+        (ids: ReadonlyArray<string>) => [{ teammateID: ids[1]!, prompt: "Self", dependsOn: [ids[1]!] }],
+        (ids: ReadonlyArray<string>) => [{ teammateID: ids[1]!, prompt: "Missing assignment", dependsOn: [ids[2]!] }],
+        (ids: ReadonlyArray<string>) => [
+          { teammateID: ids[1]!, prompt: "Duplicate", dependsOn: [ids[2]!, ids[2]!] },
+          { teammateID: ids[2]!, prompt: "Other" },
+        ],
+        (ids: ReadonlyArray<string>) => [
+          { teammateID: ids[1]!, prompt: "Cycle one", dependsOn: [ids[2]!] },
+          { teammateID: ids[2]!, prompt: "Cycle two", dependsOn: [ids[1]!] },
+        ],
+      ]
+      for (const [index, invalid] of invalidPlans.entries()) {
+        const room = yield* team.createRoom({ name: `factory-invalid-${index}` })
+        const members = yield* Effect.forEach(["lead", "one", "two"], (handle) =>
+          team.createTeammate({ roomID: room.id, name: handle, handle, role: "Builder", mission: "Build" }),
+        )
+        yield* team.configureFactory({
+          roomID: room.id,
+          config: {
+            outcome: "Build",
+            parameters: {},
+            constraints: "Safe",
+            acceptanceCriteria: "Pass",
+            directory: "/tmp/factory",
+            coordinatorTeammateID: members[0]!.id,
+            teammateIDs: members.map((member) => member.id),
+          },
+        })
+        const run = yield* team.startFactoryRun({ id: `frun_invalid_${index}`, roomID: room.id })
+        const [plan] = yield* team.claimTasks({ owner: `invalid-plan-${index}` })
+        yield* team.startTask({ id: plan!.id, owner: `invalid-plan-${index}` })
+        yield* team.finishTask({
+          id: plan!.id,
+          owner: `invalid-plan-${index}`,
+          status: "succeeded",
+          text: JSON.stringify({ assignments: invalid(members.map((member) => member.id)) }),
+        })
+        yield* team.syncFactoryRuns()
+        expect((yield* team.getFactoryRun(run.id)).status).toBe("failed")
+        expect((yield* team.getFactoryRun(run.id)).taskIDs).toEqual([plan!.id])
+      }
+    }),
+  )
+
+  it.effect("fails a factory when a succeeded predecessor has no meaningful attributable output", () =>
+    Effect.gen(function* () {
+      const team = yield* TeamWorkspace.Service
+      const room = yield* team.createRoom({ name: "factory-missing-output" })
+      const members = yield* Effect.forEach(["lead", "first", "second"], (handle) =>
+        team.createTeammate({ roomID: room.id, name: handle, handle, role: "Builder", mission: "Build" }),
+      )
+      yield* team.configureFactory({
+        roomID: room.id,
+        config: {
+          outcome: "Build",
+          parameters: {},
+          constraints: "Safe",
+          acceptanceCriteria: "Pass",
+          directory: "/tmp/factory",
+          coordinatorTeammateID: members[0]!.id,
+          teammateIDs: members.map((member) => member.id),
+        },
+      })
+      const run = yield* team.startFactoryRun({ id: "frun_missing_output", roomID: room.id })
+      const [plan] = yield* team.claimTasks({ owner: "missing-output-plan" })
+      yield* team.startTask({ id: plan!.id, owner: "missing-output-plan" })
+      yield* team.finishTask({
+        id: plan!.id,
+        owner: "missing-output-plan",
+        status: "succeeded",
+        text: JSON.stringify({
+          assignments: [
+            { teammateID: members[1]!.id, prompt: "First", dependsOn: [] },
+            { teammateID: members[2]!.id, prompt: "Second", dependsOn: [members[1]!.id] },
+          ],
+        }),
+      })
+      yield* team.syncFactoryRuns()
+      const [first] = yield* team.claimTasks({ owner: "missing-output-worker" })
+      yield* team.startTask({ id: first!.id, owner: "missing-output-worker" })
+      yield* team.finishTask({ id: first!.id, owner: "missing-output-worker", status: "succeeded" })
+      yield* team.syncFactoryRuns()
+      expect((yield* team.getFactoryRun(run.id)).status).toBe("failed")
+      const downstream = yield* team.getTask((yield* team.getFactoryRun(run.id)).taskIDs.at(-1)!)
+      expect(downstream.status).toBe("cancelled")
+    }),
+  )
+
   it.effect("persists large valid factory plan output before parsing", () =>
     Effect.gen(function* () {
       const team = yield* TeamWorkspace.Service
