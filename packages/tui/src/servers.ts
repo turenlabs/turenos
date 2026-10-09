@@ -1,6 +1,6 @@
 import { homedir } from "node:os"
 import { join } from "node:path"
-import { preferred, scan } from "./servers/discovery"
+import { PERSISTENT, preferred, scan } from "./servers/discovery"
 import { readProc } from "./servers/listener"
 import { PERSISTENT_SOCKET, trustedRecord } from "./servers/records"
 import { resolve } from "./servers/resolve"
@@ -52,9 +52,11 @@ export function createServers(options: Options = {}) {
     importDesktop: (endpoint: Parameters<typeof importDesktop>[1]) => importDesktop(state, endpoint),
     remember: (target: Target, password: string) => state.passwords.set(target.id, password),
     forget: (target: Target) => state.passwords.delete(target.id),
-    find: (name: string) =>
+    /** A saved or imported server by name; `persistent` also names this host's persistent server on Linux. */
+    find: (name: string): Target | undefined =>
       state.saved.find((target) => target.name === name || target.id === name) ??
-      state.imported.find((target) => target.name === name),
+      state.imported.find((target) => target.name === name) ??
+      (name === PERSISTENT.id && ctx.platform === "linux" ? PERSISTENT : undefined),
     add: (input: { address: string; name?: string; username?: string }) => add(ctx, state, input),
     remove: (target: Target) => remove(ctx, state, target),
     stopHeadless() {

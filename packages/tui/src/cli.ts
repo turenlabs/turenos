@@ -18,7 +18,8 @@ On a server on this computer, the dashboard shows the folder you start it in,
 unless that is your home folder. Working folders (/folders) chooses another.
 
 Options:
-  --server <name>    Open a saved server (see the s server picker)
+  --server <name>    Open a saved server (see the s picker); persistent opens
+                     this host's persistent server
   --dir <path>       Absolute project directory on the server (POSIX or Windows);
                      the sidebar shows its sessions and new work starts there
   --session <id>     Open this session (ses_…) first, as printed by turen-tui sessions

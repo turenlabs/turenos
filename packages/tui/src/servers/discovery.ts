@@ -38,6 +38,9 @@ export async function scan(ctx: Context, state: State): Promise<Entry[]> {
  * The local server to open without asking: desktop first, then this host's own servers. Port 4096 is
  * chosen for the user only where its listener's owner can be checked (Linux); elsewhere the user picks it.
  */
+/** This host's persistent server, which `--server persistent` also names. */
+export const PERSISTENT = { kind: "persistent", id: "persistent", name: "Persistent server" } as const
+
 export async function preferred(ctx: Context, state: State) {
   return (await scan(ctx, state)).find(
     (entry) =>
@@ -64,6 +67,16 @@ async function localEntries(ctx: Context, state: State) {
     else if (await desktopRunning(ctx, appId))
       state.notes.push(`${name} is running but does not publish its server. Update it to connect from here.`)
   }
+  // The host's persistent server comes before a quick-connect server: the desktop attaches to it over SSH instead
+  // of starting one, so a quick-connect server beside it is left from an older desktop or a manual start.
+  const persistent = ctx.platform === "linux" ? await persistentRecord(ctx).catch(() => undefined) : undefined
+  if (persistent)
+    local.push({
+      target: PERSISTENT,
+      group: "This computer",
+      detail: `turenos.service · ${persistent.socketPath ?? "/etc/turenos/attach.json"}`,
+      url: persistent.url,
+    })
   const shim = await shimRecord(ctx)
   if (shim)
     local.push({
@@ -71,14 +84,6 @@ async function localEntries(ctx: Context, state: State) {
       group: "This computer",
       detail: "Started by TurenOS Desktop over SSH · ~/.forge/run",
       url: shim.url,
-    })
-  const persistent = ctx.platform === "linux" ? await persistentRecord(ctx).catch(() => undefined) : undefined
-  if (persistent)
-    local.push({
-      target: { kind: "persistent", id: "persistent", name: "Persistent server" },
-      group: "This computer",
-      detail: `turenos.service · ${persistent.socketPath ?? "/etc/turenos/attach.json"}`,
-      url: persistent.url,
     })
   // TurenOS exports its own sidecar's password to every shell it starts, and that sidecar is not on 4096.
   if (ctx.env.FORGE_SERVER_PASSWORD !== undefined && ctx.env.FORGE_CLIENT !== "desktop")

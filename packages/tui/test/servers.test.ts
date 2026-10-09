@@ -156,6 +156,29 @@ describe("local discovery", () => {
     expect((await open(servers, target!)).url).toBe(listener.url.origin)
   })
 
+  test("the persistent server comes before a quick-connect server, and --server persistent names it", async () => {
+    const home = await scratch()
+    const listener = server("secret", { "/global/server": { serverID: "srv_1" } })
+    const run = join(home, ".forge", "run")
+    await mkdir(run, { recursive: true })
+    for (const [name, value] of [
+      ["server.pid", String(process.pid)],
+      ["server.port", String(listener.port)],
+      ["server.auth", "secret"],
+    ] as const)
+      await writeFile(join(run, name), value, { mode: 0o600 })
+    const record = join(home, "attach.json")
+    const published = { version: 1, serverID: "srv_1", url: listener.url.origin, username: "forge", password: "secret" }
+    await writeFile(record, JSON.stringify(published))
+    const servers = local(home, { platform: "linux", uid: undefined, persistentRecord: record })
+    expect((await servers.scan()).map((entry) => entry.target.kind).slice(0, 2)).toEqual(["persistent", "shim"])
+    expect((await servers.preferred())?.kind).toBe("persistent")
+    await servers.load()
+    expect(servers.find("persistent")).toEqual({ kind: "persistent", id: "persistent", name: "Persistent server" })
+    // Only Linux hosts have one.
+    expect(local(home).find("persistent")).toBeUndefined()
+  })
+
   test("TURENOS_FORGE pins the forge binary and never falls through to PATH", async () => {
     const directory = await scratch()
     const forge = join(directory, "forge")

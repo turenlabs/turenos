@@ -2,7 +2,8 @@ import type { AgentCommand } from "./words"
 
 const target = `Server options (all commands):
   --url <origin>      Server to use (else TURENOS_SERVER_URL, else the local TurenOS)
-  --server <name>     A saved server instead
+  --server <name>     A saved server instead; persistent names this host's
+                      persistent server
   --username <name>   Basic auth username (else FORGE_SERVER_USERNAME, else forge)
   --discover-auth     Discover local auth for http://127.0.0.1:4096 (Linux, same user)
   --json              Print one JSON document; errors become {"error": {"message"}}
