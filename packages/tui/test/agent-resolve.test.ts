@@ -187,7 +187,8 @@ test("the bin runs an agent command without a terminal and leaves the dashboard 
   const listed = await run(["sessions", "--json"], { TURENOS_SERVER_URL: server.url })
   expect(listed.exitCode).toBe(0)
   expect(JSON.parse(listed.stdout).sessions[0].id).toBe("ses_main")
-  const failed = await run(["show", "ses_main", "--limit", "0"])
+  // Name the server, as above: without one the command would look for a server on this computer first.
+  const failed = await run(["show", "ses_main", "--limit", "0"], { TURENOS_SERVER_URL: server.url })
   expect(failed.exitCode).toBe(2)
 
   for (const args of [[], [server.url]]) {
