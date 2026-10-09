@@ -441,7 +441,6 @@ test("Escape aborts in-flight OAuth authorize call immediately", async () => {
   cleanup.push(() => pending.resolve({ url: "https://login.example.test/auth", method: "auto", instructions: "Go" }))
   const app = await fixture({ methods: [{ type: "oauth", label: "Device login" }] })
   let signal: AbortSignal | undefined
-  const originalAuthorize = app.connection.providers.authorize
   app.connection.providers.authorize = (...args) => {
     signal = args[4]
     return pending.promise

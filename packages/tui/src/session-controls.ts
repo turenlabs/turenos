@@ -17,5 +17,3 @@ export function createSessionControls(
   const ctx = { renderer, state, connection, dialogs, say, updateRecipient, replyBlocked }
   return { compact: () => compact(ctx), agent: () => agent(ctx) }
 }
-
-export type SessionControls = ReturnType<typeof createSessionControls>

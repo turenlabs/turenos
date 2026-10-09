@@ -65,5 +65,3 @@ export function createServerPicker(renderer: CliRenderer, servers: Servers, hook
     visible: () => !!picker.view,
   }
 }
-
-export type ServerPicker = ReturnType<typeof createServerPicker>

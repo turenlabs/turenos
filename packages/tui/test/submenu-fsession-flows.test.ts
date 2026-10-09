@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { dashboard, session } from "./support"
+import { dashboard } from "./support"
 
 const running = { "GET /api/session/active": () => ({ data: { ses_main: { type: "running" } } }) }
 const accepted = async (request: Request) => ({ data: { id: (await request.json()).id, sessionID: "ses_main" } })

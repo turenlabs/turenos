@@ -1,7 +1,6 @@
 import { afterEach, expect, test } from "bun:test"
 import { createTestRenderer } from "@opentui/core/testing"
 import { footerShortcuts, scheduleText, statusline } from "../src/chrome"
-import { identifying } from "../src/dashboard/status"
 import { createLayout } from "../src/layout"
 import { fitActions } from "../src/layout/fit"
 import { meterText } from "../src/context-meter"
@@ -44,12 +43,6 @@ test("action row drops the lowest-ranked entry first and compacts the meter befo
 
 test("short context meter keeps the percentage", () => {
   expect(meterText({ model: { providerID: "p", id: "m" }, total: 90000 }, 200000, true)).toBe("ctx 45%")
-})
-
-test("long server addresses keep host:port, then the port", () => {
-  expect(identifying("http://127.0.0.1:43079", 40)).toBe("http://127.0.0.1:43079")
-  expect(identifying("http://127.0.0.1:43079", 16)).toBe("127.0.0.1:43079")
-  expect(identifying("http://127.0.0.1:43079", 8)).toBe(":43079")
 })
 
 test("schedules show the largest whole unit", () => {

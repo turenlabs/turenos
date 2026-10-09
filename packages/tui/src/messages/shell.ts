@@ -44,10 +44,3 @@ function shellCommand(status: string, command: string) {
   if (!text.includes("\n")) return `${status} ${codeSpan(text)}`
   return `${status}\n${literal(command)}`
 }
-
-/** The one-line status for a finished shell command, or undefined while it is running or unknown. */
-export function shellOutcome(message: Shell) {
-  const failed = message.status === "failed" || (message.status === "completed" && !!message.exitCode)
-  if (!failed) return undefined
-  return `Shell command failed${message.exitCode ? ` (exit ${message.exitCode})` : ""}. Open history for details.`
-}

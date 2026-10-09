@@ -251,15 +251,6 @@ export function renderSidebarTitle(d: DashboardContext) {
   d.ui.sidebarHeading.content = sidebarTitle(d.state, d.state.rows.length, drawer)
 }
 
-/** Keeps the end of a long address (host:port, then the port) instead of cutting its middle. */
-export function identifying(text: string, width: number) {
-  const address = addressOf(text)
-  if (text.length <= width) return text
-  if (address.length <= width) return address
-  const port = /:\d+$/.exec(address)?.[0]
-  return port && port.length <= width ? port : text
-}
-
 function addressOf(text: string) {
   return text.replace(/^[a-z]+:\/\//i, "").replace(/\/.*$/, "")
 }

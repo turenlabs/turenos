@@ -114,7 +114,7 @@ function steps(ctx: TeamContext, ops: TeamOperations, live: Live, room: Room): R
   const configured = () => (room.factory ? undefined : "Not configured. s opens settings.")
   const running = () => viewOf(ctx.state).factoryRuns.find((run) => run.status === "running")
   return {
-    s: { open: () => openSettings(ctx, ops, room, live.back) },
+    s: { open: () => openSettings(ctx, room, live.back) },
     t: { needs: configured, open: () => addTrigger(ctx, room, live.back) },
     "ctrl+r": { needs: configured, open: () => startRun(ctx, ops, room, live.back) },
     x: {

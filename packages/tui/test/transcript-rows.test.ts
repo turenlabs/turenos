@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 import type { MessagesListOutput } from "@turenlabs/client"
-import { latestMessage, transcript } from "../src/messages"
+import { transcript } from "../src/messages"
 import { toolText } from "../src/inspect/tool-text"
 import { todoChecklist } from "../src/messages/todos"
 
@@ -26,14 +26,12 @@ const notice = (source: string, text: string) =>
 test("a shell command with a non-zero exit reads as failed with the code", () => {
   const failed = shell({ command: "cat nope", status: "completed", exitCode: 1, output: "cat: nope: No such file" })
   expect(transcript([failed])).toBe("[failed · exit 1] $ cat nope\ncat: nope: No such file")
-  expect(latestMessage([failed])).toContain("failed (exit 1)")
   expect(transcript([shell({ command: "false", status: "failed", exitCode: 2 })])).toContain(
     "[failed · exit 2] $ false",
   )
   expect(transcript([shell({ command: "true", status: "completed", exitCode: 0 })])).toBe(
     "[completed] $ true\n(no output)",
   )
-  expect(latestMessage([shell({ command: "true", status: "completed", exitCode: 0 })])).toContain("completed")
   expect(transcript([shell({ command: "sleep 9", status: "running" })])).toBe("[running] $ sleep 9")
 })
 
@@ -60,7 +58,6 @@ test("room posts and subagent results read as one line, raw keeps the full text"
   const room = `A swarm room member posted an update.\n<forge-swarm-room-update>\n${JSON.stringify(entry)}\n</forge-swarm-room-update>\nmore`
   expect(transcript([notice("swarm_room", room)])).toBe("SWARM ROOM\nRoom: you posted #1 message: hello room")
   expect(transcript([notice("swarm_room", room)], true)).toContain("<forge-swarm-room-update>")
-  expect(latestMessage([notice("swarm_room", room)])).toContain("Room: you posted #1 message: hello room")
   const settle = `A subagent task reached a terminal state.\ncompleted: Summarise the readme (task tsk_1, agent explore)\nResult: {"a":\n"b"}\nCollect the full durable report with wait_agents.`
   expect(transcript([notice("subagent_settle", settle)])).toBe(
     'SUBAGENT FINISHED\nSubagent completed: Summarise the readme (explore) - {"a": "b"}',

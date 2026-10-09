@@ -6,7 +6,6 @@ import { matchesKey } from "../keys"
 import { display } from "../messages"
 import { label, type Field, type ModalState } from "../state"
 import { color } from "../theme"
-import type { TeamOperations } from "./actions"
 import { textArea } from "./fields"
 import { applyRoom, panelNote } from "./selection"
 import { finite, viewOf, type Room, type Teammate, type TeamContext } from "./types"
@@ -14,7 +13,7 @@ import { finite, viewOf, type Room, type Teammate, type TeamContext } from "./ty
 const HINT = "Tab next field · Space marks a teammate or coordinator · Ctrl+S save (does not start work) · Esc back"
 
 /** The factory's setup form. Saving never starts a run; Ctrl+R in the panel does. */
-export function openSettings(ctx: TeamContext, ops: TeamOperations, room: Room, back: () => void) {
+export function openSettings(ctx: TeamContext, room: Room, back: () => void) {
   const mates = viewOf(ctx.state).teammates
   if (!mates.length) return ctx.say("Add teammates first: M opens the room's teammates.", true)
   const dialog = ctx.dialogs.open(`Factory › # ${label(room.name, 40)} › Settings`, false, 40)

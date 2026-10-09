@@ -6,7 +6,7 @@ import { toolBlock, type ToolView } from "./messages/tool"
 import { continuesTurn, startsTurn, turnTime } from "./messages/turns"
 import { noticeLine } from "./messages/notice"
 import { foldParentContext } from "./messages/parent-context"
-import { shellBlock, shellOutcome } from "./messages/shell"
+import { shellBlock } from "./messages/shell"
 
 type Source = NonNullable<Extract<MessagesListOutput["data"][number], { type: "user" }>["source"]>
 
@@ -135,108 +135,13 @@ function boardMessage(text: string) {
   return `${warning}\n\n${display(content, 14000)}`
 }
 
-export function latestMessage(messages: MessagesListOutput["data"]) {
-  for (let index = messages.length - 1; index >= 0; index--) {
-    const text = previewOf(messages[index]!)
-    if (text !== undefined) return text
-  }
-  return "No output yet."
-}
-
-// Reserve the shortening marker so the complete preview stays within 16k.
-const preview = (text: string) => display(text, 16000 - "\n[display shortened]".length)
-
 type Message = MessagesListOutput["data"][number]
 type Assistant = Extract<Message, { type: "assistant" }>
-
-/** The status line for one message, or undefined when it says nothing and an earlier one should be used. */
-function previewOf(message: Message) {
-  if (message.type === "agent-switched") {
-    return preview(`Agent switched to ${display(message.agent)}`)
-  }
-  if (message.type === "model-switched") {
-    return preview(
-      `Model switched to ${modelText(message.model)}`,
-    )
-  }
-  if (message.type === "compaction") {
-    return preview(
-      `Conversation compacted (${message.reason})${message.summary ? `: ${display(message.summary, 200).trim()}` : ""}`,
-    )
-  }
-  if (message.type === "assistant") return assistantPreview(message)
-  if (message.type === "user" || message.type === "synthetic" || message.type === "system") {
-    const text = textPreview(message)
-    if (text) return text
-  }
-  if (message.type === "shell") return shellPreview(message)
-}
 
 /** The delivered text, or one readable line for a room post or a subagent result outside raw mode. */
 function notice(source: Exclude<Source, "user">, text: string, raw = false) {
   const line = !raw && (source === "swarm_room" || source === "subagent_settle") ? noticeLine(source, text) : undefined
   return line ?? display(text)
-}
-
-function textPreview(message: Extract<Message, { type: "user" | "synthetic" | "system" }>) {
-  const text = display(message.text, 16000).trim()
-  if (text && message.type === "user" && message.source === "subagent_board")
-    return preview(`Agent update\n${boardMessage(message.text)}`)
-  if (text && message.type === "user" && message.source && message.source !== "user")
-    return preview(`${sourceLabel[message.source]}\n${notice(message.source, message.text)}`)
-  if (text)
-    return preview(`${message.type === "user" ? "You" : message.type === "system" ? "System" : "Update"}\n${text}`)
-}
-
-function shellPreview(message: Extract<Message, { type: "shell" }>) {
-  if (message.error) return preview(`Shell command error\n${display(message.error, 1000)}`)
-  if (message.status === "running") return preview(`Working: ${display(message.command, 200)}`)
-  const outcome = shellOutcome(message)
-  if (outcome) return outcome
-  if (message.status === "completed") return "Shell command completed. Waiting for a reply."
-  if (message.status === "cancelled") return "Shell command cancelled."
-  if (message.status === "timed_out") return "Shell command timed out."
-  return "Shell command status unavailable."
-}
-
-function assistantPreview(message: Extract<Message, { type: "assistant" }>) {
-  const tools = message.content.filter((part) => part.type === "tool")
-  const failures = tools.filter(
-    (part) => part.state.status === "error" && part.state.error.message !== TurnInterruption.TOOL,
-  )
-  const alerts = [
-    ...(message.error
-      ? [
-          TurnInterruption.isTurnInterrupted(message.error.message)
-            ? "Interrupted: the turn was stopped before it finished."
-            : `Error: ${display(providerError(message.error.message), 1000).trim() || "The assistant reported an error."}`,
-        ]
-      : []),
-    ...failures
-      .slice(0, 3)
-      .map(
-        (part) =>
-          `Tool failed: ${display(part.name, 80).replace(/\s/g, " ")}\n${part.state.status === "error" ? display(part.state.error.message, 1000).trim() || "No error details available." : ""}`,
-      ),
-    ...(failures.length > 3 ? [`${failures.length - 3} more tool failure${failures.length === 4 ? "" : "s"}.`] : []),
-  ]
-  const text = message.content
-    .filter((part) => part.type === "text")
-    .map((part) => display(part.text, 16000).trim())
-    .filter(Boolean)
-    .join("\n\n")
-  if (alerts.length || text) return preview([...alerts, text].filter(Boolean).join("\n\n"))
-  if (!tools.length) return
-  const running = tools.filter((part) => part.state.status === "running")
-  const pending = tools.filter((part) => part.state.status === "pending")
-  const active = running.length ? running : pending.length ? pending : tools
-  const names = [...new Set(active.map((part) => display(part.name, 80).replace(/\s/g, " ").trim() || "tool"))]
-  const summary = names.slice(0, 5).join(", ") + (names.length > 5 ? `, and ${names.length - 5} more` : "")
-  if (running.length) return preview(`Working: ${summary}`)
-  if (pending.length) return preview(`Waiting to run: ${summary}`)
-  if (tools.every((part) => part.state.status === "completed"))
-    return `Completed ${tools.length} tool step${tools.length === 1 ? "" : "s"}. Waiting for a reply.`
-  return preview(`Tool activity: ${summary}. Status unavailable.`)
 }
 
 /** What the dashboard changes in the text: `expanded` shows whole tool bodies, `previous` is the message just before `messages`. */

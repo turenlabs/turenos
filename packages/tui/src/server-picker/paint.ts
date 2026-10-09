@@ -46,7 +46,7 @@ export function paint(picker: Picker) {
       }),
     )
   view.rows.forEach((row) => view.list.add(row))
-  scrollToSelected(picker, view, offsets[picker.selected] ?? 0)
+  scrollToSelected(view, offsets[picker.selected] ?? 0)
   view.keys.content = keyHint(picker, !!current)
 }
 
@@ -108,7 +108,7 @@ export function isCurrent(current: Target | undefined, entry: Entry) {
   )
 }
 
-function scrollToSelected(picker: Picker, view: View, top: number) {
+function scrollToSelected(view: View, top: number) {
   if (top <= view.list.scrollTop) view.list.scrollTo(Math.max(0, top - 1))
   if (top >= view.list.scrollTop + view.list.viewport.height) view.list.scrollTo(top - view.list.viewport.height + 1)
 }

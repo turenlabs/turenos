@@ -84,7 +84,7 @@ test("a failed Usage and limits load offers a Refresh row that asks again", asyn
 
 test("an agent's saved default shows in the list that follows", async () => {
   let model: string | undefined
-  const { server, view, screen } = await settings(
+  const { view, screen } = await settings(
     {
       "GET /provider": () => ({ all: [openai], connected: ["openai"] }),
       "GET /api/agent": (_, url) => ({
