@@ -11,6 +11,7 @@ import { useServer } from "@/context/server"
 import { useGlobal } from "@/context/global"
 import { useNavRail } from "@/components/nav-rail"
 import { sessionHref } from "@/utils/session-route"
+import { Persist, persisted } from "@/utils/persist"
 import { loopApi, loopCatalog, responseData, type LoopInfo, type LoopModel } from "./loops/api"
 import { teamApi } from "./team/api"
 import { TeamMentionInput } from "./team/mention-input"
@@ -117,6 +118,11 @@ export default function TeamPage() {
     model: "",
     avatar: [] as string[],
   })
+  // Last opened room per server, so returning to /team reopens it instead of the default room.
+  const [lastRoom, setLastRoom, , lastRoomReady] = persisted(
+    Persist.global("team.last-room"),
+    createStore<Record<string, string>>({}),
+  )
 
   let generation = 0
   let roomRevision = 0
@@ -159,7 +165,14 @@ export default function TeamPage() {
         result = { ...next, messages: received }
       }
       const dutyDefinitions = mode === "older" ? state.dutyDefinitions : responseData(await loopApi(sdk.client).list())
+      if (!roomID) await lastRoomReady.promise
       if (current !== generation || revision !== roomRevision || roomID !== params.roomID) return
+      if (!roomID && result.room.id) {
+        const remembered = result.rooms.find((room) => room.id === lastRoom[sdk.scope])
+        navigate(`/team/${remembered?.id ?? result.room.id}`, { replace: true })
+        return
+      }
+      setLastRoom(sdk.scope, result.room.id)
       setState("dutyDefinitions", dutyDefinitions)
       const previous = state.value
       const messages =
@@ -176,7 +189,6 @@ export default function TeamPage() {
         setState("factoryParameters", JSON.stringify(result.room.factory.config.parameters, null, 2))
       }
       setState("loadError", undefined)
-      if (!roomID && result.room.id) navigate(`/team/${result.room.id}`, { replace: true })
       if (mode === "older" && log && beforeTop !== undefined)
         requestAnimationFrame(() => log && (log.scrollTop += log.scrollHeight - beforeTop))
     } catch (error) {
