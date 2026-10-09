@@ -14,6 +14,7 @@ import { RelativePath } from "../schema"
 import { ToolRegistry } from "./registry"
 import { Tool } from "./tool"
 import { Tools } from "./tools"
+import { ShellToolRouting } from "../shell-tool-routing"
 
 export const name = "grep"
 
@@ -121,6 +122,12 @@ const layer = Layer.effectDiscard(
                   limit: input.limit ?? Number.MAX_SAFE_INTEGER,
                 })
                 .pipe(
+                  Effect.tapError((error) =>
+                    error instanceof Ripgrep.Error
+                      ? Effect.sync(() => ShellToolRouting.reportSearch(context.sessionID, "grep", false))
+                      : Effect.void,
+                  ),
+                  Effect.tap(() => Effect.sync(() => ShellToolRouting.reportSearch(context.sessionID, "grep", true))),
                   Effect.map((result) =>
                     result.map((match) =>
                       FileSystem.Match.make({
