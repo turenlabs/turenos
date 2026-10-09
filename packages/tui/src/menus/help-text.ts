@@ -10,7 +10,7 @@ export const helpSections: [string, [string, string][]][] = [
       ["Up · Down", "walk your earlier prompts in an empty editor"],
       ["Esc Esc", "stops the running turn and its tasks; when idle, opens undo"],
       ["x · /stop", "stops it and cancels its tasks at once; /kill confirms, even when idle"],
-      ["Shift+Enter", "adds a line (Alt+Enter too, and in tmux, which sends Shift+Enter as Enter); Ctrl+S also sends"],
+      ["Shift+Enter", "adds a line (in tmux use Alt+Enter); Ctrl+S also sends"],
       ["F4", "discard local draft"],
       ["/ · Ctrl+P", "commands in the conversation or editor · all actions"],
       ["/ · @ · !", "in a message: slash commands · file mentions · a shell command"],
