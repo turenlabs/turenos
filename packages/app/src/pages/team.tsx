@@ -3,6 +3,7 @@ import { Icon } from "@turenlabs/ui/v2/icon"
 import { TextInputV2 } from "@turenlabs/ui/v2/text-input-v2"
 import { TextareaV2 } from "@turenlabs/ui/v2/textarea-v2"
 import { DropdownMenu } from "@turenlabs/ui/dropdown-menu"
+import { createAutoScroll } from "@turenlabs/ui/hooks"
 import { createStore } from "solid-js/store"
 import { For, Show, createEffect, onCleanup, untrack } from "solid-js"
 import { useNavigate, useParams } from "@solidjs/router"
@@ -122,6 +123,7 @@ export default function TeamPage() {
   let roomRevision = 0
   const loadingKeys = new Set<string>()
   let log: HTMLDivElement | undefined
+  const autoScroll = createAutoScroll({ working: () => true, overflowAnchor: "none" })
   let pendingPost:
     | { id: string; roomID: string; text: string; client: ReturnType<typeof serverSDK>["client"]; generation: number }
     | undefined
@@ -187,6 +189,8 @@ export default function TeamPage() {
       if (current === generation) {
         setState("loading", false)
         setState("olderLoading", false)
+        // Open rooms at the latest message, once the history controls above the log are laid out.
+        if (mode === "initial" && state.value) autoScroll.resume()
       }
     }
   }
@@ -966,7 +970,11 @@ export default function TeamPage() {
           </div>
         </Show>
         <div
-          ref={log}
+          ref={(element) => {
+            log = element
+            autoScroll.scrollRef(element)
+          }}
+          onScroll={autoScroll.handleScroll}
           role="log"
           aria-label="Room messages"
           aria-live="polite"
@@ -1012,30 +1020,32 @@ export default function TeamPage() {
               </p>
             </div>
           </Show>
-          <For each={state.value?.messages}>
-            {(message) => (
-              <article class="mb-4 grid grid-cols-[128px_minmax(0,1fr)] gap-3 max-sm:grid-cols-[76px_minmax(0,1fr)]">
-                <div class="flex justify-between gap-2 text-[10px] text-v2-text-text-faint">
-                  <time>{timeLabel(message.time)}</time>
-                  <b class="truncate font-sans text-v2-text-text-base">{message.author}</b>
-                </div>
-                <div class="min-w-0 break-words font-sans text-[13px] leading-5">
-                  <TeamMessageContent message={message} />
-                  <Show when={message.kind === "system"}>
-                    <span class="text-v2-text-text-muted"> · update</span>
-                  </Show>
-                  <Show when={message.sessionID}>
-                    <a
-                      class="ml-2 text-v2-text-text-accent underline"
-                      href={sessionHref(server.key, message.sessionID!)}
-                    >
-                      Open Session
-                    </a>
-                  </Show>
-                </div>
-              </article>
-            )}
-          </For>
+          <div ref={autoScroll.contentRef}>
+            <For each={state.value?.messages}>
+              {(message) => (
+                <article class="mb-4 grid grid-cols-[128px_minmax(0,1fr)] gap-3 max-sm:grid-cols-[76px_minmax(0,1fr)]">
+                  <div class="flex justify-between gap-2 text-[10px] text-v2-text-text-faint">
+                    <time>{timeLabel(message.time)}</time>
+                    <b class="truncate font-sans text-v2-text-text-base">{message.author}</b>
+                  </div>
+                  <div class="min-w-0 break-words font-sans text-[13px] leading-5">
+                    <TeamMessageContent message={message} />
+                    <Show when={message.kind === "system"}>
+                      <span class="text-v2-text-text-muted"> · update</span>
+                    </Show>
+                    <Show when={message.sessionID}>
+                      <a
+                        class="ml-2 text-v2-text-text-accent underline"
+                        href={sessionHref(server.key, message.sessionID!)}
+                      >
+                        Open Session
+                      </a>
+                    </Show>
+                  </div>
+                </article>
+              )}
+            </For>
+          </div>
         </div>
         <div class="border-t border-v2-border-border-base px-5 py-3 max-sm:px-4">
           <label for="team-message" class="mb-2 block text-[12px] [font-weight:550]">

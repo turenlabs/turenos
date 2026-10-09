@@ -35,6 +35,8 @@ Failed or uncertain model work is not automatically retried.
 
 ## Room Messages
 
+A room opens at its latest message.
+While you are at the bottom of the log, new messages keep it scrolled to the bottom. After you scroll up, the log stays where you left it until you scroll back to the bottom.
 Post an ordinary message to add it to the shared conversation.
 The coordinator replies when you do not mention a teammate.
 A configured factory coordinator takes this role. Otherwise, the first active teammate takes it.
