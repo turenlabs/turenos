@@ -11,9 +11,9 @@ or server layers knows the connection is remote.
 This is a Desktop-only feature that needs an `ssh` client on the desktop machine; the code carries
 `win32` branches (`ssh.exe`, a `%TEMP%` control directory, hidden windows) alongside the POSIX path.
 The remote needs an SSH server and a POSIX shell; the quick-connect installer supports Linux and
-macOS remote binaries. Native Windows remote startup is not implemented by this shim. Both SSH paths
-use a TurenOS server (`forge serve`) on remote loopback without an additional network-facing
-application port.
+macOS remote binaries. Native Windows remote startup is not implemented by this shim.
+Quick connect uses remote loopback TCP. Managed persistent servers use `/run/turenos/server.sock` only.
+Neither path adds a network-facing application port.
 
 Implementation lives in [`packages/desktop/src/main/ssh`](../../../packages/desktop/src/main/ssh) with
 the UI in [`packages/app/src/ssh`](../../../packages/app/src/ssh).
@@ -46,8 +46,8 @@ flowchart LR
     Tunnel -->|"forwarded to 127.0.0.1:R"| Serve
 ```
 
-The remote server binds loopback only. Its sole reachable path is the SSH forward, and every request
-on that forward still carries HTTP Basic auth.
+The quick-connect server binds loopback only. The desktop reaches it through the SSH forward.
+Every request on that forward still carries HTTP Basic auth.
 
 ## Quick connect compared with adding a server by URL
 

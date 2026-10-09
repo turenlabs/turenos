@@ -655,11 +655,11 @@ export function spawnTunnel(
   controlDir: string,
   target: SshTarget,
   socketPath: string,
-  remotePort: number,
+  remotePort: number | string,
   opts: { onLine?: (text: string) => void; signal?: AbortSignal } = {},
 ): SshTunnel {
   const cp = controlPath(controlDir, target)
-  const spec = `${socketPath}:127.0.0.1:${remotePort}`
+  const spec = typeof remotePort === "number" ? `${socketPath}:127.0.0.1:${remotePort}` : `${socketPath}:${remotePort}`
   const child = spawn(
     binary,
     [

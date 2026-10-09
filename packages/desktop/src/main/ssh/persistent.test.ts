@@ -7,6 +7,7 @@ import type { SshServerConfig } from "../../preload/types"
 import { createSshServersController } from "./servers"
 import {
   ATTACH_RECORD_PATH,
+  PERSISTENT_SOCKET_PATH,
   classifyAttach,
   parseAttachProbe,
   REMOTE_ATTACH_PROBE_SCRIPT,
@@ -23,9 +24,9 @@ const config: SshServerConfig = {
   displayName: null,
 }
 const record = {
-  version: 1 as const,
+  version: 2 as const,
   serverID: "srv_1",
-  url: "http://127.0.0.1:4096",
+  socketPath: PERSISTENT_SOCKET_PATH,
   username: "forge",
   password: "attach-password",
 }
@@ -45,13 +46,30 @@ describe("persistent attach classification", () => {
     expect(parseAttachProbe(line("readable", '{"version":1}'))).toEqual({ state: "malformed" })
   })
 
-  test("rejects attach records that point off the host loopback", () => {
-    const remote = JSON.stringify({ ...record, url: "http://203.0.113.9:4096" })
-    expect(parseAttachProbe(line("readable", remote))).toEqual({ state: "malformed" })
-    expect(parseAttachProbe(line("readable", JSON.stringify({ ...record, url: "http://[::1]:4096" })))).toEqual({
-      state: "malformed",
-    })
-    expect(parseAttachProbe(line("readable", JSON.stringify({ ...record, url: "http://127.0.0.1:0" })))).toEqual({
+  test("rejects legacy TCP records and any socket outside the fixed managed path", () => {
+    const legacy = {
+      version: 1,
+      serverID: record.serverID,
+      username: record.username,
+      password: record.password,
+      url: "http://127.0.0.1:4096",
+    }
+    const probe = parseAttachProbe(line("readable", JSON.stringify(legacy)))
+    expect(probe).toEqual({ state: "malformed" })
+    expect(classifyAttach(config, probe).kind).toBe("conflict")
+    for (const socketPath of [
+      "/tmp/server.sock",
+      "/run/turenos/../server.sock",
+      "/run/turenos/server.sock:4096",
+      "http://127.0.0.1:4096",
+      "server.sock",
+      "/run/turenos/server.sock/",
+    ]) {
+      const probe = parseAttachProbe(line("readable", JSON.stringify({ ...record, socketPath })))
+      expect(probe).toEqual({ state: "malformed" })
+      expect(classifyAttach(config, probe).kind).toBe("conflict")
+    }
+    expect(parseAttachProbe(line("readable", JSON.stringify({ ...record, url: "http://127.0.0.1:4096" })))).toEqual({
       state: "malformed",
     })
   })
@@ -127,9 +145,10 @@ describe("connectSshRemote with a persistent server", () => {
   const attachThrough = async (fetch: (request: Request) => Response, onReservedPort?: (port: number) => void) => {
     const dir = await mkdtemp(join(tmpdir(), "forge-persistent-attach-"))
     cleanup.push(() => rm(dir, { recursive: true, force: true }))
-    const server = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch })
+    const remoteSocket = join(dir, "r")
+    const server = Bun.serve({ unix: remoteSocket, fetch })
     cleanup.push(() => server.stop(true))
-    const attach = { ...record, url: `http://127.0.0.1:${server.port}` }
+    const attach = record
 
     const log = join(dir, "ssh.log")
     const fake = join(dir, "ssh")
@@ -145,11 +164,12 @@ const stdin = forward === -1 ? await Bun.stdin.text() : ""
 appendFileSync(${JSON.stringify(log)}, JSON.stringify({ args, stdin }) + "\\n")
 if (forward !== -1) {
   const spec = args[forward + 1]
-  const separator = spec.lastIndexOf(":127.0.0.1:")
+  const separator = spec.indexOf(":")
   const local = spec.slice(0, separator)
-  const remote = spec.slice(separator + ":127.0.0.1:".length)
+  const remote = spec.slice(separator + 1)
+  if (remote !== ${JSON.stringify(PERSISTENT_SOCKET_PATH)}) process.exit(1)
   createServer((socket) => {
-    const upstream = connect(Number(remote), "127.0.0.1")
+    const upstream = connect(${JSON.stringify(remoteSocket)})
     socket.pipe(upstream).pipe(socket)
   }).listen(local)
 } else if (stdin.includes("FORGE_ATTACH")) {
@@ -199,6 +219,9 @@ if (forward !== -1) {
     expect(calls).not.toContain("desktop-key")
     expect(calls).not.toContain(".tmp")
     expect(calls).not.toContain("ensure")
+    expect(calls).toContain(`:${PERSISTENT_SOCKET_PATH}`)
+    expect(calls).not.toContain(":127.0.0.1:")
+    expect(calls).not.toContain("attach-password")
   }, 30_000)
 
   test("reports a rejected descriptor request at once instead of waiting for the health timeout", async () => {

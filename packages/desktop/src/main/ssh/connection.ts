@@ -133,7 +133,7 @@ async function attachPersistent(
     fetch(new URL("/global/server", url), { headers: { authorization }, signal: AbortSignal.timeout(3000) })
   // Any answer below 500 means the tunnel reaches the server. A rejection (a rotated password, or a
   // server without the descriptor route) will not change by retrying, so it is reported below at once.
-  const { tunnel, url, stop } = await openTunnel(config, deps, Number(new URL(record.url).port), (url) =>
+  const { tunnel, url, stop } = await openTunnel(config, deps, record.socketPath, (url) =>
     describe(url).then(
       (response) => response.status < 500,
       () => false,
@@ -141,7 +141,7 @@ async function attachPersistent(
   ).catch((error: Error) => {
     if (error.message !== "ssh tunnel health check timed out") throw error
     throw new Error(
-      `${config.host} publishes persistent server ${record.serverID}, but it is not answering on ${record.url}. Check the service on the host (for example systemctl status turenos).`,
+      `${config.host} publishes persistent server ${record.serverID}, but it is not answering on ${record.socketPath}. Check the service on the host (for example systemctl status turenos).`,
     )
   })
   const descriptor = await describe(url)
@@ -168,7 +168,7 @@ async function attachPersistent(
 async function openTunnel(
   config: SshServerConfig,
   deps: SshConnectionDeps,
-  remotePort: number,
+  remotePort: number | string,
   healthy: (url: string) => Promise<boolean>,
 ) {
   const binary = deps.binary ?? sshBinary()

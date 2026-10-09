@@ -43,7 +43,7 @@ const E2E = {
   // systemd layers these over the unit, so an operator's override would run instead of what install wrote.
   dropins: "/etc/systemd/system/turenos.service.d",
   attach: "/etc/turenos/attach.json",
-  port: 4097,
+  socket: "/run/turenos/server.sock",
   quickPort: 4190,
 }
 const forge = args["remote-bin"] ?? `${E2E.bin}/forge`
@@ -256,7 +256,7 @@ const install = (extra: string, input?: string) =>
 async function attachRecord() {
   return JSON.parse(await ok(`cat ${E2E.attach}`)) as {
     serverID: string
-    url: string
+    socketPath: string
     username: string
     password: string
   }
@@ -268,7 +268,7 @@ async function request(route: string, init: { method?: string; body?: unknown; a
   const body =
     init.body === undefined ? "" : `-H 'content-type: application/json' --data ${shq(JSON.stringify(init.body))}`
   const out = await ok(
-    `curl -s --max-time 5 -o /tmp/turenos-e2e-body -w '%{http_code}' -X ${init.method ?? "GET"} ${auth} ${body} ${record.url}${route}; echo; cat /tmp/turenos-e2e-body`,
+    `curl -s --max-time 5 --unix-socket ${shq(record.socketPath)} -o /tmp/turenos-e2e-body -w '%{http_code}' -X ${init.method ?? "GET"} ${auth} ${body} http://localhost${route}; echo; cat /tmp/turenos-e2e-body`,
   )
   const [status, ...rest] = out.split("\n")
   return { status: Number(status), body: rest.join("\n") }
@@ -329,6 +329,20 @@ const scenarios: Array<[string, () => Promise<void>]> = [
 
       expect((await mode(recoveryFile)) === "400 root:root", `recovery file is ${await mode(recoveryFile)}`)
       expect((await mode(E2E.attach)) === "640 root:turenos-operators", `attach record is ${await mode(E2E.attach)}`)
+      expect(record.socketPath === E2E.socket, "attach record names an unexpected socket")
+      expect((await mode(E2E.socket)) === `660 ${E2E.user}:turenos-operators`, "socket permissions are unsafe")
+      expect(
+        (await mode("/run/turenos")) === `710 ${E2E.user}:turenos-operators`,
+        "socket parent permissions are unsafe",
+      )
+      const denied = await remote(
+        `sudo -n -u nobody curl -s --max-time 5 --unix-socket ${E2E.socket} -u ${shq(`${record.username}:${record.password}`)} http://localhost/global/server`,
+      )
+      expect(denied.code !== 0, "a non-operator connected with a copied password")
+      const allowed = await remote(
+        `sudo -n -u nobody -g turenos-operators curl -sf --max-time 5 --unix-socket ${E2E.socket} -u ${shq(`${record.username}:${record.password}`)} http://localhost/global/server`,
+      )
+      expect(allowed.code === 0, "the operator group cannot connect to the socket")
       expect((await mode("/etc/turenos")) === "755 root:root", `/etc/turenos is ${await mode("/etc/turenos")}`)
       for (const name of ["forge-secret-vault-key", "forge-server-password"])
         expect((await mode(`/etc/credstore.encrypted/${name}`)).startsWith("600 root"), `${name} is not 0600 root`)
@@ -359,6 +373,8 @@ const scenarios: Array<[string, () => Promise<void>]> = [
       expect(stored.status === 200, `storing a provider key failed: ${stored.status} ${stored.body}`)
 
       await ok(`systemctl restart turenos.service`)
+      await waitHealthy()
+      await ok(`systemctl kill --signal=SIGKILL --kill-whom=main turenos.service`)
       await waitHealthy()
       const rerun = await remote(`${forge} persistent install --apply 2>&1`)
       expect(rerun.code === 0, `re-run failed:\n${rerun.output}`)
