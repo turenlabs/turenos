@@ -93,6 +93,9 @@ export const make = <Key, E>(options: {
         active.set(key, successor)
         start(key, successor, successor.pendingForce, true)
       }
+      if (successor !== undefined) {
+        return Effect.sync(() => Deferred.doneUnsafe(entry.done, exit))
+      }
       return (options.onSettled?.(key, exit) ?? Effect.void).pipe(
         Effect.catchCause((cause) => Effect.logError("Session settlement observer failed", cause)),
         Effect.ensuring(Effect.sync(() => Deferred.doneUnsafe(entry.done, exit))),

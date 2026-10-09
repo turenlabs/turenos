@@ -56,6 +56,10 @@ sidecar supervises the product server but does not create a separate session imp
 
 ## System and subsystem catalog
 
+| System | Responsibilities | Inputs and outputs | Owner and failure behavior | Source |
+| --- | --- | --- | --- | --- |
+| Team rooms | Shared conversations, persistent teammates, duties, and factory coordination. | Human messages, direct mentions, task results, and room controls. | Core owns durable admission. Archived rooms reject new work. Native Sessions enforce existing permissions. | [Team](./team.md), [Room service](../../packages/core/src/team/workspace.ts) |
+
 Inline tool reference pages:
 
 - [Inline HTML visualizations](./safehtml-tool.md): sanitized HTML, bounded animation, and sandbox limits.

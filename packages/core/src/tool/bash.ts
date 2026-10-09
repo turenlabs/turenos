@@ -203,11 +203,15 @@ const layer = Layer.effect(
               shell: ShellSafety.kind(shell),
             })
             if (violation) return yield* new ToolFailure({ message: ShellSafety.blockedMessage(violation) })
-            const recommendation = yield* ShellToolRouting.inspect({
+            const inspected = yield* ShellToolRouting.inspect({
               command: input.command,
               cwd: target.canonical,
               shell: ShellSafety.kind(shell),
             })
+            // Redirecting to a search tool that is failing in this session would leave the
+            // agent no way to search, so the command runs under the normal bash permissions.
+            const recommendation =
+              inspected && !ShellToolRouting.searchUnavailable(context.sessionID, inspected.tool) ? inspected : undefined
             if (recommendation) {
               // A bare `apply_patch <<EOF` heredoc is the model writing a patch
               // in Codex style — run it through the real patch pipeline (fuzzy

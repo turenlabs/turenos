@@ -1,17 +1,23 @@
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { EventV2 } from "@turenlabs/core/event"
 import { Location } from "@turenlabs/core/location"
 import { Context, Schema } from "effect"
+import { HttpRouter } from "effect/unstable/http"
 import { HttpApiApp } from "../../src/server/routes/instance/httpapi/server"
 import { resetDatabase } from "../fixture/db"
 import { disposeAllInstances, tmpdir } from "../fixture/fixture"
 
 const context = Context.empty() as Context.Context<unknown>
+let app: ReturnType<typeof HttpRouter.toWebHandler>
+
+beforeEach(() => {
+  app = HttpRouter.toWebHandler(HttpApiApp.routes, { disableLogger: true })
+})
 
 function request(route: string, directory: string, init: RequestInit = {}) {
   const headers = new Headers(init.headers)
   headers.set("x-forge-directory", directory)
-  return HttpApiApp.webHandler().handler(
+  return app.handler(
     new Request(`http://localhost${route}`, {
       ...init,
       headers,
@@ -73,6 +79,7 @@ async function readEventType(reader: AsyncIterator<typeof Event.Type>, type: str
 }
 
 afterEach(async () => {
+  await app.dispose()
   await disposeAllInstances()
   await resetDatabase()
 })
@@ -156,7 +163,7 @@ describe("v2 location HttpApi", () => {
 
     const first = await set()
     const retried = await set()
-    expect(first.status).toBe(200)
+    expect(first.status, await first.clone().text()).toBe(200)
     expect(retried.status).toBe(200)
     expect(await retried.json()).toMatchObject({
       data: {
