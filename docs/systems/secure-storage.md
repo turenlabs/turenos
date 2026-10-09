@@ -33,14 +33,72 @@ The desktop sidecar receives the raw key in the utility-process `start` message 
 `SecretVault.configure` before the server layer graph builds. The WSL and SSH backends receive it as
 `export` lines in a startup script piped over stdin (see [WSL backends](../operations/wsl.md) and
 [SSH remote servers](../operations/ssh-remote/README.md)), so it reaches the native server's environment without
-appearing in a command line. These bootstrap environment variables (`FORGE_SECRET_VAULT_KEY_ID`, `FORGE_SECRET_VAULT_KEY`) are deleted when the
-Secret Vault layer initializes and before normal child tools are started. Headless server startup reads the same two
-variables; without them, non-test startup fails instead of falling back to an ephemeral or plaintext mode.
+appearing in a command line. These bootstrap environment variables (`FORGE_SECRET_VAULT_KEY_ID`,
+`FORGE_SECRET_VAULT_KEY`) are removed from `process.env` after vault configuration and before child tools are started
+([`packages/core/src/process-env.ts`](../../packages/core/src/process-env.ts)). Terminals, plugin shells, and other
+children are started from `process.env` or an explicit `env`, so they no longer receive the variables. A `Bun.spawn`
+without an `env` option would still inherit them, so spawn paths pass `env` explicitly. That environment
+bootstrap exists only for the Desktop's WSL and SSH quick-connect backends and for development. Removing a variable
+does not remove it from `/proc/<pid>/environ` or `ps eww`, so it is **not supported for persistent servers**. Without
+key material, non-test startup fails instead of using an ephemeral or plaintext key.
 
 The Desktop main process checks the same two variables in its own environment before it touches `safeStorage`. When
 both are set and the key decodes to 32 bytes, it uses that key instead of unwrapping the one in `forge.settings`
 ([`packages/desktop/src/main/index.ts`](../../packages/desktop/src/main/index.ts)). A Desktop launched with a different
 key cannot read secrets sealed with the stored one.
+
+### Host-owned key sources (persistent servers)
+
+A persistent server loads its own key on the host. `forge serve --key-source <source>` (or
+`FORGE_SECRET_VAULT_KEY_SOURCE`) selects the source; without one, `serve` uses the environment bootstrap. `serve`
+loads the key and builds only a configuration runtime. `Server.listen` then installs the key with
+`SecretVault.configure` and takes the database owner lock (`ServerOwnership.acquire`) before it builds the listener's
+layer graph, the first one that can open the database:
+
+- `systemd-credentials` reads the base64 key and key ID from the `forge-secret-vault-key` and
+  `forge-secret-vault-key-id` credentials in `$CREDENTIALS_DIRECTORY`. Persistent mode requires this source.
+- `env` selects the legacy environment bootstrap explicitly.
+
+A macOS Keychain source is not implemented yet. It is waiting on the stage 0 LaunchDaemon test.
+
+Set `FORGE_SERVER_MODE=persistent` and a stable, non-secret `FORGE_SERVER_ID` for a persistent server. The HTTP password
+comes from the systemd credential named by `FORGE_SERVER_PASSWORD_CREDENTIAL`. `serve` passes it to `Server.listen`,
+which keeps it in memory only: `ServerAuth.claimPassword` stores it in the in-process flag (removing any
+`FORGE_SERVER_PASSWORD` from `process.env`). The listener's auth check reads it from the per-listener
+`ConfigProvider` that `Server.listen` builds with the password added, and `ServerAuth.listenerLayer` hands it to the
+in-process plugin SDK client. The password is never added to `process.env`.
+Persistent startup refuses to start if the vault key or the HTTP password appears in the initial environment. It also
+refuses an `env` key source, a missing server ID, a non-loopback hostname, and mDNS. It also requires
+`FORGE_PERSISTENT_UNIT=1`, which the installer writes into the unit. These configuration errors exit with status 78.
+
+Key material must decode from canonical base64 to exactly 32 bytes, and the key ID must contain 1–128 letters, digits,
+`.`, `_`, or `-`. A missing source, an inaccessible file, invalid material, a wrong key, multiple key IDs, or a database
+owned by another server stops startup. None of these cases creates a key or falls back to a plaintext or ephemeral key.
+
+### Database identity, ownership, and verification
+
+- **Identity.** The database stores a random UUID in `storage_state` (`internal/database`, `uuid`). The data identity is
+  the database path plus that UUID.
+- **Owner lock.** Server startup holds an exclusive SQLite lock on `<realpath(db)>.owner.lock` for the life of the
+  process. The OS releases it if the process dies. Every `Server.listen` caller takes it: the desktop sidecar,
+  `forge serve` in either mode, and `forge acp`. So two current servers can't both run on one database. A CLI command
+  that opens a quick-connect database without listening doesn't take the lock. In persistent mode
+  (`FORGE_SERVER_MODE=persistent`), any open outside the process that holds the lock fails.
+- **Owner record.** `internal/server-owner` records the server ID, key ID, mode (`quick-connect` or `persistent`), pid,
+  and start time. Every database open checks it before migrations run, including CLI commands that don't take the lock.
+  A persistent record requires the configured persistent mode and server ID. A quick-connect database becomes
+  persistent only through explicit promotion by `forge persistent install`.
+- **Verification.** When the lock carries the key, an existing database is inspected read-only before WAL setup or
+  migrations; a wrong key cannot migrate it. After migrations the database layer seals or checks the sentinel before
+  any service reads or writes a secret. `Auth` runs the same check for other entry points; when the database layer has
+  already checked the same key ID, `Auth` only decrypts the sentinel to confirm the key bytes. The check scans every sealed
+  store: `storage_state` (auth, MCP auth, extensions, security proxy), `credential`, `account`, `control_account`, and
+  `session_share`. It refuses more than one key ID and opens every sealed value. On the first successful
+  start it seals a sentinel bound to the database UUID. Every later start decrypts that sentinel. As a result, wrong key
+  bytes under the correct key ID fail even when the provider-credentials record is empty.
+
+`forge persistent verify-key --db <path>` runs the same inspection read-only, with the key on stdin. Use it before
+promoting or restoring a database. See [Persistent server](../operations/persistent-server.md).
 
 ## On-disk locations
 
@@ -265,3 +323,11 @@ persist such values in a credential repository and leave only an opaque referenc
 
 - [`packages/core/src/secret-vault.ts`](../../packages/core/src/secret-vault.ts)
 - [`packages/desktop/src/main/secret-key.ts`](../../packages/desktop/src/main/secret-key.ts)
+- [`packages/forge/src/cli/secret-vault-key.ts`](../../packages/forge/src/cli/secret-vault-key.ts) and
+  [`packages/forge/src/cli/server-password.ts`](../../packages/forge/src/cli/server-password.ts): host key and
+  password sources.
+- [`packages/forge/src/server/ownership.ts`](../../packages/forge/src/server/ownership.ts): persistent-mode checks and
+  the owner lock.
+- [`packages/core/src/database/server-owner.ts`](../../packages/core/src/database/server-owner.ts) and
+  [`packages/core/src/database/vault-verification.ts`](../../packages/core/src/database/vault-verification.ts): the
+  owner record and the key check before migrations.

@@ -485,6 +485,10 @@ const scenarios: Scenario[] = [
       object(body)
       check(body.healthy === true, "server should report healthy")
     }),
+  // The in-process handler never takes the database owner lock, so no owner record exists and the
+  // route reports that it has no descriptor. The owned 200 path (server ID, key ID, mode) is
+  // exercised against a real `forge serve` in test/cli/serve-persistent.test.ts and script/persistent-e2e.ts.
+  http.protected.get("/global/server", "global.server.unowned").global().json(404, object, "status"),
   http.protected
     .get("/global/event", "global.event")
     .global()

@@ -182,3 +182,11 @@ export const layer = (config: Config) => {
     Layer.provide(Reactivity.layer),
   )
 }
+
+export function acquireExclusiveLock(filename: string) {
+  const native = new Database(filename, { readwrite: true, create: true })
+  return Sqlite.exclusiveLock(
+    (sql) => native.run(sql),
+    () => native.close(),
+  )
+}

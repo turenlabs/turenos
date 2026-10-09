@@ -30,6 +30,14 @@ every other channel (including a packaged dev build) uses `forge-<channel>.db` u
 and [`packages/core/src/global.ts`](../../packages/core/src/global.ts). Do not infer a new path from the
 TurenOS display name.
 
+One server owns a database at a time. `Server.listen` holds an exclusive lock on `<database>.owner.lock` for the life of
+the process, so a second server on the same file fails with `Database is already owned by another server`. An owner
+record in the database pins the server's mode, server ID, and key ID. Every open validates that record before
+migrations run, and a server that loaded its vault key at startup (the Desktop sidecar and `forge serve`) also checks
+the key against every sealed store first. See
+[Secure storage](../systems/secure-storage.md#database-identity-ownership-and-verification) and
+[`packages/core/src/database/server-owner.ts`](../../packages/core/src/database/server-owner.ts).
+
 Large or bounded tool results have a second storage path. `ToolOutputStore` keeps normal output
 inline, and writes oversized text under the data directory when it exceeds the configured line or
 byte limits. The model receives a head/tail preview and a path to the full output. This is a bound,

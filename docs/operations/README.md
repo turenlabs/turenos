@@ -4,7 +4,9 @@ Procedures for running and shipping TurenOS: where the backend runs and how rele
 (building, testing, linting) live in [`CONTRIBUTING.md`](../../CONTRIBUTING.md).
 
 - [SSH remote servers](./ssh-remote/README.md): driving the system `ssh` client to install, supervise, and tunnel a remote
-  TurenOS backend from Desktop.
+  TurenOS backend from Desktop, or to attach to a host's persistent server.
+- [Persistent server](./persistent-server.md): one host-owned server and vault key that every client attaches to, with
+  systemd setup, key import, and recovery.
 - [WSL backends](./wsl.md): installing `forge` into a WSL distro and running the Desktop's backend there on Windows.
 - [Releases](./releases/README.md): the operator checklist for cutting a release (version bump, dispatch,
   verification, and recovery).

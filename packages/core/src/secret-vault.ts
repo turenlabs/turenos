@@ -3,6 +3,7 @@ export * as SecretVault from "./secret-vault"
 import { createCipheriv, createDecipheriv, createHmac, hkdfSync, randomBytes, randomUUID } from "node:crypto"
 import { Context, Effect, Layer, Schema } from "effect"
 import { makeGlobalNode } from "./effect/app-node"
+import { ProcessEnv } from "./process-env"
 
 const FORMAT = "forge-secret"
 const VERSION = "v1"
@@ -39,7 +40,7 @@ export const layer = (options: Key) => {
   return Layer.succeed(Service, Service.of(make(options)))
 }
 
-function make(options: Key): Interface {
+export function make(options: Key): Interface {
   const root = Buffer.from(options.key)
   // Separate key material from encryption, including the installation key identity.
   const fingerprintKey = Buffer.from(
@@ -131,8 +132,7 @@ function runtimeKey() {
   if (configured) return configured
   const keyID = process.env[KEY_ID_ENV]
   const encoded = process.env[KEY_ENV]
-  delete process.env[KEY_ID_ENV]
-  delete process.env[KEY_ENV]
+  ProcessEnv.remove([KEY_ID_ENV, KEY_ENV])
   if (keyID === undefined && encoded === undefined) {
     if (process.env.NODE_ENV === "test") return fallback
     throw new globalThis.Error("Persistent secret storage requires an OS-protected key")

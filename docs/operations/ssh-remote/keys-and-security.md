@@ -4,23 +4,27 @@ Which keychains and keys take part in a remote connection, and the security prop
 
 ## Keychain and key material
 
-Two different keychains touch this path, and neither one stores the remote's credentials.
+For quick connect, two different keychains touch this path, and neither one stores the remote's
+credentials. [Managed persistent servers](./managed-persistent.md) use systemd encrypted credentials on the host
+instead.
 
 **The OS keychain, through the credential vault.** The desktop's root secret is a random 32-byte key
 wrapped by Electron `safeStorage` — the macOS Keychain item `Forge Safe Storage`, Windows DPAPI, or
 libsecret/KWallet on Linux — and stored in `forge.settings` as `{version, keyID, wrappedKey}`. It is
 unwrapped once at startup by
 [`loadCredentialSecretKey`](../../../packages/desktop/src/main/secret-key.ts), so keychain prompts (if any)
-happen at app launch, never per connect. A remote host has no keychain of its own: the SSH connect
-ships `FORGE_SECRET_VAULT_KEY_ID` and the base64 key into the remote `ensure` command, and the
-headless server reads exactly those two variables in
-[`secret-vault.ts`](../../../packages/core/src/secret-vault.ts), deleting them from `process.env` as the
-vault layer initializes. Without them, non-test startup fails rather than falling back to plaintext.
+happen at app launch, never per connect. A quick-connect remote has no key source of its own: the SSH connect
+ships `FORGE_SECRET_VAULT_KEY_ID` and the base64 key into the remote `ensure` command, and
+`forge serve` reads exactly those two variables at startup in
+[`secret-vault-key.ts`](../../../packages/forge/src/cli/secret-vault-key.ts), deleting them from `process.env`
+before the server starts. Without them, non-test startup fails rather than falling back to plaintext.
 
 The consequence is that a remote's sealed credentials belong to _this desktop's_ keychain item. The
-remote records the `keyID` it was first sealed with (`claimVault` in
-[`packages/forge/src/auth/index.ts`](../../../packages/forge/src/auth/index.ts)); connecting with a
-different key fails with `Stored credentials belong to another OS-protected key`. A second machine
+remote's database records the key it was first sealed with: its owner record holds the key ID
+([`server-owner.ts`](../../../packages/core/src/database/server-owner.ts)), and a sentinel sealed with the key
+proves the key bytes. Connecting with a different key fails when the database opens, before migrations, with
+`Database is owned by another quick-connect key` (or, for a database without an owner record,
+`Stored credentials belong to another OS-protected key`). A second machine
 therefore cannot silently adopt a remote that already holds credentials, and losing or rotating the
 desktop keychain item strands the remote's sealed data. See
 [Secure storage](../../systems/secure-storage.md) for the vault format and platform prompt behavior.
@@ -34,12 +38,12 @@ in-app prompt collects the passphrase, writes it to the pty, and drops it — it
 so the same passphrase is requested on the next connect. Loading the key into the agent, not
 TurenOS, is what makes that prompt go away.
 
-**The remote's HTTP password is not keychain material.** It is minted per start on the remote, kept
+**The quick-connect HTTP password is not keychain material.** It is minted per start on the remote, kept
 0600 in `~/.forge/run/server.auth`, returned over the SSH channel, and held only in main-process
 memory and the mirrored renderer state. It is never written to local storage, and a remote restart
 mints a new one.
 
-**Key material never reaches argv.** The `ensure` call is the only step that carries the vault key,
+**Quick-connect key material never reaches argv.** The `ensure` call is the only step that carries the vault key,
 and it is delivered the way the WSL backend delivers it — as a short script on stdin, built by
 `remoteEnsureScript` and piped to `sh -s`:
 
@@ -62,7 +66,7 @@ from `process.env` when it initializes, limiting subsequent child-process inheri
 protect the key from the remote account or root: connecting trusts that host with the desktop vault
 key, and clearing environment variables is not a guarantee of erasing the initial process environment.
 
-## Security properties
+## Quick-connect security properties
 
 - The remote listener binds `127.0.0.1` with a kernel-assigned port and is reachable only through
   the SSH forward from the desktop. Other processes on the remote can reach loopback too, so

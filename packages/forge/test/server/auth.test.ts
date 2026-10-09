@@ -1,3 +1,4 @@
+import path from "node:path"
 import { afterEach, describe, expect, test } from "bun:test"
 import { ConfigProvider, Effect, Layer, Option, Redacted } from "effect"
 import { Flag } from "@turenlabs/core/flag/flag"
@@ -50,12 +51,28 @@ describe("ServerAuth", () => {
     })
   })
 
+  test("explicit protected credentials never become a global fallback", () => {
+    Flag.FORGE_SERVER_PASSWORD = undefined
+    Flag.FORGE_SERVER_USERNAME = undefined
+    expect(ServerAuth.headers({ password: "file-secret" })).toEqual({
+      Authorization: `Basic ${Buffer.from("forge:file-secret").toString("base64")}`,
+    })
+    expect(ServerAuth.header()).toBeUndefined()
+  })
+
   test("validates decoded credentials against effect config", () => {
     const config = { password: Option.some("secret"), username: "alice" }
 
     expect(ServerAuth.required(config)).toBe(true)
     expect(ServerAuth.authorized({ username: "alice", password: Redacted.make("secret") }, config)).toBe(true)
     expect(ServerAuth.authorized({ username: "opencode", password: Redacted.make("secret") }, config)).toBe(false)
+    expect(ServerAuth.authorized({ username: "alice", password: Redacted.make("secre") }, config)).toBe(false)
+    expect(
+      ServerAuth.authorized(
+        { username: "alice", password: Redacted.make("secret") },
+        { ...config, password: Option.none() },
+      ),
+    ).toBe(false)
   })
 
   test("claimPassword removes the password from the environment but keeps auth enforced", async () => {
@@ -73,5 +90,16 @@ describe("ServerAuth", () => {
     )
     expect(ServerAuth.required(config)).toBe(true)
     expect(ServerAuth.authorized({ username: "forge", password: Redacted.make("claimed-secret") }, config)).toBe(true)
+  })
+
+  test.skipIf(process.platform === "win32")("claimPassword keeps the password out of PTY children", async () => {
+    const child = Bun.spawn([process.execPath, path.join(import.meta.dir, "../fixture/claim-password-probe.ts")], {
+      env: { ...process.env, FORGE_SERVER_PASSWORD: "claimed-secret" },
+      stdout: "pipe",
+      stderr: "inherit",
+    })
+    const output = await new Response(child.stdout).text()
+    expect(await child.exited).toBe(0)
+    expect(JSON.parse(output)).toEqual({ pty: [] })
   })
 })

@@ -1,5 +1,8 @@
 # Attaching from the remote host
 
+This page describes a quick-connect server. A [managed persistent server](./managed-persistent.md) publishes its
+listener and password in a host-owned attach record instead.
+
 The server the desktop starts is an ordinary `forge serve` with Basic auth, so anything running on
 the remote host as the same user can use it directly — a TUI, a script, or a second `forge`
 invocation. There is no separate API for host-side attachment.
@@ -35,11 +38,12 @@ The example uses an environment variable to keep the password out of command arg
 remote account and administrators remain trusted. No client discovers a desktop-managed server on
 its own; a host-side client must read the port and password as shown.
 
-A remote-owned vault with independent startup and access from multiple desktops is not implemented
-yet. A second desktop with a different vault key cannot independently restart and unlock the
-existing vault; do not replace the key or delete stored secrets to work around a mismatch.
+A quick-connect server uses the first desktop's vault key. A second desktop with a different key
+cannot independently restart and unlock that database; do not replace the key or delete stored
+secrets to work around a mismatch. Use a [persistent server](../persistent-server.md) for a
+host-owned key and independent clients.
 
-Four constraints shape any client built on this:
+Four constraints shape clients of a quick-connect server:
 
 - **Port and password rotate on every remote restart.** Resolve them at connect time; never cache
   them across restarts.
@@ -49,10 +53,12 @@ Four constraints shape any client built on this:
   same host cannot read them, and loopback binding plus Basic auth leaves no other way in.
 - **Starting the server by hand needs a vault key.** Running `forge-remote ensure` without
   `FORGE_SECRET_VAULT_KEY_ID` and `FORGE_SECRET_VAULT_KEY` fails with
-  `Persistent secret storage requires an OS-protected key`, and supplying a _different_ key than the
-  one that sealed existing credentials fails with `Stored credentials belong to another
-OS-protected key`. For a host that must also work standalone, provision one stable key and point
-  the desktop at it too — the desktop honors those variables from its own environment
+  `Persistent secret storage requires an OS-protected key`. Supplying a _different_ key than the one
+  that owns the database fails when the database opens, before migrations, with
+  `Database is owned by another quick-connect key` (or, for a database without an owner record,
+  `Stored credentials belong to another OS-protected key`). For a host that must also work
+  standalone, promote it to a [persistent server](../persistent-server.md), or provision one stable
+  key and point the desktop at it too — the desktop honors those variables from its own environment
   ([`main/index.ts`](../../../packages/desktop/src/main/index.ts)) — accepting that this bypasses
   `safeStorage` on the desktop side.
 

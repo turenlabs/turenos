@@ -5,7 +5,8 @@ installing and updating `forge`, and runtime state and recovery.
 
 ## The remote shim
 
-Before anything else, the connect writes [`shim.ts`](../../../packages/desktop/src/main/ssh/shim.ts)'s
+Once the [attach probe](./managed-persistent.md) finds no managed server, the connect writes
+[`shim.ts`](../../../packages/desktop/src/main/ssh/shim.ts)'s
 script to `$HOME/.forge/bin/forge-remote` (mode 0755) via `cat` over the master. It is rewritten on
 every connect so an outdated copy self-heals, and it is plain POSIX `sh` because a remote may not
 have `bash`. It owns four subcommands:
@@ -86,8 +87,9 @@ reaches `ready`. Two cases never retry: a user-cancelled prompt (retrying would 
 an exhausted schedule. Stale work is discarded by a per-server start-attempt counter, so a removal
 or restart during an in-flight connect closes the late connection instead of adopting it.
 
-`stopRemote` kills the remote server (`forge-remote stop`) and closes the master; the server stays
-configured and can be started again. `removeServer` drops it from storage and clears cached probes
+For quick-connect targets, `stopRemote` kills the remote server (`forge-remote stop`) and closes the
+master; the server stays configured and can be started again. A persistent target only disconnects on
+stop or removal (see [Managed persistent servers](./managed-persistent.md#after-the-first-attach)). `removeServer` drops it from storage and clears cached probes
 and version checks, and passes `reachable: false` so removal never opens a new master and never
 prompts. The `forge-remote stop` command still runs: over the master when it is alive, otherwise as
 a direct `BatchMode=yes` ssh connection, which succeeds for key or agent authentication. Only when

@@ -66,7 +66,8 @@ const app = (filename: string, reads: { count: number }) =>
           Database.Service,
           Effect.gen(function* () {
             const context = yield* Layer.build(Database.layerFromPath(filename))
-            return Database.Service.of({ db: countingDatabase(Context.get(context, Database.Service).db, reads) })
+            const database = Context.get(context, Database.Service)
+            return Database.Service.of({ ...database, db: countingDatabase(database.db, reads) })
           }),
         ),
       ],

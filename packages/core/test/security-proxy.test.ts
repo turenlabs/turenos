@@ -44,7 +44,11 @@ function fixture(path: string) {
     run(SecurityProxyStore.Service.use((store) => store.execute(command)))
   const fails = (command: SecurityProxy.StoreCommand) =>
     run(SecurityProxyStore.Service.use((store) => Effect.exit(store.execute(command)))).then(Exit.isFailure)
-  const rows = () => run(Database.Service.use((database) => database.db.select().from(StorageStateTable).all()))
+  // The database layer keeps its own identity rows under `internal/database`; only proxy rows matter here.
+  const rows = () =>
+    run(Database.Service.use((database) => database.db.select().from(StorageStateTable).all())).then((all) =>
+      all.filter((row) => !row.scope.startsWith("internal/database")),
+    )
   return { run, execute, fails, rows }
 }
 

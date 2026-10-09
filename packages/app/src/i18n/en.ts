@@ -474,6 +474,8 @@ export const dict = {
   "ssh.server.install": "Install TurenOS",
   "ssh.server.update": "Update TurenOS",
   "ssh.server.stopRemote": "Stop remote server",
+  "ssh.server.disconnect": "Disconnect",
+  "ssh.server.serviceVersionMismatch": "Server version differs from this app; update the service on the host",
   "ssh.dialog.title": "Add SSH server",
   "ssh.dialog.description":
     "Connect to a remote host over SSH. TurenOS installs and runs a server on the remote and tunnels it back over SSH - your projects, sessions, and terminals all live on the remote.",
