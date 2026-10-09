@@ -5,6 +5,7 @@ import type {
   ForgeClient,
   Part,
   PermissionRequest,
+  PermissionV2Request,
   QuestionRequest,
   Session,
   SessionStatus,
@@ -13,6 +14,7 @@ import type {
 } from "@turenlabs/sdk/v2/client"
 import { Session as SessionSchema } from "@turenlabs/schema/session"
 import { createStore, produce, reconcile } from "solid-js/store"
+import { permissionFromV2, type SessionPermissionRequest } from "@/context/permission-request"
 import { diffs as cleanDiffs, message as cleanMessage } from "@/utils/diffs"
 import { sessionNotFoundError } from "@/utils/server-errors"
 import { rootSession } from "@/utils/session-route"
@@ -126,7 +128,7 @@ export function createServerSession(client: ForgeClient) {
     session_status: {} as Record<string, SessionStatus>,
     session_diff: {} as Record<string, SnapshotFileDiff[]>,
     todo: {} as Record<string, Todo[]>,
-    permission: {} as Record<string, PermissionRequest[]>,
+    permission: {} as Record<string, SessionPermissionRequest[]>,
     question: {} as Record<string, QuestionRequest[]>,
     message: {} as Record<string, Message[]>,
     part: {} as Record<string, Part[]>,
@@ -765,8 +767,12 @@ export function createServerSession(client: ForgeClient) {
         )
         return
       }
-      case "permission.asked": {
-        const permission = event.properties as PermissionRequest
+      case "permission.asked":
+      case "permission.v2.asked": {
+        const permission =
+          event.type === "permission.v2.asked"
+            ? permissionFromV2(event.properties as PermissionV2Request)
+            : (event.properties as PermissionRequest)
         const permissions = data.permission[permission.sessionID]
         if (!permissions) {
           setData("permission", permission.sessionID, [permission])
@@ -782,7 +788,8 @@ export function createServerSession(client: ForgeClient) {
           )
         return
       }
-      case "permission.replied": {
+      case "permission.replied":
+      case "permission.v2.replied": {
         const props = event.properties as { sessionID: string; requestID: string }
         setData(
           "permission",

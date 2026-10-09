@@ -33,11 +33,11 @@ function sessionTreeRequest<T>(
   return request[id]?.find(include)
 }
 
-export function sessionPermissionRequest(
+export function sessionPermissionRequest<T extends PermissionRequest>(
   session: Session[],
-  request: Record<string, PermissionRequest[] | undefined>,
+  request: Record<string, T[] | undefined>,
   sessionID?: string,
-  include?: (item: PermissionRequest) => boolean,
+  include?: (item: T) => boolean,
 ) {
   return sessionTreeRequest(session, request, sessionID, include)
 }

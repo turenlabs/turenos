@@ -8,6 +8,7 @@ import type {
   Session,
 } from "@turenlabs/sdk/v2/client"
 import { showToast } from "@/utils/toast"
+import { permissionFromV2 } from "@/context/permission-request"
 import { getFilename } from "@turenlabs/core/util/path"
 import { retry } from "@turenlabs/core/util/retry"
 import { batch } from "solid-js"
@@ -297,11 +298,15 @@ export async function bootstrapDirectory(input: {
       () => retry(() => input.sdk.command.list().then((x) => input.setStore("command", x.data ?? []))),
       () =>
         retry(() =>
-          input.sdk.permission.list().then((x) => {
-            const ids = (x.data ?? []).map((perm) => perm?.sessionID).filter((id): id is string => !!id)
-            const grouped = groupBySession(
-              (x.data ?? []).filter((perm): perm is PermissionRequest => !!perm?.id && !!perm.sessionID),
-            )
+          // Legacy and Session Core requests share one store, so both lists must land in the same
+          // reconcile: applying either alone would clear the other runtime's pending prompts.
+          Promise.all([input.sdk.permission.list(), input.sdk.v2.permission.request.list()]).then(([legacy, core]) => {
+            const requests = [
+              ...(legacy.data ?? []).filter((perm): perm is PermissionRequest => !!perm?.id && !!perm.sessionID),
+              ...(core.data?.data ?? []).filter((perm) => !!perm.id && !!perm.sessionID).map(permissionFromV2),
+            ]
+            const ids = requests.map((perm) => perm.sessionID)
+            const grouped = groupBySession(requests)
             const apply = () =>
               batch(() => {
                 const current = input.session?.data.permission ?? input.store.permission
