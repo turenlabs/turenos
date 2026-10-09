@@ -877,7 +877,7 @@
     },
     "packages/tui": {
       "name": "@turenlabs/tui",
-      "version": "1.0.38",
+      "version": "1.0.44",
       "bin": {
         "turen-tui": "./src/cli.ts",
       },
