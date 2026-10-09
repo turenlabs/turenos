@@ -70,11 +70,12 @@ function globalKey(d: DashboardContext, key: KeyEvent) {
 }
 
 /**
- * Chords that also work from the reply editor, which sets its draft aside first. Ctrl+K, Ctrl+B and
- * Alt+Left/Right stay with the editor: delete to the line end, move back a character, move by word.
+ * Chords that also work from the reply editor, which sets its draft aside first. Ctrl+K opens the session
+ * picker every hint advertises, so the editor gives up its delete-to-line-end; Ctrl+B and Alt+Left/Right
+ * stay with the editor: move back a character, move by word.
  */
 function composerChord(d: DashboardContext, key: KeyEvent) {
-  const chord = matchesKey(key, "p", { ctrl: true }) || matchesKey(key, "x", { ctrl: true })
+  const chord = ["p", "x", "k"].some((name) => matchesKey(key, name, { ctrl: true }))
   if (!chord) return false
   d.c.dialogs.close()
   if (d.state.modal) return consume(key)

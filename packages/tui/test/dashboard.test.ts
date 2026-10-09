@@ -471,7 +471,9 @@ for (const shortcut of ["n", "f"] as const) {
     expect(editor.plainText).toBe("lpha beta")
     view.mockInput.pressArrow("right")
     view.mockInput.pressArrow("right")
-    view.mockInput.pressKey("k", { ctrl: true })
+    // The launch form's editor keeps Ctrl+K as delete-to-line-end; the reply editor gives it to the session picker.
+    if (shortcut === "n") view.mockInput.pressKey("k", { ctrl: true })
+    else for (let step = 0; step < 7; step++) view.mockInput.pressKey("DELETE")
     expect(editor.plainText).toBe("lp")
     expect(view.renderer.currentFocusedEditor).toBe(editor)
     for (const modifier of ["shift", "meta", "super", "hyper"] as const) {
@@ -2126,7 +2128,7 @@ test.each([60])("question panel keeps transcript visible and Ctrl+K preserves an
   view.mockInput.pressEnter()
   await waitForFrame(view, (frame) => !frame.includes("Switch session") && frame.includes("Another session"))
   expect(view.captureCharFrame()).not.toContain("Review answers")
-  // The other session opened with its reply editor, where Ctrl+K deletes to the line end.
+  // The other session opened with its reply editor; Ctrl+K works from there too, and from shortcut mode.
   await leaveComposer(view)
   view.mockInput.pressKey("k", { ctrl: true })
   await view.mockInput.typeText("Review the server")

@@ -45,11 +45,12 @@ function resizeTopbar(state: DashboardState, parts: LayoutParts) {
   parts.modelButton.content = state.modal ? (state.modal.chooseModel ? "Models Ctrl+L" : "Models") : "Models m"
   parts.modelButton.fg = !state.modal || (state.modal.chooseModel && !state.modal.busy) ? color.accent : color.muted
   // A dialog that keeps a draft lets the key through once Esc has set the draft aside; the reply editor, which
-  // is open in every session view, and the other dialogs keep the label short.
+  // is open in every session view, passes Ctrl+K straight through. Other dialogs keep the label short.
   const afterEsc = !!state.modal?.save && !state.modal.composer
+  const direct = !state.modal || !!state.modal.composer
   // "Esc" and the key are two steps, so they sit in one parenthesis rather than reading as a two-key chord.
-  parts.switchButton.content = state.modal && !afterEsc ? "Sessions" : `Sessions ${afterEsc ? "(Esc, Ctrl+K)" : "Ctrl+K"}`
-  parts.switchButton.fg = !state.modal || (state.modal.save && !state.modal.busy) ? color.accent : color.muted
+  parts.switchButton.content = direct ? "Sessions Ctrl+K" : afterEsc ? "Sessions (Esc, Ctrl+K)" : "Sessions"
+  parts.switchButton.fg = direct || (state.modal?.save && !state.modal.busy) ? color.accent : color.muted
   parts.serversButton.content = state.modal && !afterEsc ? "Servers" : `Servers ${afterEsc ? "(Esc, s)" : "s"}`
   parts.serversButton.fg = state.modal?.busy ? color.muted : color.accent
 }

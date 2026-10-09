@@ -88,6 +88,20 @@ test("Esc leaves the reply editor for shortcuts with its draft kept, and Enter r
   expect(editor()?.plainText).toBe("draft")
 })
 
+test("Ctrl+K opens the session picker straight from the reply editor and keeps the draft", async () => {
+  const { view, screen, editor } = await open({})
+  view.mockInput.pressEnter()
+  await screen("Typing")
+  await view.mockInput.typeText("half-written reply")
+  view.mockInput.pressArrow("left")
+  view.mockInput.pressKey("k", { ctrl: true })
+  await screen("Switch session")
+  // Closing the picker returns to the editor with its draft, as Ctrl+P does.
+  view.mockInput.pressEscape()
+  await screen("Typing")
+  expect(editor()?.plainText).toBe("half-written reply")
+})
+
 test("Esc from the reply editor arms the stop, so Esc Esc stops a running turn while typing", async () => {
   const { server, view, screen } = await open({ ...running, ...stopped })
   view.mockInput.pressEnter()
