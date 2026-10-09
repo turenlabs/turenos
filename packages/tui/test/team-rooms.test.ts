@@ -116,7 +116,7 @@ test("restoring an archived room says it does not resume schedules", async () =>
   expect(dialog).toContain("resume schedules that archiving paused.")
   view.mockInput.pressKey("s", { ctrl: true })
   await until(() => w.sent("POST", "/api/team/room/trm_old/restore").length === 1)
-  await screen("Room restored.")
+  await screen("Restored. Its schedules stay paused: resume them in Automations (3).")
 })
 
 test("delete refuses locally while a schedule is linked, and asks for the word once none is", async () => {
@@ -134,12 +134,13 @@ test("delete refuses locally while a schedule is linked, and asks for the word o
   view.mockInput.pressArrow("up")
   await screen("Archived · read-only")
   view.mockInput.pressKey("d")
-  const menu = await screen("Delete permanently")
-  expect(menu).toContain("Remove linked duties and schedules before you delete this room.")
+  await screen("Delete permanently")
+  const menu = (await screen("Automations (3).")).replace(/\s*│\s*\n\s*│\s*/g, " ")
+  expect(menu).toContain('Blocked: 1 linked schedule ("Nightly check"). Remove it in Automations (3).')
   expect(menu).toContain("Blocked, see above")
   view.mockInput.pressArrow("down")
   view.mockInput.pressEnter()
-  await screen("Remove linked duties and schedules")
+  await screen("Remove it in Automations (3).")
   await Bun.sleep(100)
   expect(w.sent("DELETE", "/api/team/room/trm_old")).toHaveLength(0)
   w.state.loops = []
@@ -156,11 +157,62 @@ test("delete refuses locally while a schedule is linked, and asks for the word o
   await screen("Room deleted.")
 })
 
-test("an active room offers no delete", async () => {
+test("an active room shows Delete as unavailable until it is archived", async () => {
   const w = world()
   const { view, screen } = await open(w.routes)
   await screen("Done")
   view.mockInput.pressKey("d")
-  const menu = await screen("Archive")
+  const menu = await screen("Delete (archive first)")
   expect(menu).not.toContain("Delete permanently")
+  view.mockInput.pressArrow("down")
+  view.mockInput.pressArrow("down")
+  view.mockInput.pressEnter()
+  await screen("Archive this room before you delete it.")
+  expect(w.sent("DELETE", "/api/team/room/trm_team")).toHaveLength(0)
+})
+
+test("Enter in a typed-word confirmation sends once the word is typed", async () => {
+  const w = world({
+    "POST /api/team/room/trm_team/archive": () => change(w, "trm_team", { archived: true }),
+  })
+  w.state.rooms.push(ops)
+  const { view, screen } = await open(w.routes)
+  await screen("Done")
+  view.mockInput.pressKey("d")
+  await screen("Archive")
+  view.mockInput.pressArrow("down")
+  view.mockInput.pressEnter()
+  await screen("Confirmation (type archive)")
+  view.mockInput.pressEnter()
+  await screen("Type archive to confirm.")
+  expect(w.sent("POST", "/api/team/room/trm_team/archive")).toHaveLength(0)
+  await view.mockInput.typeText("archive")
+  view.mockInput.pressEnter()
+  await until(() => w.sent("POST", "/api/team/room/trm_team/archive").length === 1)
+})
+
+test("in the new room form Enter moves to the topic and sends from the last field", async () => {
+  const w = world({
+    "POST /api/team/room": async (request) => {
+      const body = (await request.json()) as { name: string; topic: string }
+      const created = { id: "trm_new", name: body.name, topic: body.topic, head: 0 }
+      w.state.rooms = [...w.state.rooms, created]
+      return created
+    },
+  })
+  const { view, screen } = await open(w.routes)
+  await screen("Done")
+  view.mockInput.pressKey("a")
+  await screen("Topic (optional)")
+  view.mockInput.pressEnter()
+  view.mockInput.pressEnter()
+  await screen("Enter a room name.")
+  expect(w.sent("POST", "/api/team/room")).toHaveLength(0)
+  await view.mockInput.typeText("crew")
+  view.mockInput.pressEnter()
+  await view.mockInput.typeText("Plan the week")
+  expect(w.sent("POST", "/api/team/room")).toHaveLength(0)
+  view.mockInput.pressEnter()
+  await until(() => w.sent("POST", "/api/team/room").length === 1)
+  expect(w.sent("POST", "/api/team/room")[0]!.body).toEqual({ name: "crew", topic: "Plan the week" })
 })

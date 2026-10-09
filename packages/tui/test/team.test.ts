@@ -411,3 +411,88 @@ test("the post row names posting and mentions rather than repeating the action r
   state.team = { room: old } as unknown as TeamView
   expect(promptBoxText(state, undefined, { hasDraft: false })).toStartWith("Archived · read-only")
 })
+
+test("a mention nobody in the room answers to says nobody is tasked, and the status says why after posting", async () => {
+  const { routes } = server()
+  routes["POST /api/team/message"] = async (request) => {
+    const body = (await request.json()) as { id: string; text: string }
+    return { message: { ...message(4, body.text), id: body.id }, tasks: [] }
+  }
+  const { view, screen } = await open(routes, 160)
+  await screen("Done")
+  view.mockInput.pressKey("f")
+  await screen("No mention:")
+  await view.mockInput.typeText("@zed please check")
+  await screen("@zed is not in this room: nobody is tasked. Remove it, or press @ to pick a teammate.")
+  view.mockInput.pressEnter()
+  await screen("Posted. No task: @zed is not in this room.")
+})
+
+test("a paused teammate is not offered a task, and the status says so after posting", async () => {
+  const { routes } = server()
+  routes["POST /api/team/message"] = async (request) => {
+    const body = (await request.json()) as { id: string; text: string }
+    return { message: { ...message(4, body.text), id: body.id }, tasks: [] }
+  }
+  const { view, screen } = await open(routes, 140)
+  await screen("Done")
+  view.mockInput.pressKey("f")
+  await screen("No mention:")
+  await view.mockInput.typeText("hello @rae now")
+  const frame = await screen("@rae is paused: no task. M, then Enter on @rae, then Resume.")
+  expect(frame).not.toContain("Tasks for: @rae")
+  view.mockInput.pressEnter()
+  await screen("Posted. No task: @rae is paused.")
+})
+
+test("the log prints a coordinator's plan and verdict as one line, shortens run IDs and closes a settled run", () => {
+  const runID = "run_20261008_abcdef0123456789"
+  const plan = JSON.stringify({
+    assignments: [
+      { teammateID: "tm_rae", prompt: "Reply with the word ready and nothing else" },
+      { teammateID: "tm_moss", prompt: "Summarise the notes" },
+    ],
+  })
+  const reply = { kind: "teammate", teammateID: "tm_rae", author: "Rachel" }
+  const view = {
+    ...answer([
+      message(1, `Factory run ${runID} planning task`, { kind: "system", author: "Factory" }),
+      message(2, plan, { ...reply, sourceMessageIDs: ["msg_1"] }),
+      message(3, `Factory run ${runID} result check`, { kind: "system", author: "Factory" }),
+      message(4, '{"status":"accepted","summary":"Both teammates answered."}', { ...reply, sourceMessageIDs: ["msg_3"] }),
+      message(5, "Thanks all"),
+    ]),
+    factoryRuns: [
+      {
+        id: runID,
+        roomID: "trm_team",
+        status: "succeeded",
+        phase: "done",
+        taskIDs: ["job_1", "job_2"],
+        time: { created: 1, updated: Date.UTC(2026, 9, 8, 9, 30) },
+      },
+    ],
+    tasks: [task("succeeded", { id: "job_1", messageID: "msg_1" }), task("succeeded", { id: "job_2", messageID: "msg_3" })],
+    showArchived: false,
+    pendingRuns: new Map(),
+  } as unknown as TeamView
+  const lines = roomLog(view).split("\n")
+  const text = lines.join("\n")
+  expect(text).toContain('Factory run …23456789 planning task')
+  expect(text).not.toContain(runID)
+  expect(text).toContain('plan: @rae "Reply with the word ready and n…", @moss "Summarise the notes"')
+  expect(text).toContain("check: accepted — Both teammates answered.")
+  const closing = lines.findIndex((line) => line.endsWith("· Factory run …23456789 succeeded"))
+  expect(closing).toBeGreaterThan(lines.findIndex((line) => line.includes("check: accepted")))
+  expect(closing).toBeLessThan(lines.findIndex((line) => line.includes("Thanks all")))
+})
+
+test("a room with no teammates says how to add one, and the action row leads with it", async () => {
+  const { routes } = server()
+  routes["GET /api/team"] = () => answer([message(1, "Welcome")], { teammates: [], tasks: [] })
+  const { screen } = await open(routes, 170, 30)
+  const frame = await screen("No teammates yet. Press M, then a, to add one; teammates answer posts and take tasks.")
+  expect(frame).toContain("M Add teammate")
+  expect(frame).toContain("a New room")
+  expect(frame).toContain("d Room")
+})

@@ -2,6 +2,7 @@ import type { KeyEvent } from "@opentui/core"
 import { teammateDraft, teammateHandle } from "@turenlabs/client/team"
 import { markFocus } from "../automations/focus"
 import { display } from "../messages"
+import { enterAdvances } from "../dialogs/fields"
 import { matchesKey } from "../keys"
 import { openSection } from "../picker"
 import { label } from "../state"
@@ -19,7 +20,7 @@ export type MemberDraft = {
   model: string
 }
 
-const HINT = "Tab next field · Enter newline in Mission · Ctrl+S save · F3 agent · Ctrl+L model · Esc"
+const HINT = "Tab or Enter next field (Mission: Enter newline) · Ctrl+S or Enter on the last field saves · F3 agent · Ctrl+L model · Esc"
 
 /** The add form (no `mate`) or the edit form for a teammate; `back` returns to the list or menu that opened it. */
 export function memberForm(
@@ -64,7 +65,8 @@ export function memberForm(
   })
   const reopen = (next: MemberDraft) => memberForm(ctx, { ...input, draft: next })
   dialog.key = (key) => choose(ctx, key, read, reopen)
-  dialog.submit = () => submitMember(ctx, room.id, mate, read())
+  enterAdvances(dialog)
+  dialog.submit = () => submitMember(ctx, room.id, mate, read(), { name, handle: handleField, mission, model })
   dialog.afterSubmit = input.saved
   dialog.error.content = HINT
   name.focus()
@@ -126,16 +128,28 @@ function pickAgent(ctx: TeamContext, draft: MemberDraft, reopen: (draft: MemberD
   )
 }
 
-async function submitMember(ctx: TeamContext, roomID: string, mate: Teammate | undefined, draft: MemberDraft) {
+/** Throws a refusal and puts the cursor in the field it names. */
+function refuse(field: { focus: () => void } | undefined, message: string): never {
+  field?.focus()
+  throw new Error(message)
+}
+
+async function submitMember(
+  ctx: TeamContext,
+  roomID: string,
+  mate: Teammate | undefined,
+  draft: MemberDraft,
+  at: Record<"name" | "handle" | "mission" | "model", { focus: () => void } | undefined>,
+) {
   if (!ctx.state.connected) throw new Error("Reconnect before saving the teammate.")
   const fields = teammateDraft({ ...draft, mission: draft.mission.trim() })
-  if (!fields.name) throw new Error("Enter a name.")
-  if (!fields.mission) throw new Error("Enter a mission.")
+  if (!fields.name) refuse(at.name, "Enter a name.")
   // The server keeps handles lowercase; mentions ignore case.
   const handleText = fields.handle.toLowerCase()
   if (!mate && !teammateHandle.test(handleText))
-    throw new Error("The handle needs letters, digits, _ or -, starts with a letter and has at most 32 characters.")
-  const model = parseModel(draft.model)
+    refuse(at.handle, "The handle needs letters, digits, _ or -, starts with a letter and has at most 32 characters.")
+  if (!fields.mission) refuse(at.mission, "Enter a mission.")
+  const model = parseModel(draft.model, at.model)
   const directory = draft.directory.trim()
   const agent = draft.agent.trim()
   const client = ctx.connection.client.team
@@ -166,11 +180,11 @@ async function submitMember(ctx: TeamContext, roomID: string, mate: Teammate | u
   ctx.say(mate ? `Saved @${label(teammate.handle, 32)}.` : `Added @${label(teammate.handle, 32)}.`)
 }
 
-function parseModel(text: string) {
+function parseModel(text: string, field: { focus: () => void } | undefined) {
   const value = text.trim()
   if (!value) return undefined
   const separator = value.indexOf("/")
   if (separator < 1 || separator === value.length - 1)
-    throw new Error("Enter the model as provider/model, or leave it blank.")
+    refuse(field, "Enter the model as provider/model, or leave it blank.")
   return { providerID: value.slice(0, separator), id: value.slice(separator + 1) }
 }

@@ -25,6 +25,20 @@ export function roomCoordinator<T extends { id: string; status: string; time: { 
     .sort((a, b) => a.time.created - b.time.created || a.id.localeCompare(b.id))[0]
 }
 
+/** The blocker shown when linked duties or schedules keep a room from being deleted. */
+export const linkedBlocker = "Remove linked duties and schedules before you delete this room."
+
+/** The schedules that point at the room or at one of its teammates. */
+export function roomSchedules<S extends { factoryRoomID?: string | null; teammateID?: string | null }>(
+  value: { room: { id: string }; teammates?: readonly { id: string }[] },
+  schedules: readonly S[],
+) {
+  return schedules.filter(
+    (schedule) =>
+      schedule.factoryRoomID === value.room.id || value.teammates?.some((teammate) => teammate.id === schedule.teammateID),
+  )
+}
+
 /** Structural, so a client holding only part of the state (or loops whose optional fields are null) can ask too. */
 export function roomDeleteBlocker(
   value: {
@@ -43,15 +57,7 @@ export function roomDeleteBlocker(
     value.factoryRuns?.some((run) => run.status === "running")
   )
     return "Wait for active work to finish before you delete this room."
-  if (
-    value.duties.length ||
-    schedules.some(
-      (schedule) =>
-        schedule.factoryRoomID === value.room.id ||
-        value.teammates?.some((teammate) => teammate.id === schedule.teammateID),
-    )
-  )
-    return "Remove linked duties and schedules before you delete this room."
+  if (value.duties.length || roomSchedules(value, schedules).length) return linkedBlocker
 }
 
 /** What the create form sends: the name trimmed, the handle without a leading `@`, and a role that falls back to a default. */
@@ -65,9 +71,9 @@ export function teammateDraft(input: { name: string; handle: string; role: strin
 }
 
 export function parseFactoryParameters(value: string): Team.FactoryConfig["parameters"] {
-  const parsed: unknown = JSON.parse(value)
+  const parsed = parseJson(value)
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
-    throw new Error("Parameters must be a JSON object")
+    throw new Error('Parameters must be a JSON object, e.g. {"scope":"docs"}')
   return parsed as Team.FactoryConfig["parameters"]
 }
 
@@ -122,4 +128,45 @@ export function factoryConfigProblem(
   if (config.teammateIDs.length < 1 || config.teammateIDs.length > 10) return "Select between 1 and 10 teammates"
   if (config.teammateIDs.some((id) => !teammates?.some((teammate) => teammate.id === id)))
     return "Factory teammates must belong to this room"
+}
+
+/**
+ * What a coordinator's reply holds when it is the factory's machine output: the plan it made or its verdict on the
+ * work. Anything else, including JSON of another shape, is an ordinary message.
+ */
+export function factoryOutput(text: string) {
+  const value = parseJson(text)
+  if (!value || typeof value !== "object" || Array.isArray(value)) return
+  const output = value as { assignments?: unknown; status?: unknown; summary?: unknown }
+  // The same shapes and limits as Team.FactoryPlan and Team.FactoryCheck, checked without Schema so this module
+  // stays free of effect for the terminal client.
+  if (Array.isArray(output.assignments) && output.assignments.length && output.assignments.every(assignment))
+    return { kind: "plan" as const, assignments: output.assignments as { teammateID: string; prompt: string }[] }
+  if (
+    (output.status === "accepted" || output.status === "needs_input" || output.status === "rejected") &&
+    text_(output.summary, 8_000)
+  )
+    return {
+      kind: "check" as const,
+      status: output.status as Team.FactoryCheck["status"],
+      summary: output.summary as string,
+    }
+}
+
+function assignment(item: unknown) {
+  const value = item as { teammateID?: unknown; prompt?: unknown } | null
+  return !!value && typeof value === "object" && text_(value.teammateID, 256) && text_(value.prompt, 8_000)
+}
+
+function text_(value: unknown, max: number) {
+  return typeof value === "string" && value.trim().length > 0 && value.length <= max
+}
+
+/** JSON.parse that answers undefined for text that is not JSON, rather than throwing. */
+function parseJson(text: string): unknown {
+  try {
+    return JSON.parse(text)
+  } catch {
+    return undefined
+  }
 }

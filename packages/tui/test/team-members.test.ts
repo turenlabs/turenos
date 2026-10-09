@@ -111,8 +111,7 @@ test("a bad handle is refused locally, and the server's refusal is shown", async
   view.mockInput.pressKey("s", { ctrl: true })
   await screen("The handle needs letters")
   expect(w.sent("POST", "/api/team/teammate")).toHaveLength(0)
-  view.mockInput.pressKey("TAB", { shift: true })
-  view.mockInput.pressKey("TAB", { shift: true })
+  // The refusal put the cursor in the Handle field, so the corrected text goes straight there.
   view.mockInput.pressKey("a", { ctrl: true })
   view.mockInput.pressKey("k", { ctrl: true })
   await view.mockInput.typeText("Zed")
@@ -132,6 +131,10 @@ test("a teammate needs a mission before anything is sent", async () => {
   view.mockInput.pressKey("s", { ctrl: true })
   await screen("Enter a mission.")
   expect(w.sent("POST", "/api/team/teammate")).toHaveLength(0)
+  // The refusal focused Mission, so typing lands there and clears the message.
+  await view.mockInput.typeText("Triage.")
+  await screen("Triage.")
+  expect((await screen("Mission")).includes("Enter a mission.")).toBe(false)
 })
 
 test("Enter opens a teammate's menu; Edit sends the changed fields and resets an agent that was cleared", async () => {
@@ -264,4 +267,41 @@ test("an archived room's teammates can be read but not added or edited", async (
   view.mockInput.pressKey("a")
   await Bun.sleep(100)
   expect(view.captureCharFrame()).not.toContain("New teammate")
+})
+
+test("in the teammate form Enter moves to the next field, keeps its newline in Mission, and sends from the last field", async () => {
+  const w = world({
+    "POST /api/team/teammate": (_, url) => {
+      const body = w.sent("POST", url.pathname).at(-1)!.body
+      const created = { ...mates[0], id: "tm_zed", handle: body.handle, name: body.name, role: body.role, mission: body.mission }
+      w.state.teammates.push(created)
+      return created
+    },
+  })
+  const { view, screen } = await members(w)
+  view.mockInput.pressKey("a")
+  await screen("New teammate")
+  await view.mockInput.typeText("Zed")
+  view.mockInput.pressEnter()
+  await view.mockInput.typeText("zed")
+  view.mockInput.pressEnter()
+  await view.mockInput.typeText("Reviewer")
+  view.mockInput.pressEnter()
+  await view.mockInput.typeText("Review diffs.")
+  view.mockInput.pressEnter()
+  await view.mockInput.typeText("Be brief.")
+  expect(w.sent("POST", "/api/team/teammate")).toHaveLength(0)
+  view.mockInput.pressKey("TAB")
+  view.mockInput.pressEnter()
+  view.mockInput.pressEnter()
+  expect(w.sent("POST", "/api/team/teammate")).toHaveLength(0)
+  view.mockInput.pressEnter()
+  await until(() => w.sent("POST", "/api/team/teammate").length === 1)
+  expect(w.sent("POST", "/api/team/teammate")[0]!.body).toEqual({
+    roomID: "trm_team",
+    name: "Zed",
+    handle: "zed",
+    role: "Reviewer",
+    mission: "Review diffs.\nBe brief.",
+  })
 })

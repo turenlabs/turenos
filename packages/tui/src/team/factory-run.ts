@@ -5,6 +5,7 @@ import { label } from "../state"
 import { color } from "../theme"
 import type { TeamOperations } from "./actions"
 import { confirm } from "./confirm"
+import { shortID } from "./format"
 import { textArea } from "./fields"
 import { panelNote } from "./selection"
 import { finite, viewOf, type FactoryRun, type Room, type TeamContext } from "./types"
@@ -60,7 +61,7 @@ async function submitRun(ctx: TeamContext, ops: TeamOperations, roomID: string, 
 export function stopRun(ctx: TeamContext, run: FactoryRun, back: () => void) {
   confirm(ctx, {
     title: "Factory › Stop",
-    warning: `Cancels run ${label(run.id, 60)} and its unfinished tasks. Work already done stays in its sessions. Failed or uncertain model work is not retried.`,
+    warning: `Cancels run ${shortID(run.id)} and its unfinished tasks. Work already done stays in its sessions. Failed or uncertain model work is not retried.`,
     word: "stop",
     verb: "stop the factory",
     back,

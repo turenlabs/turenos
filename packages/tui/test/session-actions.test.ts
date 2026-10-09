@@ -6,6 +6,7 @@ import { createLayout } from "../src/layout"
 import { connect, type Session } from "../src/server"
 import { createSessionActions } from "../src/session-actions"
 import { createDashboardState } from "../src/state"
+import { until } from "./support"
 
 const cleanup: (() => void | Promise<void>)[] = []
 afterEach(async () => {
@@ -257,9 +258,9 @@ test("archived zero offers restore and sends explicit null before reopening a fr
   app.actions.archive()
   expect(await app.screen("Restore session")).not.toContain("Archiving hides")
   app.input().value = "restore"
+  // Enter sends once the word is typed, like Ctrl+S.
   app.view.mockInput.pressEnter()
-  expect(app.calls).toEqual([])
-  await app.dialogs.submit()
+  await until(() => app.calls.some((call) => call.method === "PATCH"))
   expect(app.calls.find((call) => call.method === "PATCH")?.body).toEqual({ time: { archived: null } })
   expect(app.opened).toEqual([{ id: "ses_root", inspect: false, session: app.sessions.get("ses_root") }])
   expect(app.state.inspected?.time.archived).toBeUndefined()

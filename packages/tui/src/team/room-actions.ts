@@ -1,5 +1,6 @@
-import { roomDeleteBlocker } from "@turenlabs/client/team"
+import { linkedBlocker, roomDeleteBlocker, roomSchedules } from "@turenlabs/client/team"
 import { markFocus } from "../automations/focus"
+import { enterAdvances } from "../dialogs/fields"
 import { display } from "../messages"
 import { openPicker } from "../picker"
 import { refused } from "../server"
@@ -31,8 +32,12 @@ function newRoom(ctx: TeamContext, ops: TeamOperations) {
   const topic = ctx.dialogs.input(dialog, "Topic (optional)")
   ;[name, topic].forEach(markFocus)
   let created = false
+  enterAdvances(dialog)
   dialog.submit = async () => {
-    if (!name.value.trim()) throw new Error("Enter a room name.")
+    if (!name.value.trim()) {
+      name.focus()
+      throw new Error("Enter a room name.")
+    }
     // A retry after an uncertain create must not add a second room.
     if (created) throw new Error("The room may already exist. Esc, then check the room list.")
     created = true
@@ -50,7 +55,7 @@ function newRoom(ctx: TeamContext, ops: TeamOperations) {
     ctx.say(`Created # ${label(room.name, 60)}.`)
   }
   dialog.afterSubmit = () => selectLoaded(ctx, ops)
-  dialog.error.content = "Tab next field · Ctrl+S create · Esc close"
+  dialog.error.content = "Tab or Enter next field · Ctrl+S, or Enter on Topic, creates · Esc close"
   name.focus()
 }
 
@@ -64,8 +69,12 @@ function editRoom(ctx: TeamContext, ops: TeamOperations, back?: () => void) {
   const name = ctx.dialogs.input(dialog, "Name", display(room.name, 512))
   const topic = ctx.dialogs.input(dialog, "Topic", display(room.topic, 4096))
   ;[name, topic].forEach(markFocus)
+  enterAdvances(dialog)
   dialog.submit = async () => {
-    if (!name.value.trim()) throw new Error("Enter a room name.")
+    if (!name.value.trim()) {
+      name.focus()
+      throw new Error("Enter a room name.")
+    }
     const edited = await ctx.connection.client.team.roomEdit({
       roomID: room.id,
       name: name.value.trim(),
@@ -75,7 +84,7 @@ function editRoom(ctx: TeamContext, ops: TeamOperations, back?: () => void) {
     ctx.say("Room saved.")
   }
   dialog.afterSubmit = () => void ops.sync()
-  dialog.error.content = `Tab next field · Ctrl+S save · Esc ${back ? "back" : "close"}`
+  dialog.error.content = `Tab or Enter next field · Ctrl+S, or Enter on Topic, saves · Esc ${back ? "back" : "close"}`
   name.focus()
 }
 
@@ -83,18 +92,7 @@ function roomMenu(ctx: TeamContext, ops: TeamOperations) {
   const room = loadedRoom(ctx)
   if (!room || !online(ctx, "changing the room")) return
   const view = viewOf(ctx.state)
-  const blocker = room.archived
-    ? roomDeleteBlocker(
-        {
-          room,
-          tasks: view.tasks,
-          factoryRuns: view.factoryRuns,
-          duties: view.duties,
-          teammates: view.teammates,
-        },
-        ctx.state.snapshot?.loops ?? [],
-      )
-    : undefined
+  const blocker = room.archived ? blockedText(ctx, view, room) : undefined
   const back = () => roomMenu(ctx, ops)
   const choices = room.archived
     ? [
@@ -108,6 +106,11 @@ function roomMenu(ctx: TeamContext, ops: TeamOperations) {
     : [
         { name: "Edit name and topic", description: "E", run: () => editRoom(ctx, ops, back) },
         { name: "Archive", description: "Read-only, schedules pause", run: () => archive(ctx, ops, room, back) },
+        {
+          name: "Delete (archive first)",
+          description: "Not available until the room is archived",
+          run: () => ctx.say("Archive this room before you delete it.", true),
+        },
       ]
   openPicker(ctx.renderer, ctx.dialogs, {
     title: `# ${label(room.name, 40)} › Room`,
@@ -115,6 +118,25 @@ function roomMenu(ctx: TeamContext, ops: TeamOperations) {
     choices,
     height: 16,
   })
+}
+
+/** Why a delete is refused. Linked schedules are named, because the shared rule only counts them. */
+function blockedText(ctx: TeamContext, view: ReturnType<typeof viewOf>, room: Room) {
+  const loops = ctx.state.snapshot?.loops ?? []
+  const blocker = roomDeleteBlocker(
+    { room, tasks: view.tasks, factoryRuns: view.factoryRuns, duties: view.duties, teammates: view.teammates },
+    loops,
+  )
+  if (blocker !== linkedBlocker) return blocker
+  const linked = roomSchedules({ room, teammates: view.teammates }, loops)
+  const duties = view.duties.filter((duty) => !linked.some((loop) => loop.id === duty.loopID)).length
+  const names = linked.slice(0, 3).map((loop) => `"${label(loop.name, 40)}"`)
+  const more = linked.length > 3 ? ` and ${linked.length - 3} more` : ""
+  const what = [
+    linked.length ? `${linked.length} linked schedule${linked.length > 1 ? "s" : ""} (${names.join(", ")}${more})` : "",
+    duties ? `${duties} duty link${duties > 1 ? "s" : ""}` : "",
+  ].filter(Boolean)
+  return `Blocked: ${what.join(" and ")}. Remove ${linked.length + duties > 1 ? "them" : "it"} in Automations (3).`
 }
 
 function archive(ctx: TeamContext, ops: TeamOperations, room: Room, back: () => void) {
@@ -144,7 +166,7 @@ function restore(ctx: TeamContext, ops: TeamOperations, room: Room, back: () => 
     run: async () => {
       if (!ctx.state.connected) throw new Error("Reconnect before restoring the room.")
       applyRoom(ctx, finite(await ctx.connection.client.team.roomRestore({ roomID: room.id })))
-      ctx.say("Room restored. Resume its schedules explicitly.")
+      ctx.say("Restored. Its schedules stay paused: resume them in Automations (3).")
     },
     done: () => void ops.sync(),
   })
