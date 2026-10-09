@@ -3,7 +3,8 @@ import type { DashboardState } from "../state"
 import { headerLeft, headerRight, scheduleText } from "../chrome"
 import { sessionRows, type SidebarRow } from "../session-list"
 import { roomNote, roomRows } from "../team"
-import { folderContains } from "../working-folders"
+import type { Session } from "../server"
+import { emptyWorkingFolders, folderContains, folderName, inFolder } from "../working-folders"
 import { renderActions } from "./actions"
 import { renderSidebarTitle, renderTabs } from "./status"
 import type { DashboardContext } from "./context"
@@ -50,26 +51,30 @@ function listRows(state: DashboardState, snapshot: Snapshot): SidebarRow[] {
   }))
 }
 
+/**
+ * The sessions in the dashboard's folder, or, with none chosen, in the open working folders. The session on screen
+ * and a request's recipient stay listed outside them, marked `(other folder)` or `(closed)`.
+ */
 function sessionListRows(state: DashboardState, snapshot: Snapshot): SidebarRow[] {
+  const folder = state.folder
+  const shown = (session: Session) =>
+    folder
+      ? inFolder(folder, session)
+      : snapshot.workingFolders === undefined ||
+        snapshot.workingFolders.some((open) => folderContains(open, session.location.directory))
   return sessionRows(
     snapshot.sessions.filter(
-      (session) =>
-        snapshot.workingFolders === undefined ||
-        snapshot.workingFolders.some((folder) => folderContains(folder, session.location.directory)) ||
-        state.selected === session.id ||
-        state.modal?.recipient?.id === session.id,
+      (session) => shown(session) || state.selected === session.id || state.modal?.recipient?.id === session.id,
     ),
     snapshot.active,
     snapshot.needsInput,
     // While disconnected the saved snapshot cannot say what is running now.
     !state.connected,
-  ).map((row) => {
-    const session = snapshot.sessions.find((session) => session.id === row.id)!
-    return snapshot.workingFolders !== undefined &&
-      !snapshot.workingFolders.some((folder) => folderContains(folder, session.location.directory))
-      ? { ...row, groupLabel: `${row.groupLabel} (closed)` }
-      : row
-  })
+  ).map((row) =>
+    shown(snapshot.sessions.find((session) => session.id === row.id)!)
+      ? row
+      : { ...row, groupLabel: `${row.groupLabel} ${folder ? "(other folder)" : "(closed)"}` },
+  )
 }
 
 function matching(state: DashboardState, rows: SidebarRow[]) {
@@ -80,19 +85,22 @@ function matching(state: DashboardState, rows: SidebarRow[]) {
   )
 }
 
+/** The requested session, else the newest main session in the folder on screen, else its newest session. */
 function defaultSelection(d: DashboardContext, snapshot: Snapshot) {
   if (d.state.tab !== "sessions") return ""
   const requested = snapshot.sessions.find((session) => session.id === d.options.session)
-  return (requested ?? snapshot.sessions.find((session) => !session.parentID) ?? snapshot.sessions[0])?.id
+  const folder = d.state.folder
+  const sessions = folder ? snapshot.sessions.filter((session) => inFolder(folder, session)) : snapshot.sessions
+  return (requested ?? sessions.find((session) => !session.parentID) ?? sessions[0])?.id
 }
 
 function renderSidebar(d: DashboardContext, snapshot: Snapshot) {
   renderSidebarTitle(d)
   renderEmptyList(d)
-  d.ui.folders.content = ` Working folders · ${foldersState(snapshot)}`
-  const emptyFolders = (snapshot.workingFolders ?? []).filter(
-    (directory) => !snapshot.sessions.some((session) => folderContains(directory, session.location.directory)),
-  )
+  d.ui.folders.content = d.state.folder
+    ? ` Folder · ${label(folderName(d.state.folder.directory), 40)}`
+    : ` Working folders · ${foldersState(snapshot)}`
+  const emptyFolders = emptyWorkingFolders(d.state)
   d.ui.emptyFolders.visible = d.state.tab === "sessions" && emptyFolders.length > 0
   d.ui.emptyFolders.height = Math.min(3, emptyFolders.length)
   d.ui.emptyFolders.content = emptyFolders

@@ -1,7 +1,8 @@
 import type { CliRenderer } from "@opentui/core"
 import type { Connection } from "../server"
-import { createDashboardState } from "../state"
+import { createDashboardState, label } from "../state"
 import { createLayout } from "../layout"
+import { resolveFolder } from "../working-folders"
 import { createControls } from "./controls"
 import { bindPointer } from "./pointer"
 import { attach } from "./lifecycle"
@@ -25,7 +26,9 @@ export function mountDashboard(
   resize(d)
   renderList(d)
   d.c.live.start()
-  const ready = refresh(d).then(() => {
+  const ready = startIn(d, options.folder).then(async (note) => {
+    await refresh(d)
+    if (note && !d.state.closed) d.say(note)
     const id = options.session
     if (!id || d.state.snapshot?.sessions.some((session) => session.id === id)) return
     // Older than the snapshot's window: fetch it like a pasted link would.
@@ -97,4 +100,16 @@ function createContext(
     refresh: () => refresh(d),
   }
   return d
+}
+
+/**
+ * Shows the folder the dashboard starts in before the first snapshot, so the list never flashes every folder. A folder
+ * the server cannot read is dropped; the returned note says why every folder shows.
+ */
+async function startIn(d: DashboardContext, directory: string | undefined) {
+  if (!directory) return
+  const folder = await resolveFolder(d.connection.client, directory).catch(() => undefined)
+  if (d.state.closed) return
+  if (folder) d.state.folder = folder
+  return folder ? undefined : `Showing every folder: ${label(directory, 200)} is not readable on this server.`
 }

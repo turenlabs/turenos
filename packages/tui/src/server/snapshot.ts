@@ -4,15 +4,16 @@ import { identifier, isRecord } from "../response-validation"
 import { ACTIVE_OMITTED } from "../response-validation/session-routes"
 import type { Client, Context } from "./context"
 import { errorText, httpStatus } from "./errors"
+import { inFolder, type Folder } from "../working-folders/folder"
 
 type InventoryErrors = { terminals: string; automations: string }
 
-export async function snapshot(ctx: Context) {
+export async function snapshot(ctx: Context, folder?: Folder) {
   // One deadline per request: the rounds below run in sequence, so a shared one expires on a slow link.
   const request = () => ({ signal: AbortSignal.timeout(10000) })
   const inventoryErrors: InventoryErrors = { terminals: "", automations: "" }
   let folderError: string | undefined
-  const [location, recent, reported, loops] = await Promise.all([
+  const [location, recent, reported, loops, , inFolderPage] = await Promise.all([
     ctx.client.location.get(
       { location: ctx.options.directory ? { directory: ctx.options.directory } : undefined },
       request(),
@@ -23,10 +24,12 @@ export async function snapshot(ctx: Context) {
     ctx.folders.read().catch((error: unknown) => {
       folderError = errorText(error)
     }),
+    folderSessions(ctx.client, folder, request),
   ])
   const omitted = Number(reported[ACTIVE_OMITTED] ?? 0)
   const active = Object.fromEntries(Object.entries(reported).filter(([id]) => id !== ACTIVE_OMITTED))
   const sessions = await recentAndActive(ctx.client, recent, active, request)
+  for (const session of inFolderPage) if (!sessions.has(session.id)) sessions.set(session.id, session)
   const needsInput = omitted > 0 ? [] : await waitingOnInput(ctx.client, Object.keys(active).slice(0, 8), request)
   // Terminals are location-scoped on the server; read the server location and open folders.
   const directories = [...new Set([location.directory, ...(ctx.folders.current() ?? [])])].slice(0, 8)
@@ -115,6 +118,23 @@ async function recentAndActive(
     roots.data.filter((session) => !session.parentID).forEach((session) => sessions.set(session.id, session))
   }
   return sessions
+}
+
+/**
+ * The shown folder's sessions, which the recent page can miss when other folders are busier: by exact folder, and
+ * by project for the project's worktrees. A failed read leaves the recent page; a rejected credential fails.
+ */
+async function folderSessions(client: Client, folder: Folder | undefined, request: () => { signal: AbortSignal }) {
+  if (!folder) return []
+  const query = { archived: false, order: "desc", limit: 100 } as const
+  const pages = await Promise.all([
+    client.sessions.list({ ...query, directory: folder.directory }, request()),
+    ...(folder.project ? [client.sessions.list({ ...query, project: folder.project.id }, request())] : []),
+  ]).catch((error: unknown) => {
+    rethrowUnauthorized(error)
+    return []
+  })
+  return pages.flatMap((page) => page.data).filter((session) => inFolder(folder, session))
 }
 
 /** At most four sessions at a time, so no more than eight requests are in flight; a failed read means no mark. */

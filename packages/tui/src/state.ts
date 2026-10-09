@@ -13,6 +13,7 @@ import { stamp } from "./menus/stamp"
 import type { Connection, Detail, Session, Snapshot } from "./server"
 import type { promptPayload } from "./prompt-files"
 import type { TeamView } from "./team/types"
+import type { Folder } from "./working-folders/folder"
 
 export type Tab = "sessions" | "terminals" | "automations" | "team"
 export type Field = InputRenderable | TextareaRenderable | SelectRenderable
@@ -92,6 +93,8 @@ export type DashboardState = {
   snapshot: Snapshot | undefined
   detail: Detail | undefined
   selected: string
+  /** The folder this dashboard shows; undefined shows every open folder. */
+  folder?: Folder
   workingDirectory?: string
   query: string
   inspection: string

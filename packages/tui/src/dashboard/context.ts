@@ -41,6 +41,8 @@ export type DashboardOptions = {
   blocked?: () => boolean
   /** A session ID to select first instead of the newest root session. */
   session?: string
+  /** The folder to show first; one the server cannot read is dropped, and every folder shows. */
+  folder?: string
   /** Where the bell and title go; the default is the process's terminal, only when it is one. */
   terminal?: { write(text: string): void }
 }

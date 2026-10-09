@@ -2165,16 +2165,19 @@ test("shared working folders update the sidebar and explicit folder controls nev
   await app.refresh()
   await waitForFrame(view, (frame) => !frame.includes("Nested project work") && frame.includes("(closed)"))
   await clickText(view, "Working folders")
-  await waitForFrame(view, (frame) => frame.includes("Directory on the server"))
-  const input = descendants(view.renderer.root).find(
-    (node) => node instanceof InputRenderable && node.focused,
-  ) as InputRenderable
-  input.value = "/srv/new"
+  await waitForFrame(view, (frame) => frame.includes("Open another folder"))
+  const input = () =>
+    descendants(view.renderer.root).find((node) => node instanceof InputRenderable && node.focused) as InputRenderable
+  input().value = "/srv/new"
+  // Enter shows the chosen row, every open folder here, and never opens the typed one.
   view.mockInput.pressEnter()
-  await view.renderOnce()
+  await waitForFrame(view, (frame) => !frame.includes("Open another folder") && frame.includes("Showing every open"))
   expect(options.workingFolders).toEqual(["/srv/empty"])
+  await clickText(view, "Working folders")
+  await waitForFrame(view, (frame) => frame.includes("Open another folder"))
+  input().value = "/srv/new"
   view.mockInput.pressKey("s", { ctrl: true })
-  await waitForFrame(view, (frame) => !frame.includes("Directory on the server") && frame.includes("/srv/new"))
+  await waitForFrame(view, (frame) => !frame.includes("Open another folder") && frame.includes("Folder · new"))
   expect(options.workingFolders).toEqual(["/srv/empty", "/srv/new"])
   view.mockInput.pressKey("n", { ctrl: true })
   await waitForFrame(
@@ -2183,12 +2186,13 @@ test("shared working folders update the sidebar and explicit folder controls nev
   )
   view.mockInput.pressKey("F4")
   await waitForFrame(view, (frame) => !frame.includes("What would you like to do?"))
-  await clickText(view, "Working folders")
-  await waitForFrame(view, (frame) => frame.includes("Directory on the server"))
+  // Close mode acts on the folder on screen, which the cursor starts on, and closing it shows every folder again.
+  await clickText(view, "Folder · new")
+  await waitForFrame(view, (frame) => frame.includes("▶ /srv/new  · showing"))
   view.mockInput.pressKey("r", { ctrl: true })
-  await waitForFrame(view, (frame) => frame.includes("Close folder"))
+  await waitForFrame(view, (frame) => frame.includes("Enter close it"))
   view.mockInput.pressKey("s", { ctrl: true })
-  await waitForFrame(view, (frame) => !frame.includes("Directory on the server"))
+  await waitForFrame(view, (frame) => !frame.includes("Open another folder") && frame.includes("Working folders · 1 open"))
   expect(options.workingFolders).toEqual(["/srv/empty"])
   expect(server.posts).toEqual([])
 })

@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test"
 import { connect } from "../src/server"
-import { folderContains } from "../src/working-folders"
+import { folderContains, folderName, inFolder, onThisComputer, startFolder } from "../src/working-folders"
 
 test("working folders include nested directories but not prefix siblings", () => {
   expect(folderContains("/srv/repo", "/srv/repo/package")).toBe(true)
@@ -13,6 +13,39 @@ test("working folders include nested directories but not prefix siblings", () =>
   expect(folderContains("\\\\wsl$\\Ubuntu\\Repo", "\\\\wsl$\\Ubuntu\\repo\\src")).toBe(false)
   expect(folderContains("\\\\?\\C:\\Repo", "c:/repo/src")).toBe(true)
   expect(folderContains("\\\\?\\UNC\\wsl$\\Ubuntu\\Repo", "\\\\wsl$\\Ubuntu\\repo")).toBe(false)
+})
+
+test("the start folder is the one the client starts in, except the home folder", () => {
+  expect(startFolder("/home/me/repo", "/home/me")).toBe("/home/me/repo")
+  expect(startFolder("/home/me", "/home/me")).toBeUndefined()
+  expect(startFolder("/home/me/", "/home/me")).toBeUndefined()
+  expect(startFolder("C:\\Users\\Me", "c:/users/me")).toBeUndefined()
+  expect(startFolder(undefined, "/home/me")).toBeUndefined()
+})
+
+test("only a server on this computer shares the start folder", () => {
+  expect(onThisComputer({ kind: "persistent", id: "persistent", name: "TurenOS" })).toBe(true)
+  expect(onThisComputer({ kind: "desktop", id: "d", name: "Desktop", record: "/run/attach.json" })).toBe(true)
+  expect(onThisComputer({ kind: "url", id: "cli", name: "x", url: "http://127.0.0.1:4096", saved: false })).toBe(true)
+  expect(onThisComputer({ kind: "env", id: "env", name: "x", url: "http://[::1]:4096" })).toBe(true)
+  expect(onThisComputer({ kind: "url", id: "cli", name: "x", url: "https://turen.example", saved: false })).toBe(false)
+  expect(onThisComputer({ kind: "ssh", id: "s", name: "box", host: "box", saved: true, desktop: false })).toBe(false)
+})
+
+test("a folder holds the sessions under it, and at a project root that project's worktrees", () => {
+  const session = (directory: string, projectID = "prj") => ({ projectID, location: { directory } })
+  const root = { directory: "/srv/repo", project: { id: "prj", directory: "/srv/repo" } }
+  expect(inFolder(root, session("/srv/repo/packages/tui"))).toBe(true)
+  expect(inFolder(root, session("/data/worktree/prj/fix"))).toBe(true)
+  expect(inFolder(root, session("/data/worktree/other/fix", "other"))).toBe(false)
+  // Below the root, a folder is its own subtree: the project's other folders and worktrees are not in it.
+  const sub = { directory: "/srv/repo/packages", project: root.project }
+  expect(inFolder(sub, session("/srv/repo/packages/tui"))).toBe(true)
+  expect(inFolder(sub, session("/data/worktree/prj/fix"))).toBe(false)
+  expect(inFolder({ directory: "/srv/notes" }, session("/srv/notes-old", "global"))).toBe(false)
+  expect(folderName("/srv/repo/")).toBe("repo")
+  expect(folderName("C:\\Repo")).toBe("Repo")
+  expect(folderName("/")).toBe("/")
 })
 
 const scope = "desktop/store/working-folders"

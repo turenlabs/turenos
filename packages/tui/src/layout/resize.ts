@@ -2,7 +2,7 @@ import type { CliRenderer, Renderable } from "@opentui/core"
 import { color, layout } from "../theme"
 import type { DashboardState } from "../state"
 import { canType, footerShortcuts, requestPanel, statusline } from "../chrome"
-import { folderContains } from "../working-folders"
+import { emptyWorkingFolders } from "../working-folders"
 import { sizeFloating } from "../dialogs/size"
 import type { LayoutParts } from "./parts"
 
@@ -73,12 +73,7 @@ function resizeSidebar(renderer: CliRenderer, state: DashboardState, parts: Layo
     (!(state.sidebarHidden ?? narrow) && !state.modal?.inline && !(narrow && state.modal?.docked))
   parts.sidebarHeading.visible = !narrow
   parts.folders.visible = !narrow
-  parts.emptyFolders.visible =
-    !narrow &&
-    state.tab === "sessions" &&
-    (state.snapshot?.workingFolders ?? []).some(
-      (directory) => !state.snapshot?.sessions.some((session) => folderContains(directory, session.location.directory)),
-    )
+  parts.emptyFolders.visible = !narrow && state.tab === "sessions" && emptyWorkingFolders(state).length > 0
   parts.sidebar.paddingTop = 0
   parts.sidebar.paddingBottom = 0
   parts.sidebar.width = narrow

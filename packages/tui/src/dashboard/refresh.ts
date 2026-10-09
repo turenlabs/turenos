@@ -18,7 +18,7 @@ async function update(d: DashboardContext) {
   const state = d.state
   if (d.run.timer) clearTimeout(d.run.timer)
   try {
-    const snapshot = await d.connection.snapshot()
+    const snapshot = await d.connection.snapshot(state.folder)
     if (state.closed) return
     keepKnownSessions(d, snapshot)
     state.snapshot = snapshot

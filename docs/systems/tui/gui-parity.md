@@ -35,6 +35,7 @@ The TurenOS terminal client and TurenOS Desktop are two clients of the same serv
 | ----------------------------------------------------------------------------- | -------------------------------------------- |
 | Session list, search, archived sessions                                       | Sidebar, `Ctrl+K` (Recent, All, Archived)    |
 | Open project folders                                                          | Working folders (shared server membership)   |
+| Select a project to show its sessions                                         | Working folders `Enter`/tap; start folder    |
 | Automations: create, edit, pause, run now, runs, delete                       | Automations tab `3`                          |
 | Team: rooms, log, posting, tasks, room, teammate, duty and factory management | Team tab `4`: `a` `E` `d` `M` `F`            |
 | Intel: advisories, KEV, news, feeds                                           | `I`                                          |

@@ -3,18 +3,18 @@ import type { AttachTarget } from "../attach"
 import { identifier, object } from "../response-validation"
 import { label } from "../state"
 import { color } from "../theme"
+import { defaultDirectory } from "../working-folders"
 import { attach } from "./attach"
 import { selected, target, where, type Context } from "./context"
 
 export function create(ctx: Context) {
   const dialog = ctx.dialogs.open("New terminal", false, 20)
   if (!dialog) return
-  const session = ctx.state.snapshot?.sessions.find((item) => item.id === ctx.state.selected)
   const title = ctx.dialogs.input(dialog, "Title (optional; blank names it after the folder)")
   const folder = ctx.dialogs.input(
     dialog,
     "Folder on the server",
-    session?.location.directory ?? ctx.state.snapshot?.location.directory ?? "",
+    defaultDirectory(ctx.state),
   )
   dialog.form.add(
     new TextRenderable(ctx.renderer, { content: "Runs your default shell. Ctrl+] detaches.", fg: color.muted }),

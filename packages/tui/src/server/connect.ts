@@ -2,7 +2,7 @@ import { Forge } from "@turenlabs/client"
 import { createApi } from "../api"
 import { liveEvents } from "../live-events"
 import { createProviders } from "../providers"
-import { createWorkingFolders } from "../working-folders"
+import { createWorkingFolders } from "@turenlabs/client/working-folders"
 import type { ConnectionOptions, Context, Session } from "./context"
 import { launch } from "./launch"
 import { agents, checkShell, commands, findFiles, resolveCommand, runs, shell } from "./queries"
@@ -17,6 +17,7 @@ import {
 import { snapshot } from "./snapshot"
 import { basicAuthHeaders, createTransport, validateConnection } from "./transport"
 import { worktree } from "./worktree"
+import type { Folder } from "../working-folders/folder"
 
 export function connect(options: ConnectionOptions) {
   const { url, username } = validateConnection(options)
@@ -37,7 +38,7 @@ export function connect(options: ConnectionOptions) {
     api,
     missingFiles,
     events: (signal: AbortSignal) => liveEvents(url, headers, AbortSignal.any([controller.signal, signal])),
-    snapshot: () => snapshot(ctx),
+    snapshot: (folder?: Folder) => snapshot(ctx, folder),
     searchSessions: (input: SessionSearch, signal?: AbortSignal) => searchSessions(ctx, input, signal),
     updateSession: (session: Session, change: SessionChange) => updateSession(ctx, session, change),
     deleteSession: (session: Session) => deleteSession(ctx, session),

@@ -2,22 +2,38 @@ import type { CliRenderer } from "@opentui/core"
 import { connect } from "../server"
 import { serverLabel, type Endpoint, type Servers, type Target } from "../servers"
 import { createServerPicker } from "../server-picker"
+import { onThisComputer } from "../working-folders"
 import { mountDashboard, type Dashboard } from "./mount"
 
-/** The connected dashboard, and the directory and session the next connection starts in (only the first server gets them). */
+/**
+ * The connected dashboard, and the directory and session the next connection starts in (only the first server gets
+ * them). `startFolder` is the folder the client was started in, shown on every server on this computer.
+ */
 type App = {
   current: { dashboard: Dashboard; endpoint: Endpoint } | undefined
   directory: string | undefined
   session: string | undefined
+  startFolder: string | undefined
 }
 
 /** The server picker plus one dashboard for the connected server, swapped as the user switches. */
 export function mountApp(
   renderer: CliRenderer,
   servers: Servers,
-  options: { initial?: Target; directory?: string; session?: string; onQuit: (drafts: number) => void },
+  options: {
+    initial?: Target
+    directory?: string
+    session?: string
+    startFolder?: string
+    onQuit: (drafts: number) => void
+  },
 ) {
-  const app: App = { current: undefined, directory: options.directory, session: options.session }
+  const app: App = {
+    current: undefined,
+    directory: options.directory,
+    session: options.session,
+    startFolder: options.startFolder,
+  }
   const picker = createServerPicker(renderer, servers, {
     current: () => app.current && { target: app.current.endpoint.target, connected: app.current.dashboard.connected() },
     drafts: () => app.current?.dashboard.drafts() ?? 0,
@@ -77,6 +93,7 @@ async function connectDashboard(
       servers: (back) => host.picker.open(undefined, "muted", back),
       blocked: host.picker.visible,
       session: host.app.session,
+      folder: host.app.directory ?? (onThisComputer(target) ? host.app.startFolder : undefined),
     })
   } catch (error) {
     connection.close()

@@ -5,10 +5,13 @@ import { closedLine, settleTerminalInput } from "./terminal-exit"
 import { createServers } from "./servers"
 import { CliError } from "./tui-auth"
 import { mountApp } from "./dashboard/app"
+import { startFolder } from "./working-folders"
+import { homedir } from "node:os"
 
 /**
  * Without a URL the client opens the local TurenOS (desktop app, then this host's own servers),
- * and `s` switches servers at any time. `directory` applies only to the first server.
+ * and `s` switches servers at any time. `directory` applies only to the first server; without it, a server on this
+ * computer shows the folder the client was started in, unless that is the home folder.
  */
 export async function runTui(
   options: Omit<ConnectionOptions, "url"> & { url?: string; server?: string; session?: string },
@@ -39,6 +42,7 @@ export async function runTui(
         initial,
         directory: options.directory,
         session: options.session,
+        startFolder: startFolder(currentFolder(), homedir()),
         onQuit: (drafts) => {
           discarded = drafts
           void settleTerminalInput(renderer).then(
@@ -54,6 +58,15 @@ export async function runTui(
   }
   // Reached only after a normal quit; a failure above throws and reports itself.
   process.stdout.write(closedLine(discarded))
+}
+
+/** The folder the client was started in; undefined when it was deleted after the shell entered it. */
+function currentFolder() {
+  try {
+    return process.cwd()
+  } catch {
+    return undefined
+  }
 }
 
 export { mountApp } from "./dashboard/app"

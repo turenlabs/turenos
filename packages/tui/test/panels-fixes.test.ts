@@ -95,7 +95,7 @@ test("a working folder the server cannot read is refused when it is added", asyn
     "GET /api/fs/list": () => new Response("{}", { status: 500 }),
   })
   await app.palette("folders")
-  await app.screen("Directory on the server")
+  await app.screen("Open another folder")
   await app.confirm("/missing")
   await app.screen("Folder not found on the server")
   expect(app.server.requests.some((item) => item.method === "PUT")).toBe(false)

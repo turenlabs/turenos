@@ -62,7 +62,7 @@ The CLI (`packages/tui/src/cli.ts`) accepts `bun run tui -- [options] [url]`:
 | ----------------------- | ------------------------------------------------------------------------------------------ |
 | `url`                   | Server origin, with no path prefix, embedded credentials, query, or fragment.              |
 | `--server <name>`       | Open a saved server by name.                                                               |
-| `--dir <directory>`     | Absolute directory **on the server**, not a local checkout to upload.                      |
+| `--dir <directory>`     | Directory **on the server** (not a local checkout) that the sidebar shows.                 |
 | `--username <username>` | Server HTTP Basic authentication username.                                                 |
 | `--discover-auth`       | Explicitly opt in to local server-credential discovery.                                    |
 | `--session <id>`        | Open this session (`ses_…`, as `turen-tui sessions` prints them) first; first server only. |
@@ -405,7 +405,15 @@ The sidebar's **Find a session** action opens the same centered finder as `Ctrl+
 
 ## Shared working folders
 
-Click **Working folders** in the desktop sidebar, or select it through `Ctrl+P`, to manage the working-folder list shared with the GUI on this server. Choose or type an absolute server directory; Ctrl+S opens it. Ctrl+R switches to close mode, and Ctrl+S confirms that close. Enter alone does neither. Opening a folder sets the default directory for a new launch when there is no existing launch draft. Closing only changes folder visibility, not session data or execution. The sidebar's **Working folders** row reads `· N open`, `· all shown` when the server stores no list, or `· cannot sync`; with no folder open the dialog says `No folders are open yet, so the sidebar shows every session folder.`
+The dashboard shows one folder or every open folder. Shown folders work like the desktop's project selection: they stay in this client.
+
+- **Folder at startup.** On a server on this computer (the desktop app, quick-connect, persistent, headless, or a URL on `127.0.0.1`, `[::1]` or `localhost`), the dashboard shows the folder the client was started in, unless that is your home folder. `--dir` names the folder instead, on any server. A folder the server cannot read is dropped, and the status line reads `Showing every folder: <folder> is not readable on this server.`
+- **What a shown folder changes.** The sidebar lists only its sessions, plus, when it is a project's root, that project's worktree sessions, which the server keeps elsewhere. The snapshot reads them by folder and by project, so a busy server's 100 recent sessions do not hide them. The session on screen stays listed outside the folder, marked `(other folder)`. New sessions, terminals and automations start in the folder, unless a session in it is selected, in which case they start in that session's folder. The sidebar row reads `Folder · <name>`.
+- **Without a shown folder.** The sidebar lists the open working folders' sessions. Its row reads `Working folders · N open`, `· all shown` when the server stores no list, or `· cannot sync`.
+
+Click that row, select **Working folders** through `Ctrl+P`, or type `/folders` to open the pane. It lists **All open folders** (**All folders** when the server stores no list), the shown folder when it is not open, and the open folders. The shown row is marked `· showing`, and the cursor starts on it. `Up` and `Down` choose. `Enter` or a tap shows the chosen folder. Showing a folder whose sessions do not include the one on screen opens the folder's newest main session, as the desktop does.
+
+Type an absolute server directory in **Open another folder** and press `Ctrl+S` to add it to the shared list and show it. `Ctrl+R` switches to close mode, where `Enter` closes the chosen folder and `Ctrl+S` closes the typed one, or the chosen one when nothing is typed. Closing the shown folder shows every folder again. Opening or showing a folder sets the default directory for a new launch when there is no existing launch draft. Closing only changes folder visibility, not session data or execution. With no folder open, the pane says `No folders are open yet, so All folders lists every session folder.`
 
 Both clients use the server's revision-checked shared storage. Both clients poll shared membership every two seconds while that server is active. The initial GUI list seeds missing shared state. Selection and expansion remain local, and GUI workspace grouping preserves external worktree paths. Folders without recent sessions remain discoverable. A currently viewed session stays accessible with a `(closed)` group label if its folder closes elsewhere. Ctrl+K can still find sessions outside open folders.
 

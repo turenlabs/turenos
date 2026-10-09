@@ -6,6 +6,7 @@ import { adoptSubmission, saveDraft } from "./draft"
 import { buildForm } from "./form"
 import { submitLaunch } from "./submit"
 import { color } from "../theme"
+import { defaultDirectory } from "../working-folders"
 
 /** Opens the New session dialog over the kept draft, or over a fresh one for the working directory. */
 export function openLaunch(deps: LaunchDeps, store: LaunchStore, reopen: () => void) {
@@ -52,11 +53,7 @@ function clearErrorOnEdit(form: LaunchForm, hint: string, height: number) {
 
 function startDraft(deps: LaunchDeps, store: LaunchStore): LaunchDraft {
   const { state, connection } = deps
-  const snapshot = state.snapshot!
-  const directoryName =
-    state.workingDirectory ??
-    snapshot.sessions.find((session) => session.id === state.selected)?.location.directory ??
-    snapshot.location.directory
+  const directoryName = defaultDirectory(state)
   const defaults = store.defaults?.directory === directoryName ? store.defaults : undefined
   store.draft ??= {
     directory: directoryName,

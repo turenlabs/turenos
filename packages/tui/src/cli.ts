@@ -14,10 +14,13 @@ Open the terminal dashboard for TurenOS. Without a URL it connects to TurenOS on
 this computer: the running desktop app, then this host's quick-connect or
 persistent server, then (Linux, with FORGE_SERVER_PASSWORD set) a headless
 server on 127.0.0.1:4096 that you own. Press s in the dashboard to switch servers.
+On a server on this computer, the dashboard shows the folder you start it in,
+unless that is your home folder. Working folders (/folders) chooses another.
 
 Options:
   --server <name>    Open a saved server (see the s server picker)
-  --dir <path>       Absolute project directory on the server (POSIX or Windows)
+  --dir <path>       Absolute project directory on the server (POSIX or Windows);
+                     the sidebar shows its sessions and new work starts there
   --session <id>     Open this session (ses_…) first, as printed by turen-tui sessions
   --username <name>  Basic auth username
   --discover-auth   Trust the local listener and discover turenos.service auth

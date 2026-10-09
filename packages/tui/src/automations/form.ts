@@ -4,6 +4,7 @@ import { refused } from "../server"
 import { display } from "../messages"
 import { label } from "../state"
 import { color } from "../theme"
+import { defaultDirectory } from "../working-folders"
 import { scheduleText } from "../chrome"
 import { markFocus } from "./focus"
 import { parseSchedule, scheduleInput, scheduleProblem } from "./schedule"
@@ -22,7 +23,6 @@ export function form(ctx: AutomationsContext, loop?: Loop, back?: () => void, pr
   if (!dialog) return
   dialog.back = back
   if (preset) dialog.afterSubmit = back
-  const session = state.snapshot?.sessions.find((item) => item.id === state.selected)
   // Input fields write their text to the terminal as it is, so server text is stripped of control sequences first.
   const name = dialogs.input(dialog, "Name", display(loop?.name ?? "", 512))
   const prompt = dialogs.input(dialog, "Prompt the agent runs each time", display(loop?.prompt ?? "", 4096))
@@ -36,7 +36,7 @@ export function form(ctx: AutomationsContext, loop?: Loop, back?: () => void, pr
     : dialogs.input(
         dialog,
         "Folder on the server",
-        preset?.directory ?? session?.location.directory ?? state.snapshot?.location.directory ?? "",
+        preset?.directory ?? defaultDirectory(state),
       )
   // Values line up under their captions: the focus arrow and the field's `[ ` take the same two columns.
   const fields = [name, prompt, schedule, folder].filter((field) => field !== undefined)
