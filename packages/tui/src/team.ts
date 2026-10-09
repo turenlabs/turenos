@@ -25,13 +25,18 @@ export function createTeam(
   openSession: (id: string, inspect?: boolean, session?: Session) => void,
   hooks: Pick<TeamContext, "repaint" | "pickModel" | "openAutomation"> & { atTop: () => boolean },
 ) {
+  // The task session the user last opened from a room, which the action row then offers a way back from.
+  let opened = ""
   const ctx: TeamContext = {
     renderer,
     state,
     connection,
     dialogs,
     say,
-    openSession,
+    openSession: (id, inspect, session) => {
+      opened = id
+      openSession(id, inspect, session)
+    },
     repaint: hooks.repaint,
     pickModel: hooks.pickModel,
     openAutomation: hooks.openAutomation,
@@ -62,6 +67,7 @@ export function createTeam(
     /** The `@handle` list of the open post editor. */
     key: (event: KeyEvent) => poster.key(event),
     unsent: () => unsent(poster),
+    openedSession: () => opened,
     selected: () => {
       const view = viewOf(state)
       return view.room?.id === state.selected ? view.room : undefined

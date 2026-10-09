@@ -1,6 +1,9 @@
 import { BoxRenderable, TextRenderable, type CliRenderer } from "@opentui/core"
 import { color } from "../theme"
 
+/** Entries only some tabs use, found by id so the dashboard can click them: `4 Team` back from a task session, and the room's two keys. */
+const EXTRA = { "action-team": "4 Team", "action-room": "d Room", "action-new-room": "a New room" }
+
 /** Builds the composer prompt and the secondary action row under the transcript. */
 export function createActions(renderer: CliRenderer, main: BoxRenderable) {
   const actions = new BoxRenderable(renderer, {
@@ -56,5 +59,18 @@ function createSecondaryActions(renderer: CliRenderer, actions: BoxRenderable) {
   secondaryActions.add(harness)
   const meter = new TextRenderable(renderer, { content: "", visible: false, fg: color.muted, flexShrink: 0 })
   secondaryActions.add(meter)
+  for (const [id, content] of Object.entries(EXTRA)) {
+    secondaryActions.add(new TextRenderable(renderer, { id, content, visible: false, fg: color.muted, flexShrink: 0 }))
+  }
   return { stop, history, information, changes, files, tasks, queued, harness, meter }
+}
+
+/** The nodes of `EXTRA` in a built action box. */
+export function extraActions(actions: BoxRenderable) {
+  const node = (id: keyof typeof EXTRA) => {
+    const found = actions.findDescendantById(id)
+    if (!(found instanceof TextRenderable)) throw new Error(`Missing action entry ${id}`)
+    return found
+  }
+  return { team: node("action-team"), room: node("action-room"), newRoom: node("action-new-room") }
 }

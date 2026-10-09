@@ -35,6 +35,7 @@ test("an unconfigured room says so and offers settings", async () => {
   const frame = await screen("Not configured. s opens settings.")
   expect(frame).toContain("No runs yet.")
   expect(frame).toContain("s settings")
+  expect(frame).toContain("A factory runs one outcome:")
 })
 
 test("the summary names the outcome, criteria, coordinator, teammates, directory and revision", async () => {
@@ -278,6 +279,7 @@ test("t adds a trigger through the automation form with the room and directory s
     location: { directory: "/srv/main" },
   })
   expect(w.sent("POST", "/api/loop")[0]!.body.teammateID).toBeUndefined()
+  await screen('Trigger "Nightly factory" added: runs the factory every 1h.')
 })
 
 test("an archived room's factory is read-only", async () => {

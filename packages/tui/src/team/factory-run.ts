@@ -1,4 +1,4 @@
-import { TextRenderable } from "@opentui/core"
+import { InputRenderable, TextRenderable } from "@opentui/core"
 import { form } from "../automations/form"
 import { refused } from "../server"
 import { label } from "../state"
@@ -78,7 +78,24 @@ export function stopRun(ctx: TeamContext, run: FactoryRun, back: () => void) {
 
 /** `t`: the duty form, with the factory's room and directory set; the server makes the coordinator the duty's owner. */
 export function addTrigger(ctx: TeamContext, room: Room, back: () => void) {
-  form(ctx, undefined, back, {
+  // The form announces "Automation created." when it saves; at that moment it is still the open dialog, so its
+  // name and schedule fields say what was made.
+  const say = (message: string, error?: boolean) => {
+    const [name, , schedule] = ctx.state.modal?.fields ?? []
+    if (
+      message !== "Automation created." ||
+      !(name instanceof InputRenderable) ||
+      !(schedule instanceof InputRenderable)
+    )
+      return ctx.say(message, error)
+    const when = schedule.value.trim().toLowerCase()
+    // The panel reopens over the status line, so it shows the note itself.
+    panelNote(
+      ctx,
+      `Trigger "${label(name.value.trim(), 60)}" added: runs the factory ${when.startsWith("every") ? when : `on cron ${when}`}.`,
+    )
+  }
+  form({ ...ctx, say }, undefined, back, {
     title: `Factory › # ${label(room.name, 40)} › Trigger`,
     factoryRoomID: room.id,
     directory: room.factory?.config.directory,

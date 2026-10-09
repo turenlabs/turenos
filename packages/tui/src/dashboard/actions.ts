@@ -4,6 +4,7 @@ import { promptBoxText, statusline } from "../chrome"
 import { contextUsage, meterText } from "../context-meter"
 import { todoProgress } from "../session-actions"
 import { waiting } from "../queue"
+import { extraActions } from "../layout/actions"
 import { fitActionRow } from "../layout/fit"
 import { quitPrompt, renderActivity, resize } from "./status"
 import type { Detail } from "../server"
@@ -84,7 +85,10 @@ export function renderActionRow(d: DashboardContext, pending?: Detail) {
   // While typing, letters go into the reply, so the row keeps only its status, without the keys.
   const typing = !!state.modal?.composer
   // A room nobody answers in leads with the way to add the first teammate.
-  const empty = room && state.team?.room?.id === state.selected && !state.team.room.archived && !state.team.teammates.length
+  const empty =
+    room && state.team?.room?.id === state.selected && !state.team.room.archived && !state.team.teammates.length
+  const extra = extraActions(ui.actions)
+  const returning = state.tab === "sessions" && !!state.selected && d.c.team.openedSession() === state.selected
   const key = (letter: string) => (typing ? "" : `${letter} `)
   const row = [
     { node: ui.stop, show: running && !typing, text: "x Stop", rank: 100 },
@@ -104,14 +108,18 @@ export function renderActionRow(d: DashboardContext, pending?: Detail) {
     },
     {
       node: ui.tasks,
-      show: hasTasks || room,
+      show: (hasTasks || room) && !(room && typing),
       text: `${key("t")}Tasks${todos ? ` · ${todos}` : ""}`,
       short: `${key("t")}Tasks`,
       rank: 60,
     },
     { node: ui.queued, show: queued > 0, text: `${key("u")}${queued} queued`, short: `${key("u")}${queued}`, rank: 90 },
     { node: ui.harness, show: (live || room) && !typing, text: room ? "F Factory" : "H Harness", rank: 10 },
-    meterEntry(ui, room, typing, meter, usage && meterText(usage, limit, true)),
+    { node: ui.meter, show: !room && !!meter, text: meter, short: usage && meterText(usage, limit, true), rank: 80 },
+    // A task session opened from a room offers the way back to it.
+    { node: extra.team, show: returning, text: `${key("4")}Team`, rank: 15 },
+    { node: extra.room, show: room && !typing, text: "d Room", rank: 5 },
+    { node: extra.newRoom, show: room && !typing, text: "a New room", rank: 6 },
   ]
   const width = actionWidth(d)
   fitActionRow(row, width)
@@ -122,8 +130,10 @@ export function renderActionRow(d: DashboardContext, pending?: Detail) {
     const last = row.findLast((entry) => entry.node.visible && entry.node !== ui.meter)
     if (last) last.node.content = `${last.node.plainText} …`
   }
-  ui.actions.visible = typing || (!state.modal && ui.composer.visible)
-  ui.actions.height = typing ? 1 : 2
+  // The room has no status to keep while its post editor is open, so the whole row gives way to it. A layout
+  // pass can show the box again (it follows the composer), so it also has no height then.
+  ui.actions.visible = (typing && !room) || (!state.modal && ui.composer.visible)
+  ui.actions.height = typing ? (room ? 0 : 1) : 2
   ui.actions.marginTop = typing ? 0 : 1
 }
 
@@ -161,16 +171,5 @@ function changesEntry(ui: Ui, live: boolean, room: boolean, typing: boolean, emp
     text: room ? (empty ? "M Add teammate" : "M Members") : "d Changes",
     short: empty ? "M Add" : undefined,
     rank: empty ? 95 : 30,
-  }
-}
-
-/** The context meter has no use in Team, so its place holds the two room keys, the first entries to go. */
-function meterEntry(ui: Ui, room: boolean, typing: boolean, meter: string, short: string | undefined) {
-  return {
-    node: ui.meter,
-    show: room ? !typing : !!meter,
-    text: room ? "a New room · d Room" : meter,
-    short: room ? "a New room" : short,
-    rank: room ? 5 : 80,
   }
 }

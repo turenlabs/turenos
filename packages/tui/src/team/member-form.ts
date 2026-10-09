@@ -20,7 +20,8 @@ export type MemberDraft = {
   model: string
 }
 
-const HINT = "Tab or Enter next field (Mission: Enter newline) · Ctrl+S or Enter on the last field saves · F3 agent · Ctrl+L model · Esc"
+const HINT =
+  "Tab or Enter next field (Mission: Enter newline) · Ctrl+S or Enter on the last field saves · F3 agent · Ctrl+L model · Esc"
 
 /** The add form (no `mate`) or the edit form for a teammate; `back` returns to the list or menu that opened it. */
 export function memberForm(

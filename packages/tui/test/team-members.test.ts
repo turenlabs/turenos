@@ -40,7 +40,7 @@ async function members(w: World) {
   const app = await open(w.routes, 120, 44)
   await app.screen("Done")
   app.view.mockInput.pressKey("M", { shift: true })
-  await app.screen("2 in this room")
+  await app.screen("2 teammates in this room")
   return app
 }
 
@@ -49,7 +49,7 @@ test("M lists one row per teammate with status, active tasks and duties", async 
   w.state.duties = [{ loopID: "loop_1", teammateID: "tm_moss" }]
   const { screen } = await members(w)
   const frame = await screen("@moss")
-  expect(frame).toContain("@moss  Morgan · Engineer · active · 1 active tasks · 1 duties")
+  expect(frame).toContain("@moss  Morgan · Engineer · active · 1 active task · 1 duty")
   expect(frame).toContain("@rae  Rachel · Engineer · paused · 0 active tasks · 0 duties")
   expect(frame).toContain("Enter menu · a add")
 })
@@ -223,7 +223,7 @@ test("Pause sends the status, and a paused teammate offers Resume", async () => 
   view.mockInput.pressEnter()
   await until(() => w.sent("PATCH", "/api/team/teammate/tm_moss").length === 1)
   expect(w.sent("PATCH", "/api/team/teammate/tm_moss")[0]!.body).toEqual({ status: "paused" })
-  await screen("Paused. Running work continues.")
+  await screen("Paused @moss. Running work continues.")
 })
 
 test("Stop work needs the typed word and posts to the teammate's stop route", async () => {
@@ -242,6 +242,7 @@ test("Stop work needs the typed word and posts to the teammate's stop route", as
   await view.mockInput.typeText("stop")
   view.mockInput.pressKey("s", { ctrl: true })
   await until(() => w.sent("POST", "/api/team/teammate/tm_moss/stop").length === 1)
+  await screen("Stopped @moss's work.")
 })
 
 test("Open latest task session opens the newest task's session", async () => {

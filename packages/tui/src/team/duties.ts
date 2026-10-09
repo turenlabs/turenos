@@ -6,6 +6,7 @@ import { openPicker, type Choice } from "../picker"
 import { label } from "../state"
 import { scheduleText } from "../chrome"
 import type { TeamOperations } from "./actions"
+import { plural } from "./format"
 import { online, reloaded } from "./selection"
 import { viewOf, type Teammate, type TeamContext, type TeamView } from "./types"
 
@@ -23,7 +24,7 @@ function loops(ctx: TeamContext): readonly Loop[] {
  * A teammate's duties, each shown by its automation's name and status. The rows are those of the last draw:
  * Enter, `r` run now and the pickers act on them, never on a later poll's list.
  */
-export function openDuties(ctx: TeamContext, ops: TeamOperations, mate: Teammate, back: () => void) {
+export function openDuties(ctx: TeamContext, ops: TeamOperations, mate: Teammate, back: () => void, note?: string) {
   const writable = !viewOf(ctx.state).room?.archived
   const picker = openPicker(ctx.renderer, ctx.dialogs, {
     title: `@${label(mate.handle, 32)} › Duties`,
@@ -36,9 +37,14 @@ export function openDuties(ctx: TeamContext, ops: TeamOperations, mate: Teammate
     duty,
     loop: loops(ctx).find((loop) => loop.id === duty.loopID),
   }))
-  picker.text.content = rows.length
-    ? `${rows.length} duties.`
-    : "No duties yet. a assigns an automation; n creates one."
+  picker.text.content = [
+    note,
+    rows.length
+      ? `${plural(rows.length, "duty", "duties")}.`
+      : "No duties yet. a assigns an automation; n creates one.",
+  ]
+    .filter(Boolean)
+    .join("\n")
   picker.fit()
   picker.set(
     rows.map(
@@ -52,7 +58,7 @@ export function openDuties(ctx: TeamContext, ops: TeamOperations, mate: Teammate
     ),
   )
   const select = picker.dialog.key
-  const again = () => openDuties(ctx, ops, mate, back)
+  const again = (saved?: string) => openDuties(ctx, ops, mate, back, saved)
   const owned = rows.map((row) => row.duty.loopID)
   const keys: Record<string, () => void> = {
     r: () => runDuty(ctx, rows[picker.list.getSelectedIndex()]?.loop, again),
@@ -77,29 +83,43 @@ function runDuty(ctx: TeamContext, loop: Loop | undefined, back: () => void) {
   if (!loop) return ctx.say("Select a duty whose automation is listed.", true)
   if (!online(ctx, "running the duty")) return
   ctx.dialogs.close(false)
-  runNow(ctx, loop, back)
+  runNow(
+    { ...ctx, say: (message, error) => ctx.say(error ? message : `Duty "${label(loop.name, 60)}": ${message}`, error) },
+    loop,
+    back,
+  )
 }
 
 /** Existing automations that are not a duty yet. */
-function assign(ctx: TeamContext, ops: TeamOperations, mate: Teammate, owned: string[], again: () => void) {
+function assign(
+  ctx: TeamContext,
+  ops: TeamOperations,
+  mate: Teammate,
+  owned: string[],
+  again: (saved?: string) => void,
+) {
   const taken = new Set([...owned, ...viewOf(ctx.state).duties.map((duty) => duty.loopID)])
   const free = loops(ctx).filter((loop) => !taken.has(loop.id))
   ctx.dialogs.close(false)
   openPicker(ctx.renderer, ctx.dialogs, {
     title: `@${label(mate.handle, 32)} › Assign duty`,
     text: free.length ? "Choose an automation to make a duty." : "Every listed automation is already a duty.",
-    choices: free.map((loop) => ({
-      name: label(loop.name, 100),
-      description: `${loop.status} · ${scheduleText(loop.schedule, loop.eventTrigger)}`,
-      run: () =>
-        act(
-          ctx,
-          `@${label(mate.handle, 32)} › Assign duty`,
-          "Duty assigned.",
-          () => ctx.connection.client.team.dutyAttach({ teammateID: mate.id, loopID: loop.id }),
-          () => reloaded(ctx, ops, again),
-        ),
-    })),
+    choices: free.map((loop) => {
+      const done = `Assigned "${label(loop.name, 60)}" to @${label(mate.handle, 32)}.`
+      return {
+        name: label(loop.name, 100),
+        description: `${loop.status} · ${scheduleText(loop.schedule, loop.eventTrigger)}`,
+        run: () =>
+          act(
+            ctx,
+            `@${label(mate.handle, 32)} › Assign duty`,
+            done,
+            () => ctx.connection.client.team.dutyAttach({ teammateID: mate.id, loopID: loop.id }),
+            // A dialog covers the status line, so the reopened list carries the confirmation itself.
+            () => reloaded(ctx, ops, () => again(done)),
+          ),
+      }
+    }),
     back: again,
   })
 }

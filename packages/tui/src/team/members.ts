@@ -5,6 +5,7 @@ import { label } from "../state"
 import type { TeamAction, TeamOperations } from "./actions"
 import { confirm } from "./confirm"
 import { dutiesOf, openDuties } from "./duties"
+import { plural } from "./format"
 import { memberForm } from "./member-form"
 import { act } from "../automations/manage"
 import { loadedRoom, online, reloaded } from "./selection"
@@ -38,7 +39,7 @@ export function openMembers(ctx: TeamContext, ops: TeamOperations) {
   const fill = () => {
     const view = viewOf(ctx.state)
     picker.text.content = view.teammates.length
-      ? `${view.teammates.length} in this room${room.archived ? " · archived: read-only" : ""}.`
+      ? `${plural(view.teammates.length, "teammate")} in this room${room.archived ? " · archived: read-only" : ""}.`
       : "No teammates yet. a adds one."
     picker.fit()
     picker.set(
@@ -67,10 +68,27 @@ export function openMembers(ctx: TeamContext, ops: TeamOperations) {
   }
 }
 
+/**
+ * The row names the teammate, then what fits of role, status, active tasks and duties. The dialog is at most 70
+ * columns wide; when the row is longer the least useful fields go first (role, duties, tasks), never half of one.
+ */
 function row(ctx: TeamContext, mate: Teammate) {
   const view = viewOf(ctx.state)
   const active = view.tasks.filter((task) => task.teammateID === mate.id && LIVE.includes(task.status)).length
-  return `@${label(mate.handle, 32)}  ${label(mate.name, 40)} · ${label(mate.role, 40)} · ${mate.status} · ${active} active tasks · ${dutiesOf(view, mate).length} duties`
+  const fields = [
+    { drop: 0, text: label(mate.role, 40) },
+    { drop: 3, text: mate.status },
+    { drop: 2, text: plural(active, "active task") },
+    { drop: 1, text: plural(dutiesOf(view, mate).length, "duty", "duties") },
+  ]
+  const chars = Math.min(70, Math.floor(ctx.renderer.width * 0.85)) - 8
+  const head = `@${label(mate.handle, 32)}  ${label(mate.name, 40)}`
+  const line = (shown: typeof fields) => [head, ...shown.map((field) => field.text).filter(Boolean)].join(" · ")
+  return line(
+    fields
+      .toSorted((a, b) => a.drop - b.drop)
+      .reduce((shown, field) => (line(shown).length > chars ? shown.filter((item) => item !== field) : shown), fields),
+  )
 }
 
 /** Reloads the room, then shows the teammates again. */
@@ -119,8 +137,8 @@ function pause(ctx: TeamContext, ops: TeamOperations, mate: Teammate) {
     ctx,
     `@${label(mate.handle, 32)}`,
     status === "paused"
-      ? "Paused. Running work continues."
-      : "Resumed. Paused duties stay paused until you resume them.",
+      ? `Paused @${label(mate.handle, 32)}. Running work continues.`
+      : `Resumed @${label(mate.handle, 32)}. Paused duties stay paused until you resume them.`,
     () => ctx.connection.client.team.teammateEdit({ teammateID: mate.id, status }),
     () => void ops.sync(),
   )
@@ -138,7 +156,7 @@ function stop(ctx: TeamContext, ops: TeamOperations, mate: Teammate) {
     run: async () => {
       if (!ctx.state.connected) throw new Error("Reconnect before stopping work.")
       await ctx.connection.client.team.teammateStop({ teammateID: mate.id })
-      ctx.say("Stopped the teammate's work.")
+      ctx.say(`Stopped @${label(mate.handle, 32)}'s work.`)
     },
   })
 }

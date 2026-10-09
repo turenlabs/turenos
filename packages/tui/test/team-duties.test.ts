@@ -14,7 +14,7 @@ async function duties(w: World) {
   const app = await open(w.routes, 120, 44)
   await app.screen("Done")
   app.view.mockInput.pressKey("M", { shift: true })
-  await app.screen("2 in this room")
+  await app.screen("2 teammates in this room")
   app.view.mockInput.pressEnter()
   await app.screen("Open latest task session")
   app.view.mockInput.pressArrow("down")
@@ -40,7 +40,7 @@ test("Enter shows the duty's automation in the Automations tab, selected", async
   const { view, screen } = await open(w.routes, 120, 44)
   await screen("Done")
   view.mockInput.pressKey("M", { shift: true })
-  await screen("2 in this room")
+  await screen("2 teammates in this room")
   view.mockInput.pressEnter()
   await screen("Open latest task session")
   for (let i = 0; i < 3; i++) view.mockInput.pressArrow("down")
@@ -60,7 +60,7 @@ test("r runs the duty's automation now", async () => {
   await screen("Nightly check")
   view.mockInput.pressKey("r")
   await until(() => w.sent("POST", "/api/loop/loop_1/run").length === 1)
-  await screen("Started a run.")
+  await screen('Duty "Nightly check": Started a run.')
 })
 
 test("r after a lost answer checks the run history and does not start the duty twice", async () => {
@@ -97,7 +97,7 @@ test("a assigns an automation that is not a duty yet", async () => {
   view.mockInput.pressEnter()
   await until(() => w.sent("POST", "/api/team/teammate/tm_moss/duty").length === 1)
   expect(w.sent("POST", "/api/team/teammate/tm_moss/duty")[0]!.body).toEqual({ loopID: "loop_2" })
-  await screen("Weekly audit")
+  await screen('Assigned "Weekly audit" to @moss.')
 })
 
 test("n creates a duty from the automation form with the teammate preset", async () => {
