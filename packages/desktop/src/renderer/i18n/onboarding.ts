@@ -3,7 +3,8 @@ export const onboarding = {
   "desktop.onboarding.step.provider": "Model",
   "desktop.onboarding.step.workspace": "Project",
   "desktop.onboarding.rail.label": "A local workspace for triage, review, and remediation.",
-  "desktop.onboarding.local": "Runs locally. Your projects and credentials stay under your control.",
+  "desktop.onboarding.local":
+    "Runs on this machine and keeps credentials here. Prompts and the files agents read go to the model you connect.",
   "desktop.onboarding.docs": "Read the TurenOS docs",
   "desktop.onboarding.welcome.kicker": "TurenOS / Local-first workbench",
   "desktop.onboarding.welcome.title": "Set up for your next security investigation.",
@@ -24,7 +25,7 @@ export const onboarding = {
   "desktop.onboarding.workspace.kicker": "Step 2 / Open a project",
   "desktop.onboarding.workspace.title": "Open the project you need to investigate.",
   "desktop.onboarding.workspace.body":
-    "Pick a repository, sample, or case folder. TurenOS opens a draft session there without changing files until you ask it to.",
+    "Pick a repository, sample, or case folder. TurenOS opens a draft session there. Once you send a prompt, agents can edit files and run commands without asking, so work on a copy of anything you don't trust.",
   "desktop.onboarding.workspace.picker": "Choose your first TurenOS workspace",
   "desktop.onboarding.session.title": "Start with a focused question",
   "desktop.onboarding.session.body":
