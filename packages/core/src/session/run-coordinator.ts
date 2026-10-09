@@ -44,6 +44,8 @@ type Entry<E> = {
 
 export const make = <Key, E>(options: {
   readonly drain: (key: Key, force: boolean, control: ExecutionControl<Key>) => Effect.Effect<void, E>
+  /** One terminal ownership boundary, after all successful coalesced drains. */
+  readonly onSettled?: (key: Key, exit: Exit.Exit<void, E>) => Effect.Effect<void>
   readonly wakeAdvisory?: (key: Key) => Effect.Effect<void>
   readonly retry?: (key: Key) => Effect.Effect<void>
 }): Effect.Effect<Coordinator<Key, E>, never, Scope.Scope> =>
@@ -63,7 +65,7 @@ export const make = <Key, E>(options: {
       const owner = fork(
         (successor ? Effect.yieldNow : Deferred.await(ready).pipe(Effect.andThen(Effect.yieldNow))).pipe(
           Effect.andThen(Effect.suspend(() => options.drain(key, force, executionControl()))),
-          Effect.onExit((exit) => Effect.sync(() => settle(key, entry, exit))),
+          Effect.onExit((exit) => Effect.suspend(() => settle(key, entry, exit))),
           Effect.exit,
           Effect.asVoid,
         ),
@@ -78,7 +80,7 @@ export const make = <Key, E>(options: {
         const force = entry.pendingForce
         entry.pendingForce = false
         start(key, entry, force, true)
-        return
+        return Effect.void
       }
 
       const successor = entry.pendingWake ? makeEntry() : undefined
@@ -91,7 +93,13 @@ export const make = <Key, E>(options: {
         active.set(key, successor)
         start(key, successor, successor.pendingForce, true)
       }
-      Deferred.doneUnsafe(entry.done, exit)
+      if (successor !== undefined) {
+        return Effect.sync(() => Deferred.doneUnsafe(entry.done, exit))
+      }
+      return (options.onSettled?.(key, exit) ?? Effect.void).pipe(
+        Effect.catchCause((cause) => Effect.logError("Session settlement observer failed", cause)),
+        Effect.ensuring(Effect.sync(() => Deferred.doneUnsafe(entry.done, exit))),
+      )
     }
 
     const claimWith = (key: Key, force: boolean): Effect.Effect<Effect.Effect<void, E>> =>
