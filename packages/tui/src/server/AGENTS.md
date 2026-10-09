@@ -9,7 +9,7 @@
 
 ## Conventions
 
-- Send requests only through those paths; never add a bare `fetch` elsewhere. Each path:
+- Requests to a connected server go only through those paths; `src/servers/` verifies a server with its own bounded requests before one exists. Each path:
   - refuses redirects (`redirect: "error"`), so credentials never follow one;
   - bounds what it reads (`readBounded`, `src/response-validation/body.ts`);
   - spreads `dial(socketPath)` from `proxy.ts`, so a server on a Unix socket works.

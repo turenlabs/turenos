@@ -10,7 +10,7 @@
 - A socket record never matches a typed URL (`trustedRecord`), so its `http://localhost` placeholder lends no credentials.
 - An endpoint with `socketPath` is reached through that socket by every request path (see `src/server/AGENTS.md`).
 - An SSH endpoint is the tunnel's loopback end and carries no socket path: the forward ends at the host's socket or port.
-- `ssh` runs from argument lists with `sshEnvironment` (no `FORGE_*` variables), `BatchMode=yes` and `ControlMaster=no`. Secrets go on stdin, never in argv or a child's environment.
+- `ssh` runs from argument lists with `sshEnvironment` (no `FORGE_*` variables), `BatchMode=yes` and `ControlMaster=no`. Secrets never go in argv; over SSH they go on stdin. The only child given a password in its environment is the local headless server (`headless.ts`), which is how forge reads it.
 - Discovery order (`localEntries`) is the desktop app, then the persistent server, then the quick-connect server, then port 4096. `--server persistent` names the persistent server on Linux (`servers.find`), after any saved server of that name.
 
 ## Tests

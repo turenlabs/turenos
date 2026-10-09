@@ -1,6 +1,6 @@
 # TUI tests
 
-Run from `packages/tui`: `bun run test` for the suite, or `bun test test/<file>.test.ts --timeout 30000` for one file.
+These tests run against fakes: `turen()` servers and stand-in `forge` and `ssh` scripts. Scenarios against a real server are in `e2e/`.
 
 ## Helpers
 
