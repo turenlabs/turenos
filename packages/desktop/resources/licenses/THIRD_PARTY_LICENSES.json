@@ -1275,15 +1275,6 @@
     },
     {
       "name": "@modelcontextprotocol/sdk",
-      "version": "1.29.0",
-      "license": "MIT",
-      "source": "git+https://github.com/modelcontextprotocol/typescript-sdk.git",
-      "licenseFiles": [
-        "LICENSE"
-      ]
-    },
-    {
-      "name": "@modelcontextprotocol/sdk",
       "version": "1.31.0",
       "license": "MIT",
       "source": "git+https://github.com/modelcontextprotocol/typescript-sdk.git",
