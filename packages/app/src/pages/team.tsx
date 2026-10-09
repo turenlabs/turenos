@@ -203,6 +203,8 @@ export default function TeamPage() {
       if (current === generation) {
         setState("loading", false)
         setState("olderLoading", false)
+        // Open rooms at the latest message, once the history controls above the log are laid out.
+        if (mode === "initial" && state.value) scroll.resume()
       }
     }
   }
