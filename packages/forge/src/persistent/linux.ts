@@ -486,8 +486,8 @@ const importSkipped = new Set(["log", "repos"])
 /**
  * Copies a staged data or config tree into the claimed data root and hands it to the service
  * account. The staging directory, its parents, and every entry in it must be owned by root with no
- * group or other write on any directory, like an imported database, so the account whose data this is
- * cannot swap entries under root while they are read. Symlinks are
+ * group or other write on directories or regular files. This prevents other accounts from replacing
+ * entries or changing file contents while root reads them. Symlinks are
  * copied as links, never followed; database files come from `VACUUM INTO`, not from here.
  */
 export async function importTree(
@@ -529,14 +529,14 @@ export async function importTree(
   }
 }
 
-/** Refuses entries the service account could have swapped: not root-owned, or a directory others can write. */
+/** Refuses entries not owned by root, and directories or regular files other accounts can write. */
 async function checkStaged(path: string, uid: number, children?: string[]) {
   // lstat, so a symlink is judged as the link itself and never followed.
   const info = await lstat(path)
   if (info.uid !== uid) throw new Error(`${path} is not owned by root; import a copy made by root`)
-  if (!info.isDirectory()) return
-  if ((info.mode & 0o022) !== 0)
+  if ((info.isDirectory() || info.isFile()) && (info.mode & 0o022) !== 0)
     throw new Error(`${path} is writable by another account; remove group and other write access or import a copy`)
+  if (!info.isDirectory()) return
   for (const entry of children ?? (await readdir(path))) await checkStaged(join(path, entry), uid)
 }
 

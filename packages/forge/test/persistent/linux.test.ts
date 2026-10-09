@@ -431,6 +431,22 @@ describe("PersistentLinux", () => {
   )
 
   test.skipIf(process.platform === "win32")(
+    "a staged tree with a regular file another account can write is refused before anything is copied",
+    async () => {
+      await using tmp = await tmpdir()
+      const source = await staged(tmp.path)
+      const file = path.join(source, "data", "snapshot", "HEAD")
+      const destination = path.join(tmp.path, "forge")
+      for (const mode of [0o664, 0o646]) {
+        await chmod(file, mode)
+        expect((await lstat(file)).mode & 0o777).toBe(mode)
+        await expect(importTreeAs(source, destination)).rejects.toThrow(`${file} is writable by another account`)
+        expect(await lstat(destination).catch(() => undefined)).toBeUndefined()
+      }
+    },
+  )
+
+  test.skipIf(process.platform === "win32")(
     "a staged tree owned by root and closed to others is copied as links",
     async () => {
       await using tmp = await tmpdir()
