@@ -1,5 +1,5 @@
 import { BoxRenderable, ScrollBoxRenderable, TextAttributes, TextRenderable, type CliRenderer } from "@opentui/core"
-import { anvilMark } from "../logo"
+import { welcomeMark } from "../logo"
 import { createMarkdown } from "../markdown"
 import { color } from "../theme"
 import { ContextLine } from "./context-line"
@@ -72,9 +72,11 @@ export function createTranscript(renderer: CliRenderer, main: BoxRenderable) {
     contentOptions: { flexDirection: "column", paddingRight: 2 },
   })
   main.add(detail)
-  // The anvil above the welcome text; other content hides it.
-  const mark = new TextRenderable(renderer, { ...anvilMark(), visible: false, flexShrink: 0, wrapMode: "none" })
+  // The anvil above the welcome text, as large as the pane leaves room for; other content hides it.
+  const mark = new TextRenderable(renderer, { ...welcomeMark(0), visible: false, flexShrink: 0, wrapMode: "none" })
   detail.add(mark)
+  /** The welcome text's rows while the welcome shows, which the anvil leaves room for. */
+  let welcomeRows: number | undefined
   const content = new TextRenderable(renderer, {
     content: "Connecting to the server…",
     fg: color.text,
@@ -86,8 +88,18 @@ export function createTranscript(renderer: CliRenderer, main: BoxRenderable) {
   markdown.visible = false
   detail.add(markdown)
 
+  function fitMark() {
+    if (welcomeRows === undefined) return void (mark.visible = false)
+    // Before its first layout the pane is the terminal less the header, title and footer rows.
+    const rows = (detail.viewport.height > 1 ? detail.viewport.height : renderer.height - 6) - welcomeRows
+    mark.visible = rows >= 4
+    if (mark.visible) Object.assign(mark, welcomeMark(rows))
+  }
+  detail.viewport.on("resize", fitMark)
+
   function renderContent(value: string, rich = false, welcome = false) {
-    mark.visible = welcome
+    welcomeRows = welcome ? value.split("\n").length : undefined
+    fitMark()
     content.visible = !rich
     markdown.visible = rich
     if (rich) markdown.content = value

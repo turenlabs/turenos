@@ -847,7 +847,7 @@ for (const [width, height] of [
       .flatMap((line) => line.spans)
     // The desktop mark's colors: the cream and blue wordmark beside the anvil's cream face and blue water.
     const colors = spans.flatMap((span) => [span.fg, span.bg])
-    for (const hex of ["#fbf8f0", "#c8daf7", "#f3efe3", "#4a7fd4"]) expect(colors).toContainEqual(RGBA.fromHex(hex))
+    for (const hex of ["#fbf8f0", "#c8daf7", "#f7f6f3", "#2665ac"]) expect(colors).toContainEqual(RGBA.fromHex(hex))
     expect(frame).toContain("Directory: /srv/project")
     expect(frame).toContain("Tab: folder")
     expect(frame).toContain("[ Send (Enter) ]")
