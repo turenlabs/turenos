@@ -32,8 +32,9 @@ jobs:
       # oxlint exits non-zero on errors only. The tree carries thousands of
       # warnings today, so promoting them here would make every PR red on
       # arrival and teach people to ignore the check.
+      # CI runs the type-aware rules that the local `lint` script skips.
       - name: Run lint
-        run: bun run lint
+        run: bun run lint:types
 
       - name: Verify packaged WASM checksums
         run: bun run verify:wasm

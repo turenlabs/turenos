@@ -40,12 +40,17 @@ on `git status && bun test` remembers `git status` and `bun test` separately, an
 command again. Saved rules are still evaluated with `Wildcard.match`, so a saved command that contains `*` or `?` also
 matches other commands that fit that pattern — but only the one simple command, never what follows a separator. In
 Session V2, saved grants can only upgrade an `ask` to an `allow`; a configured `deny` is checked first and is never
-overridable.
+overridable. Configured rules from a
+repository's own config documents can only add `ask` and `deny` rules; their `allow` rules are dropped
+(`packages/core/src/config/plugin/agent.ts`), so a cloned project cannot remove the user's global prompts or denies.
 
 The legacy runtime works differently (`packages/forge/src/permission/index.ts`). It keeps "always" approvals in memory
 for the project instance and takes the last rule that matches across the configured rules and those approvals, so a
 later approval can override a configured `deny`. The legacy shell tool's "always" saves `<command prefix> *` rather
-than the exact command (`packages/forge/src/tool/shell.ts`), so one approval covers every command with that prefix.
+than the exact command (`packages/forge/src/tool/shell.ts`), so one approval covers every command with that prefix. Its
+config loader (`packages/forge/src/config/config.ts`) also still deep-merges a repository's `permission` and `tools`
+over the global file, so under the legacy runtime a repository document can replace a global rule for the same key;
+`FORGE_DISABLE_PROJECT_CONFIG` skips those files there.
 
 A delegated subagent task can narrow this further. When the task is given exact command grants, every `bash` call must
 match one of them exactly and run with `workdir` `.`; otherwise it is denied before the rules are evaluated. A task

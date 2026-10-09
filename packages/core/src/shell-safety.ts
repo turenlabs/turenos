@@ -905,7 +905,12 @@ export const commands = Effect.fn("ShellSafety.commands")(function* (input: {
   const found = tree.rootNode
     .descendantsOfType("command")
     .filter((node): node is Node => node !== null)
-    .map((node) => (node.parent?.type === "redirected_statement" ? node.parent.text : node.text).trim())
+    .map((node) => {
+      let redirected = node
+      while (redirected.parent && redirected.parent.type !== "redirected_statement")
+        redirected = redirected.parent
+      return (redirected.parent?.type === "redirected_statement" ? redirected.parent.text : node.text).trim()
+    })
     .filter((text) => text.length > 0)
   const unique = [...new Set(tree.rootNode.hasError || found.length === 0 ? [...found, input.command] : found)]
   tree.delete()

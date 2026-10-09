@@ -50,6 +50,9 @@ export interface FsImpl {
   // [dev, ino] for loop detection under --follow.
   devino?(p: string): [bigint, bigint] | null
   // Optional overrides for adversarial cases; defaults derive from readFile.
+  // Fills view[off, limit) with as many whole records as fit and returns the bytes
+  // written *relative to off* — the wasm side asks again for the remainder. A first
+  // record that cannot fit returns its negated size instead.
   readFiles?(paths: string[], view: Uint8Array, off: number, limit: number): bigint
   open?(p: string): number
   read?(fd: number, view: Uint8Array, off: number, cap: number): number
@@ -207,7 +210,11 @@ export async function instantiate(impl: FsImpl = nodeFs, opts?: InstantiateOpts)
   })
   const closeImpl = impl.close ?? ((fd: number) => void fds.delete(fd))
 
+  // `off` is an absolute pointer into wasm memory, so progress is measured from it.
+  // Returning the absolute end pointer instead made every candidate list larger than
+  // one batch trap or silently drop the files after the first batch.
   const defaultReadFiles = (paths: string[], view: Uint8Array, off: number, limit: number): bigint => {
+    const start = off
     const dv = new DataView(view.buffer)
     for (const p of paths) {
       if (off + 9 > limit) break
@@ -219,7 +226,7 @@ export async function instantiate(impl: FsImpl = nodeFs, opts?: InstantiateOpts)
         continue
       }
       if (off + 9 + data.length > limit) {
-        if (off === 0) return BigInt(-(9 + data.length))
+        if (off === start) return BigInt(-(9 + data.length))
         break
       }
       view[off] = 0
@@ -227,7 +234,7 @@ export async function instantiate(impl: FsImpl = nodeFs, opts?: InstantiateOpts)
       view.set(data, off + 9)
       off += 9 + data.length
     }
-    return BigInt(off)
+    return BigInt(off - start)
   }
 
   const statKindImpl = impl.statKind ?? impl.kind

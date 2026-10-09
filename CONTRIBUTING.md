@@ -31,7 +31,8 @@ bun --cwd packages/desktop build
 Common checks:
 
 ```bash
-bun run lint
+bun run lint                           # without type information; fast
+bun run lint:types                     # adds the type-aware rules CI runs; needs about 9 GB
 bun run license:check                  # third-party license inventory; `bun run license:generate` rewrites it
 bun --cwd packages/desktop typecheck
 bun --cwd packages/app typecheck
@@ -43,6 +44,10 @@ backend from `packages/forge` with `bun run --conditions=browser ./src/index.ts 
 `bun dev -- --port 4444` in `packages/app` and open `http://localhost:4444`. After changing English UI strings,
 `bun run translate:app all` (or one locale, such as `de`) translates the changed strings into the other locales with a
 model; add `--check` or `--dry-run` to see the drift without writing.
+
+Provider logos in `packages/ui` come from models.dev and are committed. To refresh them, run
+`bun run generate:provider-icons` in `packages/ui`; it downloads the logos and regenerates the spritesheet. Review the
+result before committing it.
 
 If Electron exits silently when you run `bun dev` from a terminal inside another Electron app (VS Code, Cursor, the
 TurenOS Desktop), the shell inherited `ELECTRON_RUN_AS_NODE=1`, which makes every `electron` binary run as plain

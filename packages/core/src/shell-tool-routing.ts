@@ -12,6 +12,32 @@ export type Recommendation = {
   readonly reason: "workspace-search" | "workspace-mutation"
 }
 
+type SearchTool = Extract<Tool, "grep" | "glob">
+
+const UNAVAILABLE_SESSIONS = 1_000
+
+/**
+ * Sessions whose dedicated search tool last failed on a backend error (not a bad
+ * pattern or a denied permission). While a session is listed, bash runs that kind of
+ * search itself instead of redirecting the agent to a tool that cannot answer, which
+ * left an agent with no working search at all. The tool's next success lifts it.
+ * Insertion order bounds the map: the least recently reported session goes first.
+ */
+const unavailable = new Map<string, ReadonlySet<SearchTool>>()
+
+export const reportSearch = (sessionID: string, tool: SearchTool, available: boolean) => {
+  const tools = new Set(unavailable.get(sessionID))
+  unavailable.delete(sessionID)
+  if (available) tools.delete(tool)
+  else tools.add(tool)
+  if (tools.size === 0) return
+  unavailable.set(sessionID, tools)
+  if (unavailable.size > UNAVAILABLE_SESSIONS) unavailable.delete(unavailable.keys().next().value!)
+}
+
+export const searchUnavailable = (sessionID: string, tool: Tool) =>
+  (tool === "grep" || tool === "glob") && (unavailable.get(sessionID)?.has(tool) ?? false)
+
 export const blockedMessage = (recommendation: Recommendation) => {
   if (recommendation.tool === "grep")
     return "This command is a workspace content search. Use the grep tool instead so search stays bounded, permissioned, and structured. The shell command was not executed."

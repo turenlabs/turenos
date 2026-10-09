@@ -1,13 +1,13 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "version": "1.0.42",
+  "version": "1.0.43",
   "name": "@turenlabs/effect-drizzle-sqlite",
   "type": "module",
   "license": "MIT",
   "private": true,
   "scripts": {
     "test": "bun test --timeout 30000 --only-failures",
-    "typecheck": "tsgo --noEmit"
+    "typecheck": "tsgo --noEmit --checkers 1"
   },
   "exports": {
     ".": "./src/index.ts",

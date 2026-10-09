@@ -1,5 +1,9 @@
 # Automations
 
+Automations now appear as duties under persistent teammates in **Team**.
+See [Team](../team.md) for room messaging and teammate operation.
+This page remains the workflow and trigger reference.
+
 Automations are durable workflows that run Agent and Skill steps on a schedule and deliver their results inside TurenOS. They run on the currently selected configured TurenOS server and are independent of the conversation that created them.
 
 For the scheduler, lease model, storage, and HTTP surface behind them, see
@@ -7,7 +11,7 @@ For the scheduler, lease model, storage, and HTTP surface behind them, see
 
 ## Create an Automation
 
-Open **Automations** from the left rail. The builder provides reusable starter blueprints for common workflows, including daily briefings, CI failure triage, and documentation drift.
+Open **Team** from the left rail, select a teammate, and add a duty. The builder provides starter blueprints for daily briefings, CI failure triage, and documentation drift.
 
 The builder is a node canvas: the schedule trigger, each workflow step, and TurenOS delivery appear as connected nodes. Selecting a node opens its configuration in the inspector panel, and the `+` connectors insert a step at that position. Saved Automations have two tabs: **Editor** for the canvas and **Runs** for run history. The sidebar list shows each Automation's most recent run status.
 
@@ -82,9 +86,9 @@ Cron fire times follow the Automation's IANA timezone (for example `America/New_
 
 **File-change triggers** watch the Automation's own directory on its selected server: each of 1 to 20 relative glob patterns (at most 256 characters each, never absolute and never escaping the directory, e.g. `src/**/*.ts`) is matched against files changed under that directory, and files outside it are ignored. The matcher supports `*`, `?`, and `**` path segments. The validator also accepts characters such as `{}`, `[]`, and `!`, but the matcher treats them as literal characters, not brace, class, or negation syntax. Rapid changes coalesce: after the last matching change, the Automation waits out its debounce (`debounceMs`, default 1000 ms, 0 to 60000 ms) before firing once.
 
-**Session-end triggers** fire each time a Session step on the selected server in the Automation's directory ends (`success`) or fails (`failure`), not once when the whole Session finishes. Optional filters narrow which events count: `outcomes` (`success` and/or `failure`), a `sessionID`, and/or an `agent`. Omitted filters match anything, and the scheduler's own Automation runs never fire it. An `agent` filter also passes when the Session has no recorded agent, and a Session whose directory cannot be resolved matches every session-end Automation regardless of directory.
+**Session-end triggers** fire each time a Session step on the selected server in the Automation's directory ends (`success`) or fails (`failure`), not once when the whole Session finishes. Optional filters narrow which events count: `outcomes` (`success` and/or `failure`), a `sessionID`, and/or an `agent`. Omitted filters match anything, and the scheduler's own Automation runs never fire it. An `agent` filter requires a matching recorded agent. The scheduler resolves the source Session once per event; if that lookup fails, the event is logged and dropped rather than dispatched to other directories.
 
-Event Automations have no ticking schedule: they stay active with no next run time until a matching event fires. If an event arrives while an earlier occurrence is still running, it is recorded as `skipped`, exactly like an overlapping interval tick. Events are delivered by the scheduler on the selected server — there is no network trigger source.
+Event Automations have no ticking schedule: they stay active with no next run time until a matching event fires. Events admitted before a configured `startsAt` are rejected without creating a run; they are not queued for later. Resuming an interval or cron Automation, or editing its schedule, preserves its future start boundary. Deliberate manual runs remain available before that boundary. If an event arrives while an earlier occurrence is still running, it is recorded as `skipped`, exactly like an overlapping interval tick. Events are delivered by the scheduler on the selected server — there is no network trigger source.
 
 ## Step data bindings
 
