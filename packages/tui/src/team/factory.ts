@@ -101,11 +101,12 @@ function factoryKey(ctx: TeamContext, ops: TeamOperations, live: Live, key: KeyE
   if (!step) return false
   // Each step closes the panel to open its own dialog, so a refusal is checked first and leaves the panel open.
   const refusal = room.archived ? "Archived rooms are read-only." : step.needs?.()
-  if (refusal) panelNote(ctx, refusal)
-  else {
-    ctx.dialogs.close(false)
-    step.open()
+  if (refusal) {
+    panelNote(ctx, refusal)
+    return true
   }
+  ctx.dialogs.close(false)
+  step.open()
   return true
 }
 

@@ -66,19 +66,15 @@ export async function addCustom(
     (await globalProviderIDs(request, signal)).has(providerID)
   )
     throw new Error("Provider ID already exists. Connect it with a key, or choose a new custom provider ID.")
-  try {
-    await request("/global/config", { method: "PATCH", body: config, secret: true, discard: true, signal })
-  } catch {
+  await request("/global/config", { method: "PATCH", body: config, secret: true, discard: true, signal }).catch(() => {
     throw new Error("Provider configuration could not be confirmed. Refresh providers before retrying.")
-  }
+  })
   if (key === undefined) return
-  try {
-    await connectKey(request, providerID, key, undefined, signal)
-  } catch {
+  await connectKey(request, providerID, key, undefined, signal).catch(() => {
     throw new Error(
       "Provider configuration was saved, but the API key could not be confirmed. Refresh providers and reconnect this provider before retrying.",
     )
-  }
+  })
 }
 
 export async function auth(request: ProviderRequest, selected: string): Promise<Record<string, AuthMethod[]>> {

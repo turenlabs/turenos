@@ -74,9 +74,7 @@ async function admit(ctx: Context, state: LaunchState, given: LaunchInput) {
   // Freeze the fields and the prompt route only once bytes may go out.
   if (!state.draft && !command) state.prompt = promptPayload(input.prompt, input.directory, ctx)
   state.draft = { ...input }
-  try {
-    return await write(ctx, state, input, model, command)
-  } catch (error) {
+  return write(ctx, state, input, model, command).catch((error: unknown) => {
     // A definite 4xx admitted nothing: keep the IDs and the text, release the fields.
     if (refused(error)) {
       state.draft = undefined
@@ -84,7 +82,7 @@ async function admit(ctx: Context, state: LaunchState, given: LaunchInput) {
       state.prompt = undefined
     }
     throw error
-  }
+  })
 }
 
 async function write(

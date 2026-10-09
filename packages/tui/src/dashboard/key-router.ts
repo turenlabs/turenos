@@ -199,10 +199,9 @@ function slashShortcut(d: DashboardContext) {
   d.c.requests.followup()
   const editor = state.modal?.editor
   if (!editor) return
-  if (!editor.plainText) {
-    editor.setText("/")
-    editor.cursorOffset = 1
-  } else d.say("Draft kept unchanged. Type / in an empty editor for commands.")
+  if (editor.plainText) return d.say("Draft kept unchanged. Type / in an empty editor for commands.")
+  editor.setText("/")
+  editor.cursorOffset = 1
 }
 
 /** Enter and Tab between panes, and Page Up / Down for the transcript. */

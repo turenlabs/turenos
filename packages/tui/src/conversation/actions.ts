@@ -25,11 +25,8 @@ export function loadPosition(c: Conversation) {
     history: state.history,
     scroll: saved?.[state.history ? "transcript" : "latest"] ?? Number.MAX_SAFE_INTEGER,
   }
-  if (!state.history && c.live.has(state.selected)) {
-    drawLive(c)
-  } else {
-    ui.detail.scrollTo(0)
-  }
+  if (!state.history && c.live.has(state.selected)) return drawLive(c)
+  ui.detail.scrollTo(0)
 }
 
 export function toggleHistory(c: Conversation) {

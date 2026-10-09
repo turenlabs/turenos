@@ -56,19 +56,21 @@ async function chooseVariant(
     throw new Error("This variant is no longer current or advertised. Close and reload the available choices.")
   if (!attempt.attempted && !unchanged) {
     attempt.attempted = true
-    try {
-      await connection.client.sessions.switchModel({
+    await connection.client.sessions
+      .switchModel({
         sessionID: session.id,
         model: { ...model, ...(variant === undefined ? {} : { variant }) },
       })
-      attempt.acknowledged = true
-    } catch (error) {
-      if (refused(error)) {
-        attempt.attempted = false
-        throw new Error(`Rejected by the server: ${clause(errorText(error))}. Nothing changed; choose again or retry.`)
-      }
-      throw new Error("Variant outcome unknown. Choice frozen; retry checks only. Esc to close and inspect.")
-    }
+      .catch((error: unknown) => {
+        if (refused(error)) {
+          attempt.attempted = false
+          throw new Error(
+            `Rejected by the server: ${clause(errorText(error))}. Nothing changed; choose again or retry.`,
+          )
+        }
+        throw new Error("Variant outcome unknown. Choice frozen; retry checks only. Esc to close and inspect.")
+      })
+    attempt.acknowledged = true
     current = await fresh(ctx, session, model)
   }
   if (current.model?.variant !== variant)

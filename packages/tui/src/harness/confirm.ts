@@ -49,16 +49,16 @@ export function confirm(ctx: HarnessContext, session: Session, action: Action, b
     if (attempted) throw new Error("Outcome unconfirmed. Retry only rechecks; Esc to review the harness.")
     if (!still(action, harness)) throw new Error("The harness changed. Esc to review it again; nothing was sent.")
     attempted = true
-    try {
-      await apply(ctx.connection, session.id, action, harness)
-    } catch (error) {
+    await apply(ctx.connection, session.id, action, harness).catch((error: unknown) => {
       // A definite 4xx changed nothing at that step; an approved proposal resumes with apply only.
       if (refused(error)) {
         attempted = false
-        throw new Error(`Rejected by the server: ${clause(errorText(error))}. Retry resends only what is still pending.`)
+        throw new Error(
+          `Rejected by the server: ${clause(errorText(error))}. Retry resends only what is still pending.`,
+        )
       }
       throw new Error(`Outcome unconfirmed: ${clause(errorText(error))}. Retry rechecks without resending.`)
-    }
+    })
     ctx.say(completed(action))
   }
 }

@@ -1,3 +1,4 @@
+import { parseJSON } from "../api"
 import { display } from "../messages"
 
 type Notice = "swarm_room" | "subagent_settle"
@@ -15,20 +16,16 @@ const text = (value: unknown, limit: number) =>
 function roomLine(body: string) {
   const json = body.match(/<forge-swarm-room-update>\s*([\s\S]*?)\s*<\/forge-swarm-room-update>/)?.[1]
   if (!json) return undefined
-  try {
-    const entry: unknown = JSON.parse(json)
-    if (typeof entry !== "object" || entry === null) return undefined
-    const actor = "actor" in entry && typeof entry.actor === "object" && entry.actor ? entry.actor : {}
-    const kind = "kind" in entry ? text(entry.kind, 40) : ""
-    const type = "type" in actor ? text(actor.type, 40) : ""
-    const name = "name" in actor ? text(actor.name, 80) : ""
-    const who = type === "human" ? "you" : name || type || "a member"
-    const seq = "seq" in entry && typeof entry.seq === "number" ? ` #${entry.seq}` : ""
-    const summary = "text" in entry ? text(entry.text, 200) : ""
-    return `Room: ${who} posted${seq}${kind ? ` ${kind}` : ""}${summary ? `: ${summary}` : ""}`
-  } catch {
-    return undefined
-  }
+  const entry = parseJSON(json)
+  if (typeof entry !== "object" || entry === null) return undefined
+  const actor = "actor" in entry && typeof entry.actor === "object" && entry.actor ? entry.actor : {}
+  const kind = "kind" in entry ? text(entry.kind, 40) : ""
+  const type = "type" in actor ? text(actor.type, 40) : ""
+  const name = "name" in actor ? text(actor.name, 80) : ""
+  const who = type === "human" ? "you" : name || type || "a member"
+  const seq = "seq" in entry && typeof entry.seq === "number" ? ` #${entry.seq}` : ""
+  const summary = "text" in entry ? text(entry.text, 200) : ""
+  return `Room: ${who} posted${seq}${kind ? ` ${kind}` : ""}${summary ? `: ${summary}` : ""}`
 }
 
 // Matches settleText in packages/core/src/session/execution/local.ts.
