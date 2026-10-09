@@ -84,7 +84,7 @@
     "@effect/platform-node": "catalog:",
     "@effect/platform-bun": "catalog:",
     "@ff-labs/fff-bun": "0.9.4",
-    "@modelcontextprotocol/sdk": "1.29.0",
+    "@modelcontextprotocol/sdk": "1.31.0",
     "@octokit/graphql": "9.0.2",
     "@octokit/rest": "catalog:",
     "@openrouter/ai-sdk-provider": "2.9.0",

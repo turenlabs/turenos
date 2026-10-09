@@ -169,7 +169,12 @@ const layer = Layer.effect(
                         onprogress: () => {},
                       })
                       .then((result) =>
-                        McpIntegration.redactMcpResult(entry.server, configuration, result, McpAuth.secrets(stored)),
+                        McpIntegration.redactMcpResult(
+                          entry.server,
+                          configuration,
+                          CallToolResultSchema.parse(result),
+                          McpAuth.secrets(stored),
+                        ),
                       ),
                   catch: (error) =>
                     new ToolFailure({ message: error instanceof Error ? error.message : String(error) }),
