@@ -33,6 +33,16 @@ export function targetFlags(values: Values) {
   ].join("")
 }
 
+/** The line that follows a write: the command that waits for the session to react. */
+export function waitLine(run: Run, sessionID: string) {
+  return `  wait: turen-tui wait ${sessionID}${run.flags}`
+}
+
+/** The line that ends the text of a failed or interrupted session: the command that carries on with it. */
+export function resumeLine(run: Run, sessionID: string) {
+  return `resume: turen-tui send ${sessionID}${run.flags} "<text>" --wait`
+}
+
 /** Prints one JSON document, or the text, and returns the success exit code. */
 export function emit(run: Run, json: unknown, text: string, exit = 0) {
   run.io.stdout(run.values.json ? `${JSON.stringify(json)}\n` : `${text}\n`)

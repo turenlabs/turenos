@@ -3,7 +3,7 @@ import { handleOf } from "../team/format"
 import type { Answer } from "../team/types"
 import { emit, quote, type Run } from "./context"
 import { messageText, newID, writeFailure } from "./delivery"
-import { usage } from "./errors"
+import { AgentError, usage } from "./errors"
 import { takes } from "./options"
 import { idArgument } from "./state"
 import { roomState } from "./team-room"
@@ -23,11 +23,16 @@ export async function post(run: Run) {
     .catch((error: unknown) => {
       // The server stores a message by its ID and answers an exact retry with the stored one, so only a 4xx, or a 409
       // (an archived room, or an ID held for other text), means nothing was posted.
-      throw writeFailure(error, { messageID }, retry, { noun: "message", nothing: "posted", conflict: true })
+      const failure = writeFailure(error, { messageID }, retry, { noun: "message", nothing: "posted", conflict: true })
+      if (!state.room.archived || failure.retry) throw failure
+      throw new AgentError(`${failure.message} Restore it in the dashboard (4, then d).`)
     })
   const tasks = posted.tasks as typeof state.tasks
   const mentioned = mentionedHandles(text)
   const replies = mentioned.length ? undefined : roomCoordinator(state.room, state.teammates)
+  const notes = mentioned.length ? missing(text, state, tasks) : []
+  // The result stays on stdout; what a mention did not do is a note beside it.
+  notes.filter((note) => note.stray).forEach((note) => run.io.stderr(`turen-tui: ${note.text}\n`))
   return emit(
     run,
     {
@@ -41,7 +46,7 @@ export async function post(run: Run) {
       `posted ${posted.message.id}`,
       ...tasks.map((task) => taskText(task, state.teammates, run.flags)),
       ...(mentioned.length
-        ? missing(text, state, tasks)
+        ? notes.filter((note) => !note.stray).map((note) => note.text)
         : [
             replies
               ? `no mention · @${replies.handle} (coordinator) replies`
@@ -51,7 +56,7 @@ export async function post(run: Run) {
   )
 }
 
-/** Mentions that created no task: a handle that is not in the room, or a teammate who is paused. */
+/** Mentions that created no task: a handle that is not in the room (`stray`), or a teammate who is paused. */
 function missing(text: string, state: Answer, tasks: Answer["tasks"]) {
   const known = assignedHandles(text, state.teammates)
   const tasked = tasks.map((task) => handleOf(state.teammates, task.teammateID).slice(1).toLowerCase())
@@ -59,7 +64,7 @@ function missing(text: string, state: Answer, tasks: Answer["tasks"]) {
     .filter((handle) => !tasked.includes(handle))
     .map((handle) =>
       known.includes(handle)
-        ? `@${handle} is paused; no task was created`
-        : `@${handle} is not in this room; no task was created`,
+        ? { stray: false, text: `@${handle} is paused; no task was created` }
+        : { stray: true, text: `@${handle} is not in this room; no task was created` },
     )
 }

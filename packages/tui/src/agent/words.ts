@@ -11,16 +11,22 @@ export const agentCommands = [
   "team",
 ] as const
 
-/** A lowercase word in the command position: not a URL, which has a scheme, a dot, a port or digits. */
+/**
+ * A word in the command position that is not a URL, which has a scheme, a dot, a port or digits: a lowercase word, or a
+ * capitalised spelling of a command (`Sessions`). Any other capitalised word is a host name and opens the dashboard.
+ */
 export function isCommandWord(word: string | undefined): word is string {
-  return word !== undefined && /^[a-z][a-z-]*$/.test(word)
+  if (word === undefined) return false
+  return /^[a-z][a-z-]*$/.test(word) || (/^[A-Za-z]+$/.test(word) && isAgentCommand(word.toLowerCase()))
 }
 
 /** The usage error for a word that is not a command, naming the nearest command when it is a likely typo. */
 export function unknownCommand(word: string | undefined) {
   const named = isCommandWord(word) ? word : undefined
   if (named === undefined) return "Unknown command. Run turen-tui --help for the list."
-  const nearest = agentCommands.map((command) => ({ command, distance: distance(named, command) })).sort(byDistance)[0]
+  const nearest = agentCommands
+    .map((command) => ({ command, distance: distance(named.toLowerCase(), command) }))
+    .sort(byDistance)[0]
   const hint = nearest && nearest.distance <= 2 ? ` Did you mean "${nearest.command}"?` : ""
   return `Unknown command "${named}".${hint} Run turen-tui --help for the list.`
 }
@@ -30,7 +36,7 @@ function byDistance(a: { distance: number }, b: { distance: number }) {
 }
 
 /** Levenshtein edit distance. */
-function distance(a: string, b: string) {
+export function distance(a: string, b: string) {
   const rows = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array<number>(b.length).fill(0)])
   for (let j = 1; j <= b.length; j++) rows[0]![j] = j
   for (let i = 1; i <= a.length; i++)

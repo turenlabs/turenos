@@ -6,6 +6,7 @@ import { activeIDs, endedState, inBatches, pendingFor, stateOf, type State } fro
 
 export type Summary = {
   id: string
+  sessionID: string
   title: string
   directory: string
   parentID: string | null
@@ -41,6 +42,7 @@ export async function sessions(run: Run) {
   const list = page.data.map(
     (session): Summary => ({
       id: session.id,
+      sessionID: session.id,
       title: session.title,
       directory: session.location.directory,
       parentID: session.parentID ?? null,

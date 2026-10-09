@@ -1,9 +1,10 @@
 import type { QuestionsListOutput } from "@turenlabs/client"
-import { clean, emit, type Run } from "./context"
+import { clean, emit, waitLine, type Run } from "./context"
 import { AgentError, usage } from "./errors"
 import { maxMessageLength } from "../requests/context"
 import { takes } from "./options"
-import { idArgument } from "./state"
+import { distance } from "./words"
+import { idArgument, sessionGone } from "./state"
 
 type Question = QuestionsListOutput[number]["questions"][number]
 
@@ -15,21 +16,31 @@ export async function answer(run: Run) {
   if (modes.filter(Boolean).length !== 1)
     throw usage("Give exactly one of --choice <label>, --answers <json> or --reject.")
   const client = run.connection.client
-  const request = (await client.questions.list({ sessionID })).find((item) => item.id === requestID)
+  const request = (await client.questions.list({ sessionID }).catch(sessionGone(sessionID))).find(
+    (item) => item.id === requestID,
+  )
   if (!request)
     throw new AgentError(
       `Question ${requestID} is not pending for session ${sessionID}; it may already be resolved. Check: turen-tui pending ${sessionID}${run.flags}`,
     )
   if (run.values.reject) {
     await client.questions.reject({ sessionID, requestID })
-    return emit(run, { ok: true, session: sessionID, question: requestID, rejected: true }, `rejected ${requestID}`)
+    return emit(
+      run,
+      { ok: true, session: sessionID, sessionID, question: requestID, rejected: true },
+      `rejected ${requestID}\n${waitLine(run, sessionID)}`,
+    )
   }
   const answers =
     run.values.answers !== undefined
       ? fromJSON(run, run.values.answers, request.questions)
       : fromChoices(run, request.questions)
   await client.questions.reply({ sessionID, requestID, answers })
-  return emit(run, { ok: true, session: sessionID, question: requestID, answers }, `answered ${requestID}`)
+  return emit(
+    run,
+    { ok: true, session: sessionID, sessionID, question: requestID, answers },
+    `answered ${requestID}\n${waitLine(run, sessionID)}`,
+  )
 }
 
 function fromChoices(run: Run, questions: readonly Question[]) {
@@ -74,10 +85,24 @@ function checked(run: Run, question: Question, labels: readonly string[], number
       throw usage(
         `${JSON.stringify(clean(label, 80))} is not an option for question ${number}. Valid choices: ${choices}.`,
       )
+    // --custom is the caller saying the label is meant as typed.
+    if (run.values.custom) return label
+    const near = nearOption(question, label)
+    if (near)
+      throw usage(
+        `Did you mean ${JSON.stringify(near)}? Add --custom to send ${JSON.stringify(clean(label, 80))} as typed.`,
+      )
     // Said out loud: a typo in a label would otherwise become a custom answer without anyone noticing.
     run.io.stderr(
       `turen-tui: ${JSON.stringify(clean(label, 80))} is not one of question ${number}'s options (${choices}); sent as a custom answer.\n`,
     )
     return label
   })
+}
+
+/** The option a label differs from by one edit, ignoring case: more likely a typo than a different answer. */
+function nearOption(question: Question, label: string) {
+  return question.options
+    .map((item) => clean(item.label, 200))
+    .find((option) => distance(option.toLowerCase(), label.toLowerCase()) <= 1)
 }

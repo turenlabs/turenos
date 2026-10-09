@@ -28,6 +28,7 @@ export type Values = {
   choice?: string[]
   answers?: string
   reject?: boolean
+  custom?: boolean
   tasks?: boolean
 }
 
@@ -63,7 +64,7 @@ const extra = {
   pending: {},
   approve: { always: flag },
   reject: {},
-  answer: { choice: { type: "string", multiple: true }, answers: text, reject: flag },
+  answer: { choice: { type: "string", multiple: true }, answers: text, reject: flag, custom: flag },
   stop: { tasks: flag },
   team: { all: flag, limit: text, id: text, timeout: text },
 } as const

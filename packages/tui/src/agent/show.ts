@@ -1,6 +1,6 @@
 import { interruptedLine } from "./failure"
 import { transcript } from "../server"
-import { clean, emit, indented, type Run } from "./context"
+import { clean, emit, indented, resumeLine, type Run } from "./context"
 import { usage } from "./errors"
 import { whole } from "./options"
 import { requestsText } from "./requests"
@@ -40,6 +40,7 @@ export async function show(run: Run) {
     run,
     {
       session: sessionID,
+      sessionID,
       title: session.title,
       directory: session.location.directory,
       parentID: session.parentID ?? null,
@@ -54,6 +55,7 @@ export async function show(run: Run) {
       ...(note ? [note] : []),
       body,
       ...(requests ? ["", requests] : []),
+      ...(state === "failed" || state === "interrupted" ? ["", resumeLine(run, sessionID)] : []),
     ].join("\n"),
   )
 }

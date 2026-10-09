@@ -5,7 +5,7 @@ import { whole, takes } from "./options"
 import { requestsText } from "./requests"
 import { idArgument, inBatches, pendingFor } from "./state"
 import { roomState } from "./team-room"
-import { runDetail, runLine, taskText } from "./team-text"
+import { runDetail, runGone, runLine, taskText } from "./team-text"
 import { defaultTimeout, patiently, poll } from "./wait"
 
 /** Blocks until a factory run leaves `running`: exit 0 succeeded, 3 needs input, 5 failed, cancelled or stale, 4 timeout. */
@@ -14,7 +14,7 @@ export async function waitRun(run: Run) {
   const timeout = whole("timeout", run.values.timeout, defaultTimeout, 0, 31_536_000)
   const look = () => run.connection.client.team.factoryRunGet({ runID })
   // Like `wait`, the first lookup is tried again while the server is down; an unknown run fails at once.
-  const first = await patiently(timeout, look)
+  const first = await patiently(timeout, () => look().catch(runGone(run.flags)))
   const settled =
     first.status !== "running"
       ? first

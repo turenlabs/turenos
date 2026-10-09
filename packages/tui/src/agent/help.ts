@@ -52,13 +52,15 @@ Allow a permission request once. --always also saves the rule the request offers
   reject: `Usage: turen-tui reject <session> <permission-id>
 
 Reject a permission request.`,
-  answer: `Usage: turen-tui answer <session> <question-id> (--choice <label>... | --answers <json> | --reject)
+  answer: `Usage: turen-tui answer <session> <question-id> (--choice <label>... | --answers <json> | --reject) [--custom]
 
   --choice <label>   For a request with one question; repeat it to select several options
                      (write --choice=<label> for a label that starts with "-")
   --answers <json>   A JSON array with one array of labels per question, e.g. '[["Red"],["Yes"]]'
   --reject           Dismiss the question
-A label outside the options is accepted only when the question allows custom answers.`,
+  --custom           Send a label as a custom answer without the near-miss check
+A label outside the options is accepted only when the question allows custom answers. A label one
+edit from an option ("Rd" for "Red") is refused as a likely typo; --custom sends it as typed.`,
   stop: `Usage: turen-tui stop <session> [--tasks]
 
 Interrupt the running session and its unfinished subagent tasks through the server.
@@ -73,7 +75,7 @@ subagent tasks. --json with --tasks reports tasks.status as cancelled, without p
 
 Read and write Team rooms. <room> is a room ID (trm_...) or an exact room name in any case; show
 without a room reads the server's default room.
-  rooms    List rooms with their teammate counts (--all includes archived rooms)
+  rooms    List rooms: id, name and topic (--all includes archived rooms, marked archived)
   show     Teammates, the latest N messages (1-100, default 30), active tasks and the factory's latest run
   post     Post a message; a mention creates a task for that teammate, else the coordinator replies.
            Prints each task with the command that waits for its session

@@ -2,6 +2,7 @@ import { expect, test } from "bun:test"
 import { Forge } from "@turenlabs/client"
 import { stop } from "../src/agent/stop"
 import { connect } from "../src/server"
+import { session } from "./support"
 
 function fixture(running: boolean, tasks: boolean, status = 204) {
   const calls: string[] = []
@@ -13,7 +14,9 @@ function fixture(running: boolean, tasks: boolean, status = 204) {
       async (input: RequestInfo | URL, init?: RequestInit) => {
         const path = new URL(input instanceof Request ? input.url : input.toString()).pathname
         calls.push(`${init?.method ?? "GET"} ${path}`)
-        if (path === "/api/session/active") return Response.json({ data: running ? { ses_main: { type: "running" } } : {} })
+        if (path === "/api/session/active")
+          return Response.json({ data: running ? { ses_main: { type: "running" } } : {} })
+        if (path === "/api/session/ses_main") return Response.json({ data: session("main") })
         if (path !== "/api/session/ses_main/interrupt") throw new Error(`Unexpected request: ${path}`)
         return status === 204
           ? new Response(null, { status })
@@ -54,12 +57,14 @@ for (const running of [false, true]) {
       try {
         expect(await stop(f.run)).toBe(0)
         expect(f.calls).toEqual([
+          "GET /api/session/ses_main",
           "GET /api/session/active",
           ...(running || tasks ? ["POST /api/session/ses_main/interrupt"] : []),
         ])
         expect(JSON.parse(f.output.join(""))).toEqual({
           ok: true,
           session: "ses_main",
+          sessionID: "ses_main",
           running,
           ...(tasks ? { tasks: { status: "cancelled" } } : {}),
         })
@@ -75,7 +80,11 @@ test("stop never acknowledges cancellation when the server fails", async () => {
   try {
     await expect(stop(f.run)).rejects.toThrow("Cancellation failed")
     expect(f.output).toEqual([])
-    expect(f.calls).toEqual(["GET /api/session/active", "POST /api/session/ses_main/interrupt"])
+    expect(f.calls).toEqual([
+      "GET /api/session/ses_main",
+      "GET /api/session/active",
+      "POST /api/session/ses_main/interrupt",
+    ])
   } finally {
     f.run.connection.close()
   }

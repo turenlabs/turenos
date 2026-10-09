@@ -1,7 +1,9 @@
 import { display } from "../messages"
+import { errorText, httpStatus } from "../server"
 import { handleOf } from "../team/format"
 import type { Answer, Task } from "../team/types"
 import { indented } from "./context"
+import { AgentError } from "./errors"
 
 /** What the lines need of a factory run, so every route that returns one fits. */
 type Run = { id: string; status: string; phase: string; result?: string; error?: string }
@@ -27,4 +29,14 @@ export function runDetail(run: Run) {
     ...(run.result ? ["  result:", indented(display(run.result, 16_000))] : []),
     ...(run.error ? [`  error: ${display(run.error, 2000).replace(/\s+/g, " ").trim()}`] : []),
   ]
+}
+
+/** A catch handler for the lookup of a run by ID: an unknown run says where the known ones are listed. */
+export function runGone(flags: string) {
+  return (error: unknown): never => {
+    // The server answers an unknown run as a 400 whose kind names it; a 404 means the same.
+    const kind = typeof error === "object" && error && "kind" in error ? error.kind : undefined
+    if (httpStatus(error) !== 404 && kind !== "Team.NotFoundError") throw error
+    throw new AgentError(`${errorText(error).replace(/\.$/, "")}. List runs with: turen-tui team show <room>${flags}`)
+  }
 }

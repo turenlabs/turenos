@@ -1,7 +1,7 @@
-import { emit, type Run } from "./context"
+import { emit, waitLine, type Run } from "./context"
 import { AgentError, usage } from "./errors"
 import { takes } from "./options"
-import { idArgument } from "./state"
+import { idArgument, sessionGone } from "./state"
 
 export async function approve(run: Run) {
   return decide(run, "approve", run.values.always ? "always" : "once")
@@ -16,7 +16,9 @@ async function decide(run: Run, verb: string, reply: "once" | "always" | "reject
   const sessionID = idArgument(names[0], "ses_", "The session")
   const requestID = idArgument(names[1], "", "The permission ID")
   const client = run.connection.client
-  const request = (await client.permissions.list({ sessionID })).find((item) => item.id === requestID)
+  const request = (await client.permissions.list({ sessionID }).catch(sessionGone(sessionID))).find(
+    (item) => item.id === requestID,
+  )
   if (!request)
     throw new AgentError(
       `Permission ${requestID} is not pending for session ${sessionID}; it may already be resolved. Check: turen-tui pending ${sessionID}${run.flags}`,
@@ -27,7 +29,10 @@ async function decide(run: Run, verb: string, reply: "once" | "always" | "reject
   await client.permissions.reply({ sessionID, requestID, reply })
   return emit(
     run,
-    { ok: true, session: sessionID, permission: requestID, reply },
-    reply === "reject" ? `rejected ${requestID}` : `approved ${requestID} (${reply})`,
+    { ok: true, session: sessionID, sessionID, permission: requestID, reply },
+    [
+      `${reply === "reject" ? `rejected ${requestID}` : `approved ${requestID} (${reply})`} · session ${sessionID}`,
+      waitLine(run, sessionID),
+    ].join("\n"),
   )
 }

@@ -1,7 +1,7 @@
 import { ClientError } from "@turenlabs/client"
 import type { Connection } from "../server"
 import { httpStatus, transcript } from "../server"
-import { emit, indented, type Run } from "./context"
+import { emit, indented, resumeLine, type Run } from "./context"
 import { AgentError, usage } from "./errors"
 import { whole } from "./options"
 import { turnFailure } from "./failure"
@@ -46,14 +46,14 @@ export function report(run: Run, sessionID: string, outcome: Outcome, timeout: n
   if (outcome.state === "needs-input")
     return emit(
       run,
-      { session: sessionID, ...id, state: outcome.state, pending: outcome.pending },
+      { session: sessionID, sessionID, ...id, state: outcome.state, pending: outcome.pending },
       `session ${sessionID} · needs-input\n${requestsText(outcome.pending, run.flags)}`,
       3,
     )
   if (outcome.state === "timeout")
     return emit(
       run,
-      { session: sessionID, ...id, state: outcome.state },
+      { session: sessionID, sessionID, ...id, state: outcome.state },
       `session ${sessionID} · timeout (still running after ${timeout}s; run turen-tui wait ${sessionID}${run.flags} to keep waiting)`,
       4,
     )
@@ -65,12 +65,13 @@ export function report(run: Run, sessionID: string, outcome: Outcome, timeout: n
   return emit(
     run,
     sent
-      ? { session: sessionID, ...id, state, ...error, messages: outcome.messages }
-      : { session: sessionID, state, ...error, message: last ?? null },
+      ? { session: sessionID, sessionID, ...id, state, ...error, messages: outcome.messages, message: last ?? null }
+      : { session: sessionID, sessionID, state, ...error, message: last ?? null },
     [
       `session ${sessionID} · ${state}`,
       ...(failure ? [failure.text] : []),
       ...(shown.length ? ["", indented(transcript(shown))] : []),
+      ...(failure ? ["", resumeLine(run, sessionID)] : []),
     ].join("\n"),
     failure ? 5 : 0,
   )
