@@ -19,6 +19,7 @@ import { createTeamScroll } from "./team/scroll"
 import { PixelAvatar, PixelAvatarEditor, generatePixelAvatar } from "./team/pixel-avatar"
 import {
   assignedHandles,
+  roomActivity,
   mergeMessages,
   replyContext,
   ownsTeamResponse,
@@ -1065,6 +1066,25 @@ export default function TeamPage() {
           </div>
         </div>
         <div class="border-t border-v2-border-border-base px-5 py-3 max-sm:px-4">
+          <div
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+            class="mb-2 flex min-h-4 items-center gap-2 text-[11px] leading-4 text-v2-text-text-muted"
+          >
+            <Show when={state.value && roomActivity(state.value.room.id, state.value.tasks, state.value.teammates)}>
+              {(activity) => (
+                <>
+                  <span aria-hidden="true" class="flex shrink-0 gap-1 motion-safe:animate-pulse">
+                    <span class="size-1 rounded-full bg-current" />
+                    <span class="size-1 rounded-full bg-current" />
+                    <span class="size-1 rounded-full bg-current" />
+                  </span>
+                  <span class="min-w-0 truncate">{activity()}</span>
+                </>
+              )}
+            </Show>
+          </div>
           <label for="team-message" class="mb-2 block text-[12px] [font-weight:550]">
             Message #{state.value?.room.name ?? "team"}
           </label>
