@@ -861,20 +861,19 @@ const layer = Layer.effect(
         routeID: model.route.id,
         modelID: model.id,
       })
-      const toolSnapshot = toolsDisabled
-        ? undefined
-        : yield* toolSnapshots.materialize({
-            sessionID: session.id,
-            directory: location.directory,
-            model: modelRef,
-            agent: agent.id,
-            permissions: toolPermissions,
-            parentID: session.parentID,
-            taskOwned: session.parentID !== undefined,
-            control,
-            harnessState,
-            nativeToolSearch,
-          })
+      const toolSnapshotInput = {
+        sessionID: session.id,
+        directory: location.directory,
+        model: modelRef,
+        agent: agent.id,
+        permissions: toolPermissions,
+        parentID: session.parentID,
+        taskOwned: session.parentID !== undefined,
+        control,
+        harnessState,
+        nativeToolSearch,
+      }
+      const toolSnapshot = toolsDisabled ? undefined : yield* toolSnapshots.materialize(toolSnapshotInput)
       yield* startupPhase("tools_ready", { tools: toolSnapshot?.materialization.definitions.length ?? 0 })
       const objectiveChanged =
         knownGoal !== undefined &&
@@ -1369,6 +1368,19 @@ const layer = Layer.effect(
           Effect.forkScoped,
         )
       if (claudeMcpToken && toolMaterialization) {
+        // The CLI keeps calling tools inside this one provider turn, so a tool_load selection has to
+        // reach it now rather than on the next provider turn. Serialized so an older rematerialization
+        // cannot replace a newer one.
+        let claudeMaterialization = toolMaterialization
+        const refreshClaudeTools = Semaphore.makeUnsafe(1).withPermit(
+          Effect.gen(function* () {
+            const next = yield* toolSnapshots.materialize({ ...toolSnapshotInput, advanceTurn: false })
+            claudeMaterialization = next.materialization
+            yield* ClaudeCodeMcp.refresh(claudeMcpToken, next.materialization.definitions)
+          }).pipe(
+            Effect.catch((cause) => Effect.logWarning("Claude Code tool refresh after tool_load failed", { cause })),
+          ),
+        )
         executeClaudeTool = (call) =>
           Effect.uninterruptibleMask((restore) =>
             Effect.gen(function* () {
@@ -1382,7 +1394,7 @@ const layer = Layer.effect(
               const assistantMessageID = yield* publisher.assistantMessageID(call.id)
               toolTurnIDs.add(assistantMessageID)
               pendingToolCalls.set(call.id, { name: call.name, assistantMessageID, startedAt: Date.now() })
-              const settle = toolMaterialization.settle({
+              const settle = claudeMaterialization.settle({
                 sessionID: session.id,
                 agent: agent.id,
                 assistantMessageID,
@@ -1468,6 +1480,8 @@ const layer = Layer.effect(
                 }),
                 settlement.value.outputPaths ?? [],
               )
+              // Before the reply, so the CLI lists the loaded tools before its next model call.
+              if (call.name === ToolBroker.LOAD_TOOL_NAME) yield* refreshClaudeTools
               return yield* protectReply(settlement.value.result)
             }),
           )
