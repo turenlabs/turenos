@@ -6,7 +6,7 @@ import { AppNodeBuilder } from "@turenlabs/core/effect/app-node-builder"
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
 import { Loop } from "@turenlabs/core/loop"
 import { TeamWorkspace } from "@turenlabs/core/team/workspace"
-import { TeamDutyTable, TeamDutyRunTable, TeamTaskTable } from "@turenlabs/core/team/workspace.sql"
+import { TeamDutyTable, TeamDutyRunTable, TeamRoomTable, TeamTaskTable } from "@turenlabs/core/team/workspace.sql"
 import { testEffect } from "./lib/effect"
 
 const it = testEffect(AppNodeBuilder.build(LayerNode.group([Database.node, Loop.node, TeamWorkspace.node])))
@@ -569,6 +569,254 @@ describe("TeamWorkspace", () => {
         yield* team.cancelTask(id)
       }
       expect((yield* team.state()).tasks.some((task) => task.id === activeID && task.status === "running")).toBe(true)
+    }),
+  )
+
+  it.effect("assigns explicit bounded work with stable retries and rejects ancestor cycles", () =>
+    Effect.gen(function* () {
+      const team = yield* TeamWorkspace.Service
+      const sender = yield* team.createTeammate({ name: "Sender", handle: "sender", role: "Worker", mission: "Work" })
+      const target = yield* team.createTeammate({ name: "Target", handle: "target", role: "Worker", mission: "Work" })
+      for (const handle of ["target2", "target3", "target4"])
+        yield* team.createTeammate({ name: handle, handle, role: "Worker", mission: "Work" })
+      const [{ id: parentID }] = (yield* team.postMessage({ id: "msg_collab_parent", text: "@sender begin" })).tasks
+      yield* team.claimTasks({ owner: "sender-owner" })
+      const parent = yield* team.startTask({ id: parentID, owner: "sender-owner" })
+      const request = {
+        sessionID: parent.sessionID,
+        assistantMessageID: "msg_assistant",
+        id: "msg_collab_child",
+        targetHandle: "target",
+        directory: target.directory,
+        text: "Review this bounded item",
+      }
+      const first = yield* team.collaborate(request)
+      expect(yield* team.collaborate(request)).toEqual(first)
+      expect(
+        yield* team
+          .collaborate({ ...request, id: "msg_collab_directory_changed", directory: "/changed" })
+          .pipe(Effect.flip),
+      ).toBeInstanceOf(TeamWorkspace.ConflictError)
+      expect(yield* team.collaborate({ ...request, targetHandle: "sender" }).pipe(Effect.flip)).toBeInstanceOf(
+        TeamWorkspace.ConflictError,
+      )
+      expect(first.message).toMatchObject({ author: sender.name, teammateID: sender.id, sessionID: parent.sessionID })
+      expect(first.tasks).toHaveLength(1)
+      const second = yield* team.collaborate({ ...request, id: "msg_collab_second", targetHandle: "target2" })
+      yield* team.collaborate({ ...request, id: "msg_collab_third", targetHandle: "target3" })
+      expect(
+        yield* team.collaborate({ ...request, id: "msg_collab_fourth", targetHandle: "target4" }).pipe(Effect.flip),
+      ).toBeInstanceOf(TeamWorkspace.ConflictError)
+      const childID = first.tasks[0]!.id
+      expect((yield* team.getTask(childID)).execution).toMatchObject({ parentTaskID: parentID, delegationDepth: 1 })
+      yield* team.claimTasks({ owner: "target-owner" })
+      const child = yield* team.startTask({ id: childID, owner: "target-owner" })
+      expect(
+        yield* team
+          .collaborate({ ...request, id: "msg_cycle", sessionID: child.sessionID, targetHandle: "sender" })
+          .pipe(Effect.flip),
+      ).toBeInstanceOf(TeamWorkspace.ConflictError)
+      expect((yield* team.cancelTask(childID)).status).toBe("cancelled")
+      expect((yield* team.cancelTask(second.tasks[0]!.id)).status).toBe("cancelled")
+      expect((yield* team.state()).messages.filter((message) => message.id === request.id)).toHaveLength(1)
+    }),
+  )
+
+  it.effect("posts teammate messages without dispatch and publishes follow-up output once", () =>
+    Effect.gen(function* () {
+      const team = yield* TeamWorkspace.Service
+      const mate = yield* team.createTeammate({ name: "Poster", handle: "poster", role: "Worker", mission: "Work" })
+      const [{ id }] = (yield* team.postMessage({ id: "msg_poster_task", text: "@poster begin" })).tasks
+      yield* team.claimTasks({ owner: "poster-owner" })
+      const running = yield* team.startTask({ id, owner: "poster-owner" })
+      const post = {
+        sessionID: running.sessionID,
+        assistantMessageID: "msg_assistant_post",
+        id: "msg_teammate_post",
+        text: "A progress update",
+      }
+      const posted = yield* team.postTeammateMessage(post)
+      expect(yield* team.postTeammateMessage(post)).toEqual(posted)
+      const replyTarget = yield* team.postTeammateMessage({
+        ...post,
+        id: "msg_teammate_reply_target",
+        assistantMessageID: "msg_assistant_reply_target",
+        text: "Question",
+      })
+      expect(yield* team.postTeammateMessage({ ...post, replyTo: replyTarget.id }).pipe(Effect.flip)).toBeInstanceOf(
+        TeamWorkspace.ConflictError,
+      )
+      expect(posted).toMatchObject({
+        author: mate.name,
+        teammateID: mate.id,
+        sourceMessageIDs: [post.assistantMessageID],
+      })
+      expect((yield* team.state()).tasks).toHaveLength(1)
+      expect(
+        yield* team.publishSessionOutput({
+          sessionID: running.sessionID,
+          taskID: id,
+          assistantMessageID: "msg_active_followup",
+          text: "Not ready yet",
+        }),
+      ).toBeUndefined()
+      yield* team.finishTask({
+        id,
+        owner: "poster-owner",
+        status: "succeeded",
+        text: "Finished",
+        sourceMessageIDs: ["msg_finished_assistant"],
+      })
+      expect(
+        yield* team.publishSessionOutput({
+          sessionID: running.sessionID,
+          taskID: "missing",
+          assistantMessageID: "msg_followup",
+          text: "A later answer",
+        }),
+      ).toBeUndefined()
+      const taskResult = yield* team.publishSessionOutput({
+        sessionID: running.sessionID,
+        taskID: id,
+        assistantMessageID: "msg_finished_assistant",
+        text: "Finished",
+      })
+      expect(taskResult?.id).toBe(`msg_team_${id}`)
+      const output = {
+        sessionID: running.sessionID,
+        taskID: id,
+        assistantMessageID: post.assistantMessageID,
+        text: "A later answer",
+      }
+      const published = yield* team.publishSessionOutput(output)
+      expect(yield* team.publishSessionOutput(output)).toEqual(published)
+      expect(published).toMatchObject({
+        author: mate.name,
+        teammateID: mate.id,
+        sourceMessageIDs: [output.assistantMessageID],
+      })
+      expect(
+        (yield* team.state()).messages.filter((message) =>
+          message.sourceMessageIDs?.includes(output.assistantMessageID),
+        ),
+      ).toHaveLength(2)
+    }),
+  )
+
+  it.effect("publishes only expired completed output without suppressing a later final answer", () =>
+    Effect.gen(function* () {
+      const team = yield* TeamWorkspace.Service
+      yield* team.createTeammate({ name: "Recoverable", handle: "recoverable", role: "Worker", mission: "Work" })
+      const [{ id }] = (yield* team.postMessage({ id: "msg_recovery_task", text: "@recoverable begin" })).tasks
+      yield* team.claimTasks({ owner: "recovery-owner" })
+      const running = yield* team.startTask({ id, owner: "recovery-owner" })
+      expect(
+        yield* team.publishSessionOutput({
+          sessionID: running.sessionID,
+          taskID: id,
+          assistantMessageID: "msg_recovered",
+          text: "Recovered answer",
+        }),
+      ).toBeUndefined()
+      yield* Database.Service.use(({ db }) =>
+        db.update(TeamTaskTable).set({ lease_expires_at: 0 }).where(eq(TeamTaskTable.id, id)).run().pipe(Effect.orDie),
+      )
+      const recovered = yield* team.publishSessionOutput({
+        sessionID: running.sessionID,
+        taskID: id,
+        assistantMessageID: "msg_recovered",
+        text: "Recovered answer",
+        recovery: true,
+      })
+      expect(recovered?.sourceMessageIDs).toEqual(["msg_recovered"])
+      expect((yield* team.getTask(id)).status).toBe("running")
+      yield* Database.Service.use(({ db }) =>
+        db
+          .update(TeamTaskTable)
+          .set({ lease_expires_at: Date.now() + 60_000 })
+          .where(eq(TeamTaskTable.id, id))
+          .run()
+          .pipe(Effect.orDie),
+      )
+      yield* team.finishTask({
+        id,
+        owner: "recovery-owner",
+        status: "succeeded",
+        text: "Final answer",
+        sourceMessageIDs: ["msg_final"],
+      })
+      const final = yield* team.publishSessionOutput({
+        sessionID: running.sessionID,
+        taskID: id,
+        assistantMessageID: "msg_final",
+        text: "Final answer",
+      })
+      expect(final?.id).toBe(`msg_team_${id}`)
+      expect(
+        (yield* team.state()).messages.filter((message) => message.sourceMessageIDs?.includes("msg_recovered")),
+      ).toHaveLength(1)
+      expect(
+        (yield* team.state()).messages.filter((message) => message.sourceMessageIDs?.includes("msg_final")),
+      ).toHaveLength(1)
+    }),
+  )
+
+  it.effect("rejects collaboration to paused targets and archived rooms", () =>
+    Effect.gen(function* () {
+      const team = yield* TeamWorkspace.Service
+      const sender = yield* team.createTeammate({ name: "Source", handle: "source", role: "Worker", mission: "Work" })
+      const target = yield* team.createTeammate({ name: "Paused", handle: "paused", role: "Worker", mission: "Work" })
+      const [{ id }] = (yield* team.postMessage({ id: "msg_collab_guards", text: "@source begin" })).tasks
+      yield* team.claimTasks({ owner: "guard-owner" })
+      const running = yield* team.startTask({ id, owner: "guard-owner" })
+      yield* team.editTeammate({ id: target.id, status: "paused" })
+      const request = {
+        sessionID: running.sessionID,
+        assistantMessageID: "msg_guard_assistant",
+        id: "msg_guard_paused",
+        targetHandle: "paused",
+        directory: target.directory,
+        text: "Do work",
+      }
+      expect(yield* team.collaborate(request).pipe(Effect.flip)).toBeInstanceOf(TeamWorkspace.ConflictError)
+      const state = yield* team.state()
+      yield* Database.Service.use(({ db }) =>
+        db
+          .update(TeamRoomTable)
+          .set({ archived: true })
+          .where(eq(TeamRoomTable.id, state.room.id))
+          .run()
+          .pipe(Effect.orDie),
+      )
+      expect(
+        yield* team
+          .collaborate({ ...request, id: "msg_guard_archived", targetHandle: "source", directory: sender.directory })
+          .pipe(Effect.flip),
+      ).toBeInstanceOf(TeamWorkspace.ConflictError)
+      expect((yield* team.state()).tasks).toHaveLength(1)
+      expect(sender.id).toBeDefined()
+    }),
+  )
+
+  it.effect("scopes conversation reads to a live lease and room lifecycle", () =>
+    Effect.gen(function* () {
+      const team = yield* TeamWorkspace.Service
+      const mate = yield* team.createTeammate({ name: "Reader", handle: "reader", role: "Worker", mission: "Work" })
+      const [{ id }] = (yield* team.postMessage({ id: "msg_conversation_owner", text: "@reader begin" })).tasks
+      yield* team.claimTasks({ owner: "conversation-owner" })
+      const task = yield* team.startTask({ id, owner: "conversation-owner" })
+      yield* team.editTeammate({ id: mate.id, status: "paused" })
+      expect((yield* team.conversation({ sessionID: task.sessionID })).inbox.room.id).toBe(mate.roomID)
+      expect(
+        yield* team.conversation({ sessionID: task.sessionID, taskIDs: ["job_not_delegated"] }).pipe(Effect.flip),
+      ).toBeInstanceOf(TeamWorkspace.ConflictError)
+      const room = (yield* team.state()).room
+      yield* Database.Service.use(({ db }) =>
+        db.update(TeamRoomTable).set({ archived: true }).where(eq(TeamRoomTable.id, room.id)).run().pipe(Effect.orDie),
+      )
+      expect(yield* team.conversation({ sessionID: task.sessionID }).pipe(Effect.flip)).toBeInstanceOf(
+        TeamWorkspace.ConflictError,
+      )
     }),
   )
 

@@ -13,6 +13,9 @@ export type TeamTaskSnapshot = {
   readonly model?: ModelV2.Ref
   readonly prompt: string
   readonly historyBound?: boolean
+  readonly parentTaskID?: string
+  readonly delegationDepth?: number
+  readonly delegatedTaskIDs?: ReadonlyArray<string>
 }
 
 export const TeamRoomTable = sqliteTable(

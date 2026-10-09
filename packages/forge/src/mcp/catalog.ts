@@ -74,19 +74,24 @@ export function convertTool(
           onprogress: () => {},
         },
       )
-      const result = transform ? transform(called) : called
-      if (result.isError)
+      const result = CallToolResultSchema.parse(called)
+      const transformed = transform ? transform(result) : result
+      if (transformed.isError)
         throw new Error(
-          result.content
+          transformed.content
             .flatMap((item) => (item.type === "text" ? [item.text] : []))
             .filter((text) => text.trim())
             .join("\n\n") || "MCP tool returned an error",
         )
-      if (result.content.length > 0 || result.structuredContent === undefined || result.structuredContent === null)
-        return result
+      if (
+        transformed.content.length > 0 ||
+        transformed.structuredContent === undefined ||
+        transformed.structuredContent === null
+      )
+        return transformed
       return {
-        ...result,
-        content: [{ type: "text" as const, text: JSON.stringify(result.structuredContent) }],
+        ...transformed,
+        content: [{ type: "text" as const, text: JSON.stringify(transformed.structuredContent) }],
       }
     },
   })

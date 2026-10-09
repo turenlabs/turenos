@@ -339,12 +339,50 @@ const native = Layer.effect(
   }),
 )
 
+/**
+ * Serves each job from the primary (WASM) backend and retries one that fails
+ * outright, such as a trapped or unstartable worker, on the fallback (the spawned
+ * rg binary), so one backend bug cannot take every workspace search down with it.
+ * Invalid patterns and aborted jobs are answers, not backend failures, and are
+ * never retried.
+ */
+export const withFallback = (primary: Interface, fallback: Interface): Interface => {
+  const retry = <A, E>(
+    operation: string,
+    signal: AbortSignal | undefined,
+    run: (backend: Interface) => Effect.Effect<A, E>,
+  ) =>
+    run(primary).pipe(
+      Effect.catch((error) =>
+        error instanceof Error && !signal?.aborted
+          ? Effect.logWarning("ripgrep wasm job failed; retrying with the rg binary", {
+              operation,
+              error: error.message,
+            }).pipe(Effect.andThen(run(fallback)))
+          : Effect.fail(error),
+      ),
+    )
+  return {
+    find: (input) => retry("find", input.signal, (backend) => backend.find(input)),
+    glob: (input) => retry("glob", input.signal, (backend) => backend.glob(input)),
+    lines: (input) => retry("lines", input.signal, (backend) => backend.lines(input)),
+    grep: (input) => retry("grep", input.signal, (backend) => backend.grep(input)),
+  }
+}
+
 // The WASM backend (libripgrep crates compiled to wasm32, worker_threads pool)
 // is the default when its asset resolves; FORGE_RIPGREP_WASM=0 or a missing
-// artifact falls back to the spawned rg binary.
+// artifact uses the spawned rg binary alone. With WASM enabled the binary stays
+// behind it as a per-job fallback; it resolves lazily, so it costs nothing until
+// a WASM job fails.
 const layer = Layer.unwrap(
   Effect.map(RipgrepWasm.Service, (wasm) =>
-    wasm.enabled && process.env.FORGE_RIPGREP_WASM !== "0" ? Layer.succeed(Service, wasm.iface) : native,
+    wasm.enabled && process.env.FORGE_RIPGREP_WASM !== "0"
+      ? Layer.effect(
+          Service,
+          Effect.map(Service, (fallback) => withFallback(wasm.iface, fallback)),
+        ).pipe(Layer.provide(native))
+      : native,
   ),
 )
 
