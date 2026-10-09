@@ -84,6 +84,7 @@ export default function TeamPage() {
     models: LoopModel[]
     dutyDefinitions: LoopInfo[]
     factoryOpen: boolean
+    factoryRunOpen: Record<string, boolean>
     factoryConfig: Team.FactoryConfig
     factoryParameters: string
     createAvatar?: string[]
@@ -100,6 +101,7 @@ export default function TeamPage() {
     models: [],
     dutyDefinitions: [],
     factoryOpen: false,
+    factoryRunOpen: {},
     factoryConfig: {
       outcome: "",
       parameters: {},
@@ -584,6 +586,11 @@ export default function TeamPage() {
   }
   const assigned = () => (state.value ? assignedHandles(state.text, state.value.teammates) : [])
   const activeRun = () => state.value?.factoryRuns?.find((run) => run.status === "running")
+  // Controlled because polling replaces the run object every few seconds; a plain `open`
+  // binding would reset a run the user expanded or collapsed.
+  const factoryRunOpen = (run: Team.FactoryRun) =>
+    state.factoryRunOpen[run.id] ??
+    (run.status === "failed" || run.status === "running" || run.status === "needs_input")
   const activeTasks = () => state.value?.tasks.filter((task) => ["queued", "claimed", "running"].includes(task.status))
   const finishedTasks = () =>
     state.value?.tasks.filter((task) => !["queued", "claimed", "running"].includes(task.status))
@@ -1191,8 +1198,14 @@ export default function TeamPage() {
             }
           >
             {(run) => (
-              <details class="mt-2" open={run().status === "failed" || run().status === "running"}>
-                <summary class="cursor-pointer text-[12px] leading-5">
+              <details class="mt-2" open={factoryRunOpen(run())}>
+                <summary
+                  class="cursor-pointer text-[12px] leading-5"
+                  onClick={(event) => {
+                    event.preventDefault()
+                    setState("factoryRunOpen", run().id, !factoryRunOpen(run()))
+                  }}
+                >
                   {statusLabel[run().status]}
                   <Show when={run().status === "running"}> · {phaseLabel[run().phase]}</Show>
                 </summary>
