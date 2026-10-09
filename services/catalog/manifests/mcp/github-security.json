@@ -44,9 +44,9 @@
           "list_repository_security_advisories",
           "run_secret_scanning"
         ],
-        "write": []
+        "write": ["run_secret_scanning"]
       },
-      "instructions": "Keep GitHub access read-only and scoped to repositories the user is authorized to inspect. Use Lockdown mode for public content."
+      "instructions": "Keep GitHub access read-only and scoped to repositories the user is authorized to inspect. Use Lockdown mode for public content. The run_secret_scanning tool uploads content to GitHub and is disabled unless the user enables write tools. Do not upload credentials or unapproved files."
     }
   ]
 }

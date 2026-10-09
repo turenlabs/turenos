@@ -53,6 +53,18 @@ const stepSettlementOptions = {
   },
 } as const
 
+/** Current live event: one process-local execution settled after its coalesced drains.
+ * No-op wakes and interruption do not publish it. It is not a durable Session lifetime boundary.
+ */
+export const ExecutionSettled = Event.define({
+  type: "session.execution.settled",
+  schema: {
+    sessionID: SessionID,
+    outcome: Schema.Literals(["success", "failure"]),
+  },
+})
+export type ExecutionSettled = typeof ExecutionSettled.Type
+
 export const UnknownError = SessionMessage.UnknownError
 export type UnknownError = SessionMessage.UnknownError
 
@@ -766,6 +778,7 @@ export const DurableDefinitions = Event.inventory(
 )
 
 export const Definitions = Event.inventory(
+  ExecutionSettled,
   AgentSwitched,
   ModelSwitched,
   TitleUpdated,

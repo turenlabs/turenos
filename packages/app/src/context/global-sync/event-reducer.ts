@@ -4,6 +4,7 @@ import type {
   Message,
   Part,
   PermissionRequest,
+  PermissionV2Request,
   Project,
   QuestionRequest,
   Session,
@@ -11,6 +12,7 @@ import type {
   SnapshotFileDiff,
   Todo,
 } from "@turenlabs/sdk/v2/client"
+import { permissionFromV2 } from "@/context/permission-request"
 import type { State, VcsCache } from "./types"
 import { trimSessions } from "./session-trim"
 import { dropSessionCaches } from "./session-cache"
@@ -30,6 +32,8 @@ const SESSION_CONTENT_EVENTS = new Set([
   "message.part.delta",
   "permission.asked",
   "permission.replied",
+  "permission.v2.asked",
+  "permission.v2.replied",
   "question.v2.asked",
   "question.v2.replied",
   "question.v2.rejected",
@@ -364,8 +368,12 @@ export function applyDirectoryEvent(input: {
       if (input.vcsCache) input.vcsCache.setStore("value", next)
       break
     }
-    case "permission.asked": {
-      const permission = event.properties as PermissionRequest
+    case "permission.asked":
+    case "permission.v2.asked": {
+      const permission =
+        event.type === "permission.v2.asked"
+          ? permissionFromV2(event.properties as PermissionV2Request)
+          : (event.properties as PermissionRequest)
       const permissions = input.store.permission[permission.sessionID]
       if (!permissions) {
         input.setStore("permission", permission.sessionID, [permission])
@@ -385,7 +393,8 @@ export function applyDirectoryEvent(input: {
       )
       break
     }
-    case "permission.replied": {
+    case "permission.replied":
+    case "permission.v2.replied": {
       const props = event.properties as { sessionID: string; requestID: string }
       const permissions = input.store.permission[props.sessionID]
       if (!permissions) break

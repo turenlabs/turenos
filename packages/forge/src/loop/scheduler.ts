@@ -8,8 +8,8 @@ import { EventV2 } from "@turenlabs/core/event"
 import { Location } from "@turenlabs/core/location"
 import { LocationServiceMap } from "@turenlabs/core/location-service-map"
 import { AbsolutePath } from "@turenlabs/core/schema"
-import { FileSystemWatcher } from "@turenlabs/schema/filesystem-watcher"
 import { SessionEvent } from "@turenlabs/schema/session-event"
+import { FileSystemWatcher } from "@turenlabs/schema/filesystem-watcher"
 import { SessionV2 } from "@turenlabs/core/session"
 import { SessionMessage } from "@turenlabs/core/session/message"
 import { WorkspaceV2 } from "@turenlabs/core/workspace"
@@ -475,15 +475,8 @@ const layer = Layer.effect(
       Effect.forkScoped,
     )
 
-    const sessionSuccess = events.subscribe(SessionEvent.Step.Ended).pipe(
-      Stream.runForEach((event) => handleSessionEnd(event.data.sessionID, "success")),
-      Effect.catchCause((cause) => Effect.logError("Loop session watcher failed", { cause: Cause.pretty(cause) })),
-      Effect.forever,
-      Effect.forkScoped,
-    )
-
-    const sessionFailure = events.subscribe(SessionEvent.Step.Failed).pipe(
-      Stream.runForEach((event) => handleSessionEnd(event.data.sessionID, "failure")),
+    const sessionSettled = events.subscribe(SessionEvent.ExecutionSettled).pipe(
+      Stream.runForEach((event) => handleSessionEnd(event.data.sessionID, event.data.outcome)),
       Effect.catchCause((cause) => Effect.logError("Loop session watcher failed", { cause: Cause.pretty(cause) })),
       Effect.forever,
       Effect.forkScoped,
@@ -491,8 +484,7 @@ const layer = Layer.effect(
 
     yield* pollDue(loops, scan).pipe(Effect.forkScoped)
     yield* fileStream
-    yield* sessionSuccess
-    yield* sessionFailure
+    yield* sessionSettled
     return Service.of({})
   }),
 )

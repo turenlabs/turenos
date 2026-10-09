@@ -11,6 +11,7 @@ import { useServer } from "@/context/server"
 import { useGlobal } from "@/context/global"
 import { useNavRail } from "@/components/nav-rail"
 import { sessionHref } from "@/utils/session-route"
+import { Persist, persisted } from "@/utils/persist"
 import { loopApi, loopCatalog, responseData, type LoopInfo, type LoopModel } from "./loops/api"
 import { teamApi } from "./team/api"
 import { TeamMentionInput } from "./team/mention-input"
@@ -84,6 +85,7 @@ export default function TeamPage() {
     models: LoopModel[]
     dutyDefinitions: LoopInfo[]
     factoryOpen: boolean
+    factoryRunOpen: Record<string, boolean>
     factoryConfig: Team.FactoryConfig
     factoryParameters: string
     createAvatar?: string[]
@@ -100,6 +102,7 @@ export default function TeamPage() {
     models: [],
     dutyDefinitions: [],
     factoryOpen: false,
+    factoryRunOpen: {},
     factoryConfig: {
       outcome: "",
       parameters: {},
@@ -120,6 +123,11 @@ export default function TeamPage() {
     model: "",
     avatar: [] as string[],
   })
+  // Last opened room per server, so returning to /team reopens it instead of the default room.
+  const [lastRoom, setLastRoom, , lastRoomReady] = persisted(
+    Persist.global("team.last-room"),
+    createStore<Record<string, string>>({}),
+  )
 
   let generation = 0
   let roomRevision = 0
@@ -161,7 +169,14 @@ export default function TeamPage() {
         result = { ...next, messages: received }
       }
       const dutyDefinitions = mode === "older" ? state.dutyDefinitions : responseData(await loopApi(sdk.client).list())
+      if (!roomID) await lastRoomReady.promise
       if (current !== generation || revision !== roomRevision || roomID !== params.roomID) return
+      if (!roomID && result.room.id) {
+        const remembered = result.rooms.find((room) => room.id === lastRoom[sdk.scope])
+        navigate(`/team/${remembered?.id ?? result.room.id}`, { replace: true })
+        return
+      }
+      setLastRoom(sdk.scope, result.room.id)
       setState("dutyDefinitions", dutyDefinitions)
       const previous = state.value
       const messages =
@@ -179,7 +194,6 @@ export default function TeamPage() {
         setState("factoryParameters", JSON.stringify(result.room.factory.config.parameters, null, 2))
       }
       setState("loadError", undefined)
-      if (!roomID && result.room.id) navigate(`/team/${result.room.id}`, { replace: true })
       scroll.update()
     } catch (error) {
       if (current === generation && revision === roomRevision)
@@ -189,6 +203,8 @@ export default function TeamPage() {
       if (current === generation) {
         setState("loading", false)
         setState("olderLoading", false)
+        // Open rooms at the latest message, once the history controls above the log are laid out.
+        if (mode === "initial" && state.value) scroll.resume()
       }
     }
   }
@@ -584,6 +600,11 @@ export default function TeamPage() {
   }
   const assigned = () => (state.value ? assignedHandles(state.text, state.value.teammates) : [])
   const activeRun = () => state.value?.factoryRuns?.find((run) => run.status === "running")
+  // Controlled because polling replaces the run object every few seconds; a plain `open`
+  // binding would reset a run the user expanded or collapsed.
+  const factoryRunOpen = (run: Team.FactoryRun) =>
+    state.factoryRunOpen[run.id] ??
+    (run.status === "failed" || run.status === "running" || run.status === "needs_input")
   const activeTasks = () => state.value?.tasks.filter((task) => ["queued", "claimed", "running"].includes(task.status))
   const finishedTasks = () =>
     state.value?.tasks.filter((task) => !["queued", "claimed", "running"].includes(task.status))
@@ -1191,8 +1212,14 @@ export default function TeamPage() {
             }
           >
             {(run) => (
-              <details class="mt-2" open={run().status === "failed" || run().status === "running"}>
-                <summary class="cursor-pointer text-[12px] leading-5">
+              <details class="mt-2" open={factoryRunOpen(run())}>
+                <summary
+                  class="cursor-pointer text-[12px] leading-5"
+                  onClick={(event) => {
+                    event.preventDefault()
+                    setState("factoryRunOpen", run().id, !factoryRunOpen(run()))
+                  }}
+                >
                   {statusLabel[run().status]}
                   <Show when={run().status === "running"}> · {phaseLabel[run().phase]}</Show>
                 </summary>

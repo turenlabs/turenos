@@ -886,3 +886,33 @@ export const inspect = Effect.fn("ShellSafety.inspect")(function* (input: {
 }) {
   return yield* Effect.promise(() => inspectText(input.command, input.cwd, input.shell, 0))
 })
+
+// The simple commands a compound shell command runs, in source order and deduplicated.
+// Permission rules are globs over command text, so `git *` must be checked against each
+// command a line executes (`git status; cp .env /tmp/leak`, `git log $(...)`, loop bodies, function
+// bodies, nested subshells) rather than the whole line, or any allowed prefix admits anything
+// after a separator. Redirections stay attached to their command so `cmd > target` is seen as
+// written. `cmd` has no parser and an unparseable or command-free line falls back to the raw text,
+// and when the parser reports a syntax error the raw text is checked alongside the recovered
+// commands so nothing the parser skipped is approved on its own.
+export const commands = Effect.fn("ShellSafety.commands")(function* (input: {
+  readonly command: string
+  readonly shell: Kind
+}) {
+  const shell = input.shell
+  if (shell === "cmd") return [input.command]
+  const tree = yield* Effect.promise(() => parseText(input.command, shell))
+  const found = tree.rootNode
+    .descendantsOfType("command")
+    .filter((node): node is Node => node !== null)
+    .map((node) => {
+      let redirected = node
+      while (redirected.parent && redirected.parent.type !== "redirected_statement")
+        redirected = redirected.parent
+      return (redirected.parent?.type === "redirected_statement" ? redirected.parent.text : node.text).trim()
+    })
+    .filter((text) => text.length > 0)
+  const unique = [...new Set(tree.rootNode.hasError || found.length === 0 ? [...found, input.command] : found)]
+  tree.delete()
+  return unique
+})
