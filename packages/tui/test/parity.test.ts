@@ -64,7 +64,7 @@ test("editing a queued message cancels it and reopens its text in the reply edit
   view.mockInput.pressKey("u")
   await screen("Rename the flag")
   view.mockInput.pressKey("e", { ctrl: true })
-  await screen("Reply to main task")
+  await screen("Typing")
   expect(view.renderer.currentFocusedEditor?.plainText).toBe("Rename the flag")
   expect(server.sent("/api/session/ses_main/input/msg_first/cancel")).toHaveLength(1)
 })
@@ -196,7 +196,7 @@ test("Changes shows each file's colored patch and cycles uncommitted, branch, an
   expect(modes).toEqual(["git", "branch", "git"])
   // @ puts the file into the reply draft for the agent.
   view.mockInput.pressKey("@")
-  await screen("Reply to main task")
+  await screen("Typing")
   expect(view.renderer.currentFocusedEditor?.plainText).toBe("@src/gone.ts ")
 })
 
@@ -323,7 +323,7 @@ test("editing a queued message keeps its text when Escape is pressed during the 
   view.mockInput.pressEscape()
   await Bun.sleep(50)
   release()
-  expect(await screen("Reply")).toContain("queued follow-up")
+  expect(await screen("Typing")).toContain("queued follow-up")
 })
 
 test("a cancel whose answer was lost keeps the message text and does not claim it was delivered", async () => {
@@ -341,7 +341,7 @@ test("a cancel whose answer was lost keeps the message text and does not claim i
   const frame = await screen("removed or already delivered")
   expect(frame).toContain("Rename the flag")
   expect(frame).not.toContain("already received that message")
-  expect(frame).not.toContain("Reply to main task")
+  expect(frame).not.toContain("Typing")
   expect(server.sent("/api/session/ses_main/input/msg_first/cancel")).toHaveLength(1)
 })
 
@@ -362,7 +362,7 @@ test("a lost cancel on a message that is still queued leaves it listed for anoth
   await screen("still queued")
   fail = false
   view.mockInput.pressKey("e", { ctrl: true })
-  await screen("Reply to main task")
+  await screen("Typing")
   expect(server.sent("/api/session/ses_main/input/msg_first/cancel")).toHaveLength(2)
 })
 
@@ -515,7 +515,7 @@ test("enabled extension skills appear as slash commands and run as commands", as
     }),
   })
   view.mockInput.pressKey("f")
-  await screen("Reply to main task")
+  await screen("Typing")
   await view.mockInput.typeText("/rev")
   const frame = await screen("/review - Skill · Review code")
   expect(frame).not.toContain("/hidden")
@@ -705,5 +705,5 @@ test("a message the agent already read is reported instead of silently removed",
   await screen("Too late")
   view.mockInput.pressKey("e", { ctrl: true })
   await screen("already received that message")
-  expect(view.captureCharFrame()).not.toContain("Reply to main task")
+  expect(view.captureCharFrame()).not.toContain("Typing")
 })

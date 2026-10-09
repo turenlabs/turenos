@@ -17,9 +17,9 @@ export function contextUsage(messages: readonly Message[]) {
 
 export function meterText(usage: ReturnType<typeof contextUsage>, limit: number | undefined, short = false) {
   if (!usage) return ""
-  if (!limit) return short ? `Ctx ${compact(usage.total)}` : `Context ${compact(usage.total)}`
+  if (!limit) return short ? `ctx ${compact(usage.total)}` : `Context ${compact(usage.total)}`
   const percent = usagePercent(usage.total, limit)
-  return short ? `Ctx ${percent}%` : `Context ${percent}% · ${compact(usage.total)}/${compact(limit)}`
+  return short ? `ctx ${percent}%` : `Context ${percent}% · ${compact(usage.total)}/${compact(limit)}`
 }
 
 /**

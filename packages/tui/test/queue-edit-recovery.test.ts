@@ -28,7 +28,7 @@ test("an edit whose cancel got no answer reopens the kept copy once the queue sh
   await screen("may already be removed")
   down = false
   view.mockInput.pressKey("r", { ctrl: true })
-  await screen("Reply to main task")
+  await screen("Typing")
   expect(view.renderer.currentFocusedEditor?.plainText).toBe("Rename the flag")
   expect(server.sent("/api/session/ses_main/input/msg_first/cancel")).toHaveLength(1)
 })
@@ -76,6 +76,6 @@ test("a queued message whose @file mention the text carries still edits", async 
   view.mockInput.pressKey("u")
   await screen("Read @src/a.ts")
   view.mockInput.pressKey("e", { ctrl: true })
-  await screen("Reply to main task")
+  await screen("Typing")
   expect(server.sent("/api/session/ses_main/input/msg_file/cancel")).toHaveLength(1)
 })

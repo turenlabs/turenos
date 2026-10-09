@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test"
 import { footerShortcuts } from "../src/chrome"
-import { cleanup, dashboard, mount, session, type Route } from "./support"
+import { cleanup, dashboard, mount, session, until, type Route } from "./support"
 
 afterEach(async () => {
   while (cleanup.length) await cleanup.pop()!()
@@ -8,25 +8,26 @@ afterEach(async () => {
 
 const running = { "GET /api/session/active": () => ({ data: { ses_main: { type: "running" } } }) }
 
-test("the typing footer says Ctrl+C stops while a turn runs and quits otherwise, at every width", () => {
-  expect(footerShortcuts(120, true, true, true)).toBe("Esc shortcuts · Ctrl+P commands · Ctrl+C stop")
-  expect(footerShortcuts(120, true, true)).toBe("Esc shortcuts · Ctrl+P commands · Ctrl+C quit")
-  expect(footerShortcuts(120, true, false, true)).toContain("q quit")
-  expect(footerShortcuts(60, true, true, true)).not.toContain("Ctrl+C")
+test("the typing footer adds only the palette; shortcut mode names the key back to typing", () => {
+  expect(footerShortcuts(120, true, true)).toBe("Ctrl+P commands")
+  expect(footerShortcuts(60, true, true)).toBe("Ctrl+P commands")
+  expect(footerShortcuts(120, true, false, 26, true)).toContain("Enter type")
+  expect(footerShortcuts(120, true, false, 26, true)).toBe("Enter type · Ctrl+P commands · ? help")
+  expect(footerShortcuts(60, true, false, 26, true)).toBe("Enter type · ? help")
 })
 
 const mounted = (routes: Record<string, Route>) => mount(120, routes, 36, "", "", () => {})
 
-test("the dashboard footer switches Ctrl+C between stop and quit as the session starts and stops", async () => {
+test("the reply heading appears while the agent works and goes when it stops, with Typing throughout", async () => {
   const state = { active: true }
   const app = await mounted({
     "GET /api/session/active": () => ({ data: state.active ? { ses_main: { type: "running" } } : {} }),
   })
   app.view.mockInput.pressEnter()
-  await app.screen("Ctrl+C stop")
+  await app.screen("Steer · agent is working")
   state.active = false
-  const frame = await app.screen("Ctrl+C quit")
-  expect(frame).toContain("Typing")
+  await until(() => !app.view.captureCharFrame().includes("agent is working"))
+  expect(app.view.captureCharFrame()).toContain("Typing")
 })
 
 test("an open reply editor follows the session's new title", async () => {
@@ -36,10 +37,11 @@ test("an open reply editor follows the session's new title", async () => {
     "GET /api/session/ses_main": () => ({ data: { ...session(), title: state.title } }),
   })
   app.view.mockInput.pressEnter()
-  await app.screen("Reply to New session")
+  await app.screen("Typing")
   state.title = "please run the marker"
-  await app.screen("Reply to please run the marker")
-  expect(app.view.captureCharFrame()).not.toContain("Reply to New session")
+  const frame = await app.screen("please run the marker")
+  expect(frame).not.toContain("New session - 2026")
+  expect(frame).toContain("Typing")
 })
 
 test("the quit warning says unsent drafts are kept only until you quit", async () => {
@@ -162,13 +164,11 @@ test("the Ctrl+C that stops a turn still says a second press quits once the turn
     },
   })
   app.view.mockInput.pressEnter()
-  await app.screen("Ctrl+C stop")
+  await app.screen("Steer · agent is working")
   app.view.mockInput.pressKey("c", { ctrl: true })
-  // The status line says what the second press does, once; the footer goes back to its plain hint when the turn ends.
+  // The status line says what the second press does, once.
   const frame = await app.screen("Session interrupted. Ctrl+C again quits.")
   expect(frame.match(/again quits/g)).toHaveLength(1)
-  expect(frame.trimEnd().split("\n").at(-1)).toContain("Ctrl+C quit")
-  expect(frame.trimEnd().split("\n").at(-1)).not.toContain("Ctrl+C stop")
 })
 
 test("typed text stays visible beside the attachment line at 80x24", async () => {
@@ -179,7 +179,7 @@ test("typed text stays visible beside the attachment line at 80x24", async () =>
     }),
   })
   app.view.mockInput.pressEnter()
-  await app.screen("Reply to main task")
+  await app.screen("Typing")
   await app.view.mockInput.typeText("see @RE")
   await app.screen("README.md")
   app.view.mockInput.pressTab()

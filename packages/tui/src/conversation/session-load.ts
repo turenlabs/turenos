@@ -24,7 +24,7 @@ export async function loadSession(c: Conversation, snapshot: Snapshot, session: 
   ui.sessionTitle.content = `${sessionTitle(session.title || "Untitled session", 150)}${session.time.archived !== undefined ? " · Archived" : ""}`
   ui.context.visible = !state.modal?.inline
   ui.context.fg = color.muted
-  ui.context.content = `${viewName(state)}${Object.hasOwn(snapshot.active, id) ? " · Working" : ""}${subagentOf(snapshot, session)} · ${label(session.location.directory, 250)}`
+  ui.context.content = contextText([viewName(state), subagentOf(snapshot, session), label(session.location.directory, 250)])
   const page = state.history && c.pageRequest?.sessionID === id ? c.pageRequest : undefined
   const result = await c.connection.detail(id, state.history ? (page?.cursor ?? state.historyCursor) : undefined)
   if (version !== state.detailVersion || state.closed) return
@@ -55,14 +55,19 @@ export async function loadSession(c: Conversation, snapshot: Snapshot, session: 
 
 /** The view and, in History, where the reader is and the keys that move; the server counts no pages, so there is no total. */
 function viewName(state: DashboardState) {
-  return state.history ? `History · page ${state.historyPage} · [ older · ] newer · h back to live` : "Transcript"
+  return state.history ? `History · page ${state.historyPage} · [ older · ] newer · h back to live` : ""
+}
+
+/** The context line's fields in order; the view name is empty on the live transcript, and the header already says Working and Needs input. */
+function contextText(fields: string[]) {
+  return fields.filter(Boolean).join(" · ")
 }
 
 /** A child session names the one it came from and the key that goes back; f opens the owning session. */
 function subagentOf(snapshot: Snapshot | undefined, session: Session) {
   if (!session.parentID) return ""
   const parent = snapshot?.sessions.find((item) => item.id === session.parentID)
-  return ` · Subagent of ${parent ? sessionTitle(parent.title || "Untitled session", 40) : "its parent session"} · f returns`
+  return `Subagent of ${parent ? sessionTitle(parent.title || "Untitled session", 40) : "its parent session"} · f returns`
 }
 
 function describeResult(c: Conversation, session: Session, result: Detail) {
@@ -76,11 +81,12 @@ function describeResult(c: Conversation, session: Session, result: Detail) {
       ...(active ? [`${active} active`] : []),
       ...(failed ? [`${failed} failed`] : []),
     ]
-    ui.context.content = `${viewName(state)} · ${counts.join(", ")}${subagentOf(state.snapshot, session)} · ${label(session.location.directory, 150)}`
-  }
-  if (result.permissions.length || result.questions.length) {
-    ui.context.content = `Needs input · ${label(session.location.directory, 250)}`
-    ui.context.fg = color.warning
+    ui.context.content = contextText([
+      viewName(state),
+      counts.join(", "),
+      subagentOf(state.snapshot, session),
+      label(session.location.directory, 150),
+    ])
   }
 }
 

@@ -1,7 +1,7 @@
 import type { CliRenderer, Renderable } from "@opentui/core"
 import { color, layout } from "../theme"
 import type { DashboardState } from "../state"
-import { footerShortcuts, statusline } from "../chrome"
+import { canType, footerShortcuts, statusline } from "../chrome"
 import { folderContains } from "../working-folders"
 import { sizeFloating } from "../dialogs/size"
 import type { LayoutParts } from "./parts"
@@ -18,23 +18,21 @@ export function resizeLayout(renderer: CliRenderer, state: DashboardState, parts
   // The activity line grows a second row while messages are queued.
   parts.activity.height = "auto"
   resizeSizeNotice(renderer, state, parts)
-  resizeTopbar(state, parts)
+  resizeTopbar(renderer, state, parts)
   resizeBody(parts, narrow)
   resizeSidebar(renderer, state, parts, narrow)
   resizeMain(state, parts, narrow)
   resizeDockedModal(renderer, state)
   // The reply editor stays open while typing, so the footer stays with it.
   parts.footerRow.visible = !state.modal || !!state.modal.composer
-  // Ctrl+C stops the selected session's running turn before it quits, so the hint follows that.
-  const running = !!state.selected && Object.hasOwn(state.snapshot?.active ?? {}, state.selected)
   // Narrow footers share the row: the shortcuts take what the status text on the left leaves.
   const left = statusline(state, state.snapshot, renderer.width).length
   parts.shortcuts.content = footerShortcuts(
     renderer.width,
     parts.sidebar.visible,
     !!state.modal?.composer,
-    running,
     left,
+    canType(state),
   )
 }
 
@@ -43,7 +41,10 @@ function resizeSizeNotice(renderer: CliRenderer, state: DashboardState, parts: L
   parts.sizeText.content = `Resize the terminal\n\nTurenOS needs at least ${layout.minWidth} columns × ${layout.minHeight} rows.\nCurrent size: ${renderer.width} × ${renderer.height}.\n\n${state.modal ? "Your draft stays open while you resize.\n" : ""}q / Ctrl+C quits.`
 }
 
-function resizeTopbar(state: DashboardState, parts: LayoutParts) {
+function resizeTopbar(renderer: CliRenderer, state: DashboardState, parts: LayoutParts) {
+  const compact = renderer.width < layout.compactBreakpoint
+  parts.topbar.gap = compact ? 1 : 3
+  parts.server.flexGrow = compact ? 0 : 1
   parts.modelButton.content = state.modal ? (state.modal.chooseModel ? "Models Ctrl+L" : "Models") : "Models m"
   parts.modelButton.fg = !state.modal || (state.modal.chooseModel && !state.modal.busy) ? color.accent : color.muted
   // A dialog that keeps a draft lets the key through once Esc has set the draft aside; the reply editor, which
@@ -93,7 +94,8 @@ function resizeMain(state: DashboardState, parts: LayoutParts, narrow: boolean) 
   parts.sessionTitle.visible = !state.modal?.inline
   parts.context.visible = !state.modal?.inline && !!state.selected
   parts.historyActions.visible = state.tab === "sessions" && state.history && !!state.selected && !state.modal?.inline
-  parts.actions.visible = state.modal ? !!state.modal.composer : parts.composer.visible
+  // The open editor already says how to send, so the action row waits for shortcut mode.
+  parts.actions.visible = !state.modal && parts.composer.visible
 }
 
 function resizeDockedModal(renderer: CliRenderer, state: DashboardState) {
@@ -113,15 +115,15 @@ function resizeDockedModal(renderer: CliRenderer, state: DashboardState) {
   // A reply editor keeps the lower half and is as tall as its wrapped text, 1-6 rows, counted from
   // lineSources (virtualLineCount can be viewport-limited). Set here as well as by followText:
   // text set programmatically does not fire the content-change hook.
-  const editorHeight = Math.max(1, Math.min(6, modal.editor.lineInfo.lineSources.length))
+  const editorHeight = Math.max(1, Math.min(6, modal.editor.plainText ? modal.editor.lineInfo.lineSources.length : 1))
   modal.editor.height = editorHeight
   modal.frame.height = "100%"
   modal.box.height = Math.min(
     Math.floor(renderer.height / 2),
-    // The heading row; an editor that is not the docked reply also has its caption and Send button.
+    // The heading row, when it has news; an editor that is not the docked reply also has its caption and Send button.
     editorHeight +
       requestedHeight(modal.error) +
-      (modal.composer ? 1 : 3) +
+      (modal.composer ? (modal.headingRows ?? 1) : 3) +
       (modal.suggestionRows ?? 0) +
       (modal.mentionRows ?? 0) +
       (modal.attachmentRows ?? 0),

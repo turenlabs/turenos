@@ -154,8 +154,7 @@ test("a subagent session names its parent and the key back, and Esc Esc does not
   await view.mockInput.typeText("Check the")
   await screen("Check the changelog")
   view.mockInput.pressEnter()
-  const frame = await screen("Subagent of Plan the release · f returns")
-  expect(frame).toContain("Transcript")
+  await screen("Subagent of Plan the release · f returns")
   view.mockInput.pressEscape()
   await Bun.sleep(150)
   view.mockInput.pressEscape()
@@ -230,9 +229,9 @@ test("once a session has a message the reply editor stops repeating the send and
     { "GET /api/session/ses_main/message": () => ({ data: [user, assistant("a", "main says hello")], cursor: {} }) },
     24,
   )
-  const frame = await screen("Reply to main task")
+  const frame = await screen("Typing")
   expect(frame).not.toContain("Shift/Alt+Enter newline")
-  expect(frame).toContain("Esc shortcuts · F4 discard")
+  expect(frame).toContain("Enter send · Esc shortcuts")
 })
 
 test("the model picker says Esc close when it leaves to the dashboard and Esc back when it returns to New session", async () => {

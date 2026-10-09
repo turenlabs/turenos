@@ -18,7 +18,7 @@ The TurenOS terminal client and TurenOS Desktop are two clients of the same serv
 | Harness panel                                       | `H`                                                                     |
 | To-do dock and subagent list                        | `t`                                                                     |
 | Swarm room: lanes, entries, human posts             | `w`                                                                     |
-| Context usage meter                                 | Action row: `Context 45% · 90k/200k`                                    |
+| Context usage meter                                 | Reply editor hint row (action row in shortcut mode): `ctx 45%`, `Context 45% · 90k/200k` when wide                                    |
 | Review panel: git, branch, last turn                | `d`                                                                     |
 | File tree and file viewer                           | `e`                                                                     |
 | Shared session terminal and private terminals       | `T`; Terminals tab `2` (`Enter` attach, `a` new, `R` rename, `d` close) |

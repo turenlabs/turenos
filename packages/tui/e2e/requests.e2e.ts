@@ -5,7 +5,7 @@ const tui = sandbox("requests")
 
 test("a permission request is reviewed and allowed once, then the tool runs", async () => {
   await tui.launch("please run the marker")
-  await tui.waitFor("Needs input")
+  await tui.waitFor("need input")
   await tui.keys("p")
   const dialog = await tui.waitFor("Permission request")
   expect(dialog).toContain("echo sandbox-marker && ls")
@@ -18,7 +18,7 @@ test("a permission request is reviewed and allowed once, then the tool runs", as
 
 test("a rejected permission leaves the tool unrun", async () => {
   await tui.reply("run it again")
-  await tui.waitFor("Needs input")
+  await tui.waitFor("need input")
   await tui.keys("p")
   await tui.waitFor("Permission request")
   await tui.keys("C-s")
@@ -84,7 +84,8 @@ test("a rejected provider request ends the turn with a visible error", async () 
 test("provider retries are visible while they happen, then the reply arrives", async () => {
   await tui.reply("be flaky")
   await tui.waitFor(/Retrying/, 20_000)
-  expect(tui.screen()).toContain("sandbox provider is busy")
+  // The activity line cuts a long reason at its end, so the start of the provider message is enough.
+  expect(tui.screen()).toContain("HTTP 503: sandbox provider")
   await tui.waitFor("Recovered after the retries.", 60_000)
   await tui.idle()
   await tui.waitFor((screen: string) => !screen.includes("Retrying"))

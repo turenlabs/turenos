@@ -509,7 +509,7 @@ test("a swarm entry kind is shown as plain text and an inherited name gets no st
   await app.screen("main task")
   app.view.mockInput.pressEnter()
   // Opening the session puts the keyboard in the reply editor; Esc returns it to the shortcuts.
-  await app.screen("Type a message")
+  await app.screen("Typing")
   app.view.mockInput.pressKey("ESCAPE")
   await until(() => !app.view.captureCharFrame().includes("Typing"))
   await app.view.mockInput.typeText("w")

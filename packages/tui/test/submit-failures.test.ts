@@ -184,7 +184,7 @@ test("the new-session editor does not advertise shell commands and refuses to se
 test("a cut at 32,000 characters never leaves half of a surrogate pair", async () => {
   const { view, screen } = await dashboard({})
   view.mockInput.pressKey("f")
-  await screen("Type a message")
+  await screen("Typing")
   view.renderer.currentFocusedEditor!.setText(`a${"😀".repeat(16000)}`)
   await screen("limited to 32,000")
   const text = view.renderer.currentFocusedEditor!.plainText

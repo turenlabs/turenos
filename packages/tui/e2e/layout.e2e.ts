@@ -13,7 +13,7 @@ test("at 60x24 a session can be started and answered", async () => {
 test("help opens and closes at 60x24", async () => {
   // At 60 columns the transcript has focus, so the launched session's reply editor is open until Esc.
   await tui.keys("Escape")
-  await tui.waitFor("f Reply")
+  await tui.waitFor("Enter type")
   await tui.keys("?")
   await tui.waitFor("Keyboard shortcuts")
   await tui.keys("Escape")

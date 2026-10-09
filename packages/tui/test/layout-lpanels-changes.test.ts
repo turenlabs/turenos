@@ -24,9 +24,9 @@ async function changes(width: number, height: number) {
   await app.ready
   if (width < 90) {
     // Below 90 columns the transcript has focus, so the reply editor is open until Esc.
-    await screen("Reply to main task")
+    await screen("Typing")
     view.mockInput.pressEscape()
-    await until(() => !view.captureCharFrame().includes("Reply to main task"))
+    await until(() => !view.captureCharFrame().includes("Typing"))
   }
   view.mockInput.pressKey("d")
   await screen("diff --git")

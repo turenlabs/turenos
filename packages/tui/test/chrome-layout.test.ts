@@ -110,7 +110,7 @@ for (const width of [60]) {
     await view.renderOnce()
     const frame = view.captureCharFrame()
     const lines = body.split("\n")
-    expect(lines).toHaveLength(7)
+    expect(lines).toHaveLength(8)
     for (const line of lines.filter(Boolean)) {
       expect(line.length).toBeLessThanOrEqual(54)
       expect(frame).toContain(line)
@@ -165,7 +165,7 @@ test("focus retains the existing high-contrast pane cues", async () => {
 
 test("notice wraps recovery instructions without hiding actions at minimum size", async () => {
   const { ui, renderOnce, captureCharFrame } = await fixture(60)
-  ui.composer.content = "f Reply"
+  ui.composer.content = "Enter type"
   const notice =
     "Clipboard copy was attempted, not confirmed. Press F6 for native terminal selection, then try copying again."
   ui.notice.content = notice
@@ -177,12 +177,12 @@ test("notice wraps recovery instructions without hiding actions at minimum size"
   expect(ui.notice.height).toBeGreaterThanOrEqual(2)
   expect(ui.notice.height).toBeLessThanOrEqual(3)
   expect(noticeRows.join(" ").replace(/\s+/g, " ")).toContain(notice)
-  for (const text of ["f Reply", "h History", "i Details", "t Tasks", "b sidebar"])
+  for (const text of ["Enter type", "h History", "i Details", "t Tasks", "? help"])
     expect(captureCharFrame()).toContain(text)
   ui.notice.content = "Recovery instruction ".repeat(30)
   await renderOnce()
   expect(ui.notice.height).toBe(3)
-  expect(captureCharFrame()).toContain("f Reply")
+  expect(captureCharFrame()).toContain("Enter type")
   ui.notice.content = "Ready"
   await renderOnce()
   expect(ui.notice.height).toBe(1)
@@ -229,7 +229,7 @@ test("scheduleText formats intervals, cron expressions, file changes, and sessio
 })
 
 test.each([60, 66])(
-  "at %i columns the footer keeps Ctrl+P commands and the top bar keeps host:port over Servers",
+  "at %i columns the footer names the way back to typing and the top bar keeps the port, without buttons",
   async (width) => {
     const server = turen()
     const { view, screen } = await terminal(width, 24)
@@ -240,12 +240,13 @@ test.each([60, 66])(
     supportCleanup.push(app.dispose)
     await app.ready
     await screen("main says hello")
-    // Esc leaves the reply editor, so the footer shows the shortcut set rather than the typing set.
+    // Typing keeps the palette in the footer; Esc swaps it for the key back to typing and help.
+    expect((await screen("Ctrl+P commands")).trimEnd().split("\n").at(-1)).toContain("Typing")
     view.mockInput.pressKey("ESCAPE")
-    const lines = (await screen("Ctrl+P commands")).trimEnd().split("\n")
-    expect(lines.at(-1)).toContain("Ctrl+P commands")
-    if (width === 60) expect(lines.at(-1)).toContain("b sidebar")
-    // The host and port stay whole ahead of the Servers button; 60 columns fit only the port.
-    expect(lines[1]).toContain(width === 66 ? "x.lan:4096" : ":4096")
+    const lines = (await screen("Enter type")).trimEnd().split("\n")
+    expect(lines.at(-1)).toContain("Enter type · ? help")
+    // Below 70 columns the buttons are gone and the address keeps its port.
+    expect(lines[1]).toContain("4096")
+    expect(lines[1]).not.toContain("Servers")
   },
 )

@@ -107,7 +107,11 @@ test("a short dialog is as tall as its content on a tall terminal, and help fill
 test("help says where it continues and pages with PgDn", async () => {
   const app = await opened([80, 24], (app) => app.view.mockInput.pressKey("?"))
   await app.screen("More below")
-  app.view.mockInput.pressKey("\x1b[6~")
+  // The page holds a few more rows than a screen; PgDn moves a page at a time until the third group shows.
+  for (let page = 0; page < 3 && !app.view.captureCharFrame().includes("TERMINALS AND AUTOMATIONS"); page++) {
+    app.view.mockInput.pressKey("\x1b[6~")
+    await Bun.sleep(60)
+  }
   const frame = await app.screen("TERMINALS AND AUTOMATIONS")
   expect(frame).not.toContain("ESSENTIALS")
 })

@@ -14,7 +14,7 @@ import { MAX_MESSAGES, viewOf, type TeamContext, type TeamView } from "./types"
 export type PostDraft = { text: string; id: string; submitted?: string; cursor?: number }
 
 const MAX_TEXT = 20_000
-const HINT = "Enter post · Shift+Enter newline · @ mention · Esc · F4 discard"
+const HINT = "Enter post · Esc shortcuts"
 const LIST_HINT = "↑↓ choose · Tab complete · Enter pick · Esc close list"
 
 export type Poster = {
@@ -44,6 +44,8 @@ export function openPost(poster: Poster) {
   const dialog = ctx.dialogs.open(`Post to # ${label(room.name, 60)}`, false, 24, true)
   if (!dialog) return
   dialog.composer = true
+  // The room's name is already on screen; the docked post has no heading row.
+  dialog.headingRows = 0
   const draft = poster.drafts.get(room.id) ?? { text: "", id: newMessageID() }
   if (draft.submitted !== undefined) draft.text = draft.submitted
   poster.drafts.set(room.id, draft)
@@ -53,10 +55,12 @@ export function openPost(poster: Poster) {
     draft.text,
     draft.cursor,
     () => draft.submitted !== undefined,
-    "Message the room · @ mention",
+    "Message the room…",
   )
   wire(poster, dialog, editor, room.id, draft)
   ctx.dialogs.resize()
+  // The footer's Typing token follows the open editor.
+  ctx.repaint()
   editor.focus()
 }
 
@@ -105,7 +109,7 @@ function paintHint(ctx: TeamContext, dialog: ModalState, editor: TextareaRendera
   if (!edited && dialog.error.plainText.includes("Ctrl+S retry")) return
   const lines = mentionLines(viewOf(ctx.state), editor.plainText)
   const hint = (dialog.suggestionRows ?? 0) > 0 ? LIST_HINT : HINT
-  const wanted = lines.length + 2
+  const wanted = lines.length + 1
   dialog.error.content = new StyledText([
     ...lines.map((line) => fg(line.warn ? color.warning : color.muted)(`${line.text}\n`)),
     fg(color.muted)(hint),

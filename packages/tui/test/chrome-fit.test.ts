@@ -22,7 +22,7 @@ const row = [
   { text: "t Tasks · 1/3 to-dos", short: "t Tasks", rank: 60 },
   { text: "u 3 queued", short: "u 3", rank: 90 },
   { text: "H Harness", rank: 10 },
-  { text: "Context 45% · 90k/200k", short: "Ctx 45%", rank: 80 },
+  { text: "Context 45% · 90k/200k", short: "ctx 45%", rank: 80 },
 ]
 
 test.each([120, 80, 60, 40])("action row keeps whole entries, Stop, queued and the meter at %d columns", (width) => {
@@ -31,7 +31,7 @@ test.each([120, 80, 60, 40])("action row keeps whole entries, Stop, queued and t
   expect(shown.join("  ").length).toBeLessThanOrEqual(width - 9 - (width > 90 ? 34 : 0))
   expect(shown).toContain("x Stop")
   expect(shown.some((text) => text.startsWith("u 3"))).toBe(true)
-  expect(shown.some((text) => text.startsWith("C"))).toBe(true)
+  expect(shown.some((text) => /^(Context|ctx)/.test(text))).toBe(true)
   for (const text of shown) expect(row.some((entry) => entry.text === text || entry.short === text)).toBe(true)
 })
 
@@ -39,11 +39,11 @@ test("action row drops the lowest-ranked entry first and compacts the meter befo
   const fitted = fitActions(row, 100)
   expect(fitted[7]).toBeUndefined()
   expect(fitted[8]).toBe("Context 45% · 90k/200k")
-  expect(fitActions(row, 50)[8]).toBe("Ctx 45%")
+  expect(fitActions(row, 50)[8]).toBe("ctx 45%")
 })
 
 test("short context meter keeps the percentage", () => {
-  expect(meterText({ model: { providerID: "p", id: "m" }, total: 90000 }, 200000, true)).toBe("Ctx 45%")
+  expect(meterText({ model: { providerID: "p", id: "m" }, total: 90000 }, 200000, true)).toBe("ctx 45%")
 })
 
 test("long server addresses keep host:port, then the port", () => {
@@ -61,7 +61,7 @@ test("schedules show the largest whole unit", () => {
 test("narrow footer names the tab and how to reach the hidden sidebar; wide footer names the focus", () => {
   const state = createDashboardState()
   state.tab = "terminals"
-  expect(statusline(state, undefined, 80)).toStartWith("View 2/4 Terminals")
+  expect(statusline(state, undefined, 80)).toStartWith("2/4 Terminals")
   expect(footerShortcuts(80, false)).toContain("b sidebar")
   expect(footerShortcuts(60, false)).toContain("b sidebar")
   expect(footerShortcuts(120, true)).toContain("Tab pane")
@@ -92,7 +92,7 @@ test("the action panel hides when it has no composer line, and the size notice m
 
 test.each([
   [120, true],
-  [100, false],
+  [100, true],
   [80, false],
   [60, false],
 ])("the footer names the session's agent and model only where it fits (%d columns)", (width, shown) => {
@@ -104,7 +104,7 @@ test.each([
   } as unknown as Snapshot
   const footer = statusline(state, snapshot, width)
   expect(footer.includes("build · sandbox/scripted")).toBe(shown)
-  if (shown) expect(footer.length + footerShortcuts(width, true).length + 6).toBeLessThanOrEqual(width)
+  if (shown) expect(footer.length + footerShortcuts(width, true, false, 26, true).length + 6).toBeLessThanOrEqual(width)
 })
 
 test("without a session model the footer falls back to the latest reply, then the server default", () => {

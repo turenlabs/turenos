@@ -81,15 +81,14 @@ export function renderActionRow(d: DashboardContext, pending?: Detail) {
   const queued = waiting(pending?.pending).length
   const usage = pending && !state.history ? contextUsage(pending.messages) : undefined
   const limit = session && usage ? d.c.limits(session.location.directory, usage.model) : undefined
-  const meter = session && usage ? meterText(usage, limit) : ""
-  // While typing, letters go into the reply, so the row keeps only its status, without the keys.
+  const meter = session && usage ? meterText(usage, limit, d.renderer.width < layout.wideBreakpoint) : ""
+  // The row is hidden while the editor is open, so it only has to be right for shortcut mode.
   const typing = !!state.modal?.composer
   // A room nobody answers in leads with the way to add the first teammate.
   const empty =
     room && state.team?.room?.id === state.selected && !state.team.room.archived && !state.team.teammates.length
   const extra = extraActions(ui.actions)
   const returning = state.tab === "sessions" && !!state.selected && d.c.team.openedSession() === state.selected
-  const key = (letter: string) => (typing ? "" : `${letter} `)
   const row = [
     { node: ui.stop, show: running && !typing, text: "x Stop", rank: 100 },
     {
@@ -109,18 +108,19 @@ export function renderActionRow(d: DashboardContext, pending?: Detail) {
     {
       node: ui.tasks,
       show: (hasTasks || room) && !(room && typing),
-      text: `${key("t")}Tasks${todos ? ` · ${todos}` : ""}`,
-      short: `${key("t")}Tasks`,
+      text: `t Tasks${todos ? ` · ${todos}` : ""}`,
+      short: `t Tasks`,
       rank: 60,
     },
-    { node: ui.queued, show: queued > 0, text: `${key("u")}${queued} queued`, short: `${key("u")}${queued}`, rank: 90 },
+    { node: ui.queued, show: queued > 0, text: `u ${queued} queued`, short: `u ${queued}`, rank: 90 },
     { node: ui.harness, show: (live || room) && !typing, text: room ? "F Factory" : "H Harness", rank: 10 },
     { node: ui.meter, show: !room && !!meter, text: meter, short: usage && meterText(usage, limit, true), rank: 80 },
     // A task session opened from a room offers the way back to it.
-    { node: extra.team, show: returning, text: `${key("4")}Team`, rank: 15 },
+    { node: extra.team, show: returning, text: `4 Team`, rank: 15 },
     { node: extra.room, show: room && !typing, text: "d Room", rank: 5 },
     { node: extra.newRoom, show: room && !typing, text: "a New room", rank: 6 },
   ]
+  if (state.modal?.composer) shareWithEditor(state.modal, room ? "" : meter, queued)
   const width = actionWidth(d)
   fitActionRow(row, width)
   // A row that left entries out says so: the … stands for the rest, which are in Ctrl+P.
@@ -130,11 +130,19 @@ export function renderActionRow(d: DashboardContext, pending?: Detail) {
     const last = row.findLast((entry) => entry.node.visible && entry.node !== ui.meter)
     if (last) last.node.content = `${last.node.plainText} …`
   }
-  // The room has no status to keep while its post editor is open, so the whole row gives way to it. A layout
-  // pass can show the box again (it follows the composer), so it also has no height then.
-  ui.actions.visible = (typing && !room) || (!state.modal && ui.composer.visible)
-  ui.actions.height = typing ? (room ? 0 : 1) : 2
+  // The open editor carries the meter and the queued count on its own rows, so the whole row gives way to it. A layout
+  // pass can show the box again, so it also has no height then.
+  ui.actions.visible = !state.modal && ui.composer.visible
+  ui.actions.height = typing ? 0 : 2
   ui.actions.marginTop = typing ? 0 : 1
+}
+
+/** Hands the editor what the action row used to show beside it, repainting the editor only when that changed. */
+function shareWithEditor(modal: NonNullable<DashboardContext["state"]["modal"]>, meter: string, queued: number) {
+  if (modal.meter === meter && modal.queued === queued) return
+  modal.meter = meter
+  modal.queued = queued
+  modal.refresh?.()
 }
 
 /** Columns left for the action row: the screen minus the root padding, a beside-layout sidebar (the narrow drawer sits under the transcript), and the row's own border and padding. */

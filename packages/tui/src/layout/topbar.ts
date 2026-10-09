@@ -50,5 +50,5 @@ export function createTopbar(renderer: CliRenderer, root: BoxRenderable) {
     truncate: true,
   })
   root.add(status)
-  return { heading, server, running, modelButton, switchButton, serversButton, status }
+  return { topbar, heading, server, running, modelButton, switchButton, serversButton, status }
 }

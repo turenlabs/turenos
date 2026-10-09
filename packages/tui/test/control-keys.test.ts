@@ -64,7 +64,7 @@ test("Esc twice within two seconds stops a running turn; one Esc only warns", as
 
 test("Esc Esc on an idle session opens the undo dialog; one Esc only warns and sends nothing", async () => {
   const { server, view, screen } = await dashboard({})
-  await screen("f Reply")
+  await screen("Enter type")
   view.mockInput.pressEscape()
   await screen("Press Esc again to rewind")
   expect(view.captureCharFrame()).not.toContain("Undo conversation?")
@@ -76,7 +76,7 @@ test("Esc Esc on an idle session opens the undo dialog; one Esc only warns and s
 
 test("Esc Esc on an idle session with no messages says there is nothing to undo", async () => {
   const { view, screen } = await dashboard({ "GET /api/session/ses_main/message": () => ({ data: [], cursor: {} }) })
-  await screen("f Reply")
+  await screen("Enter type")
   view.mockInput.pressEscape()
   await screen("Nothing to undo in this session.")
   expect(view.captureCharFrame()).not.toContain("Undo conversation?")
@@ -90,7 +90,7 @@ test("Ctrl+G opens the reply draft in $EDITOR like F2", async () => {
   try {
     const { view, screen } = await dashboard({})
     view.mockInput.pressKey("f")
-    await screen("Send · Reply to")
+    await screen("Typing")
     view.mockInput.pressKey("g", { ctrl: true })
     await screen("$EDITOR")
   } finally {
@@ -102,16 +102,16 @@ test("Ctrl+G opens the reply draft in $EDITOR like F2", async () => {
 test("the reply editor says Send while idle and remembers Queue per session while running", async () => {
   const idle = await dashboard({})
   idle.view.mockInput.pressKey("f")
-  await idle.screen("Send · Reply to")
+  await idle.screen("Typing")
   expect(idle.view.captureCharFrame()).not.toContain("Ctrl+T mode")
   const busy = await dashboard(running)
   busy.view.mockInput.pressKey("f")
-  await busy.screen("Steer · Reply to")
+  await busy.screen("Steer · agent is working")
   busy.view.mockInput.pressKey("t", { ctrl: true })
-  await busy.screen("Queue · Reply to")
+  await busy.screen("Queue · sent when")
   busy.view.mockInput.pressEscape()
   busy.view.mockInput.pressKey("f")
-  await busy.screen("Queue · Reply to")
+  await busy.screen("Queue · sent when")
 })
 
 test("a held queued message is described as held while the session is idle", async () => {
