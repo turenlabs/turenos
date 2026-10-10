@@ -1,6 +1,5 @@
 import type { Renderable } from "@opentui/core"
-import { createTestRenderer } from "@opentui/core/testing"
-import { mountDashboard } from "../src/index"
+import type { createTestRenderer } from "@opentui/core/testing"
 import { connect } from "../src/server"
 import { cleanup } from "./preload"
 
@@ -124,6 +123,7 @@ export function turen(
  * `ctrlC` leaves Ctrl+C to the dashboard, as the client's own renderer does, instead of destroying it.
  */
 export async function terminal(width = 120, height = 36, ctrlC = false) {
+  const { createTestRenderer } = await import("@opentui/core/testing")
   const view = await createTestRenderer({ width, height, ...(ctrlC ? { exitOnCtrlC: false } : {}) })
   cleanup.push(() => view.renderer.destroy())
   async function screen(text: string, timeout = 5000) {
@@ -145,6 +145,7 @@ export function backspace(view: Awaited<ReturnType<typeof createTestRenderer>>) 
 
 /** A dashboard of the given size on a `turen()` server, with a helper for Ctrl+P palette actions. */
 export async function sized(width: number, height: number, routes: Record<string, Route> = {}) {
+  const { mountDashboard } = await import("../src/index")
   const server = turen({ routes })
   const { view, screen } = await terminal(width, height)
   const app = mountDashboard(view.renderer, connect({ url: server.url }), server.url)
@@ -179,6 +180,7 @@ export async function mount(
   ready = "says hello",
   quit?: () => void,
 ) {
+  const { mountDashboard } = await import("../src/index")
   const server = turen({ routes })
   const { view, screen } = await terminal(width, height, true)
   const app = mountDashboard(view.renderer, connect({ url: server.url }), server.url, quit, {

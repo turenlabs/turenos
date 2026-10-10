@@ -92,6 +92,7 @@ async function connectDashboard(
       server: serverLabel(endpoint.target),
       servers: (back) => host.picker.open(undefined, "muted", back),
       blocked: host.picker.visible,
+      settings: host.app.current?.dashboard.settings(),
       session: host.app.session,
       folder: host.app.directory ?? (onThisComputer(target) ? host.app.startFolder : undefined),
     })

@@ -1,5 +1,13 @@
 import { RenderableEvents, SelectRenderable, TextRenderable } from "@opentui/core"
-import { factoryConfigProblem, parseFactoryParameters, selectFactoryTeammate } from "@turenlabs/client/team"
+import {
+  FACTORY_ACCEPTANCE_MAX,
+  FACTORY_CONSTRAINTS_MAX,
+  FACTORY_DIRECTORY_MAX,
+  FACTORY_OUTCOME_MAX,
+  factoryConfigProblem,
+  parseFactoryParameters,
+  selectFactoryTeammate,
+} from "@turenlabs/client/team"
 import { markFocus } from "../automations/focus"
 import { clearFailureOf } from "../dialogs/fields"
 import { matchesKey } from "../keys"
@@ -33,8 +41,8 @@ function settingsFields(ctx: TeamContext, dialog: ModalState, room: Room, mates:
   const outcome = textArea(
     ctx,
     dialog,
-    "Outcome (required, up to 4000 characters)",
-    display(config?.outcome ?? "", 4000),
+    `Outcome (required, up to ${FACTORY_OUTCOME_MAX} characters)`,
+    display(config?.outcome ?? "", FACTORY_OUTCOME_MAX),
   )
   // Empty means {}: the placeholder shows it, and typing needs no select-all first.
   const parameters = textArea(
@@ -55,21 +63,21 @@ function settingsFields(ctx: TeamContext, dialog: ModalState, room: Room, mates:
   const constraints = textArea(
     ctx,
     dialog,
-    "Constraints (optional, up to 8000 characters)",
-    display(config?.constraints ?? "", 8000),
+    `Constraints (optional, up to ${FACTORY_CONSTRAINTS_MAX} characters)`,
+    display(config?.constraints ?? "", FACTORY_CONSTRAINTS_MAX),
     3,
   )
   const acceptance = textArea(
     ctx,
     dialog,
-    "Acceptance criteria (required, up to 4000 characters)",
-    display(config?.acceptanceCriteria ?? "", 4000),
+    `Acceptance criteria (required, up to ${FACTORY_ACCEPTANCE_MAX} characters)`,
+    display(config?.acceptanceCriteria ?? "", FACTORY_ACCEPTANCE_MAX),
     3,
   )
   const directory = ctx.dialogs.input(
     dialog,
     "Working directory on the server (required)",
-    display(config?.directory ?? mates[0]!.directory, 4096),
+    display(config?.directory ?? mates[0]!.directory, FACTORY_DIRECTORY_MAX),
   )
   markFocus(directory)
   return { outcome, parameters, constraints, acceptance, directory, team: teamPickers(ctx, dialog, mates, config) }

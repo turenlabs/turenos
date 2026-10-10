@@ -1,5 +1,6 @@
 import { parseJSON } from "../api"
 import { isRecord, object, string } from "../response-validation"
+import { filterOsc } from "./osc"
 import { DETACH, DETACH_SEQUENCES, PENDING_LIMIT, RESTORE, type AttachResult, type Session } from "./types"
 
 export function start(session: Session) {
@@ -49,7 +50,9 @@ export function resized(session: Session) {
 
 function receive(session: Session, data: string | ArrayBuffer) {
   if (typeof data === "string") {
-    session.options.stdout.write(data)
+    // The cursor counts what the server sent, whatever the filter keeps.
+    const shown = filterOsc(session.osc, data)
+    if (shown) session.options.stdout.write(shown)
     session.cursor = (session.cursor ?? 0) + data.length
     return
   }

@@ -140,9 +140,9 @@ export async function openSection<T>(
   if (!picker) return
   try {
     const value = await work()
-    if (state.modal === picker.dialog) fill(value, picker)
+    if (state.modal === picker.dialog && !picker.text.isDestroyed) fill(value, picker)
   } catch (error) {
-    if (state.modal === picker.dialog) {
+    if (state.modal === picker.dialog && !picker.text.isDestroyed) {
       picker.text.content = `${input.title} unavailable: ${errorText(error)}`
       picker.fit()
       picker.set([

@@ -18,6 +18,7 @@ import { snapshot } from "./snapshot"
 import { basicAuthHeaders, createTransport, validateConnection } from "./transport"
 import { worktree } from "./worktree"
 import type { Folder } from "../working-folders/folder"
+import { localFolders } from "../working-folders/local"
 
 export function connect(options: ConnectionOptions) {
   const { url, username, socketPath } = validateConnection(options)
@@ -25,7 +26,7 @@ export function connect(options: ConnectionOptions) {
   const headers = basicAuthHeaders(username, options.password)
   const transport = createTransport(controller, socketPath)
   const client = Forge.make({ baseUrl: url.href, headers, fetch: transport })
-  const folders = createWorkingFolders({ url, headers, transport })
+  const folders = localFolders(createWorkingFolders({ url, headers, transport }))
   const api = createApi({ url, headers, signal: controller.signal, socketPath })
   const missingFiles = new Set<string>()
   const ctx: Context = { url, headers, controller, options, transport, client, folders, api, missingFiles }
@@ -38,10 +39,18 @@ export function connect(options: ConnectionOptions) {
     providers,
     folders,
     client,
+    // Select the requested ID before the dashboard's active-map limit removes entries.
+    running: async (sessionID: string) => {
+      const targeted = Forge.make({
+        baseUrl: url.href,
+        headers,
+        fetch: createTransport(controller, socketPath, sessionID),
+      })
+      return Object.hasOwn(await targeted.sessions.active(), sessionID)
+    },
     api,
     missingFiles,
-    events: (signal: AbortSignal) =>
-      liveEvents(url, headers, AbortSignal.any([controller.signal, signal]), socketPath),
+    events: (signal: AbortSignal) => liveEvents(url, headers, AbortSignal.any([controller.signal, signal]), socketPath),
     snapshot: (folder?: Folder) => snapshot(ctx, folder),
     searchSessions: (input: SessionSearch, signal?: AbortSignal) => searchSessions(ctx, input, signal),
     updateSession: (session: Session, change: SessionChange) => updateSession(ctx, session, change),

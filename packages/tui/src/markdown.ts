@@ -31,7 +31,15 @@ export function createMarkdown(renderer: CliRenderer): MarkdownRenderable {
     },
   })
   guardInitialChunks(markdown)
-  // The renderer emits destroy before destroying children that still use this style.
-  renderer.once("destroy", () => queueMicrotask(() => style.destroy()))
+  // The style goes with the markdown, or with the renderer if that ends first, and a dashboard that is swapped out
+  // must not leave its listener on the renderer. The renderer emits destroy before destroying children that still
+  // use the style, so it is released after them.
+  const release = () => {
+    renderer.off("destroy", release)
+    markdown.off("destroyed", release)
+    queueMicrotask(() => style.destroy())
+  }
+  renderer.once("destroy", release)
+  markdown.once("destroyed", release)
   return markdown
 }

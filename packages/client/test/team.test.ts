@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test"
 import type { Team } from "@turenlabs/schema/team"
 import {
   assignedHandles,
+  FACTORY_DIRECTORY_MAX,
+  FACTORY_ID_MAX,
   factoryConfigProblem,
   factoryOutput,
   insertMention,
@@ -193,6 +195,14 @@ describe("team room rules", () => {
     expect(factoryConfigProblem({ ...config, outcome: "x".repeat(4001) }, mates)).toContain("Outcome is limited")
     expect(factoryConfigProblem({ ...config, constraints: "x".repeat(8001) }, mates)).toContain("Constraints")
     expect(factoryConfigProblem({ ...config, acceptanceCriteria: "x".repeat(4001) }, mates)).toContain("criteria")
+    expect(factoryConfigProblem({ ...config, directory: "x".repeat(FACTORY_DIRECTORY_MAX) }, mates)).toBeUndefined()
+    expect(factoryConfigProblem({ ...config, directory: "x".repeat(FACTORY_DIRECTORY_MAX + 1) }, mates)).toContain(
+      "Directory",
+    )
+    const longID = "i".repeat(FACTORY_ID_MAX + 1)
+    expect(
+      factoryConfigProblem({ ...config, coordinatorTeammateID: longID, teammateIDs: [longID] }, [{ id: longID }]),
+    ).toContain("IDs")
     const many = Array.from({ length: 11 }, (_, index) => `m${index}`)
     expect(
       factoryConfigProblem(
