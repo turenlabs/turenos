@@ -1,3 +1,4 @@
+import { withoutDeprecated } from "@turenlabs/client/models"
 import type { Agent, ProviderListResponse } from "@turenlabs/sdk/v2/client"
 import { NormalizedProviderListResponse } from "@turenlabs/session-ui/context"
 export { pathKey as directoryKey, type PathKey as DirectoryKey } from "@/utils/path-key"
@@ -28,9 +29,7 @@ export function normalizeProviderList(input: ProviderListResponse): NormalizedPr
             provider.id,
             {
               ...provider,
-              models: Object.fromEntries(
-                Object.entries(provider.models).filter(([, info]) => info.status !== "deprecated"),
-              ),
+              models: withoutDeprecated(provider.models),
             },
           ] as const,
       ),

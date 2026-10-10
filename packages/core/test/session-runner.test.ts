@@ -53,6 +53,7 @@ import * as SessionRunnerLLM from "@turenlabs/core/session/runner/llm"
 import { ClaudeCodeMcp } from "@turenlabs/core/session/runner/claude-code-mcp-namespace"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
+import { ToolListChangedNotificationSchema } from "@modelcontextprotocol/sdk/types.js"
 import { SessionRunnerModel } from "@turenlabs/core/session/runner/model"
 import { SessionRunnerRetry } from "@turenlabs/core/session/runner/retry"
 import { SessionStatus } from "@turenlabs/core/session/status"
@@ -7515,6 +7516,67 @@ describe("SessionRunnerLLM Claude Code steering", () => {
       for (let attempt = 0; attempt < 300 && (yield* execution.active).size !== 0; attempt += 1)
         yield* Effect.sleep("10 millis")
       expect((yield* execution.active).size).toBe(0)
+    }),
+  )
+
+  it.live("makes a tool selected by tool_load callable within the same CLI turn", () =>
+    Effect.gen(function* () {
+      yield* setup
+      currentModel = claudeModel
+      const session = yield* SessionV2.Service
+      const registry = yield* ToolRegistry.Service
+      yield* registry.register({
+        fixture_deferred: Tool.make({
+          deferred: true,
+          description: "Deferred fixture tool",
+          input: Schema.Struct({}),
+          output: Schema.Struct({ ok: Schema.Boolean }),
+          execute: () => Effect.succeed({ ok: true }),
+        }),
+      })
+      const observed = { before: [] as string[], notified: false, after: [] as string[], call: undefined as unknown }
+      // The CLI runs its whole agent loop inside this one provider turn, so a tool loaded by
+      // tool_load has to reach it through tools/list_changed, not on the next provider turn.
+      responseStream = Stream.unwrap(
+        Effect.gen(function* () {
+          const server = yield* ClaudeCodeMcp.serve(ClaudeCodeMcp.requestToken(requests.at(-1)?.metadata)!).pipe(
+            Effect.orDie,
+          )
+          const client = new Client({ name: "forge-test", version: "1" })
+          const changed = Promise.withResolvers<boolean>()
+          client.setNotificationHandler(ToolListChangedNotificationSchema, () => changed.resolve(true))
+          yield* Effect.acquireRelease(
+            Effect.promise(() =>
+              client.connect(
+                new StreamableHTTPClientTransport(new URL(server.url), {
+                  requestInit: { headers: { Authorization: server.authorization } },
+                }),
+              ),
+            ),
+            () => Effect.promise(() => client.close()),
+          )
+          yield* Effect.promise(async () => {
+            observed.before = (await client.listTools()).tools.map((tool) => tool.name)
+            await client.callTool({ name: ToolBroker.LOAD_TOOL_NAME, arguments: { tools: ["fixture_deferred"] } })
+            observed.notified = await Promise.race([
+              changed.promise,
+              new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 2_000)),
+            ])
+            observed.after = (await client.listTools()).tools.map((tool) => tool.name)
+            observed.call = await client.callTool({ name: "fixture_deferred", arguments: {} })
+          })
+          return Stream.fromIterable([LLMEvent.stepStart({ index: 0 }), ...finalText("text-after-load", "Done")])
+        }),
+      )
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Load the fixture tool" }), resume: false })
+      yield* session.resume(sessionID).pipe(Effect.timeout("10 seconds"))
+
+      expect(requests).toHaveLength(1)
+      expect(observed.before).toContain(ToolBroker.LOAD_TOOL_NAME)
+      expect(observed.before).not.toContain("fixture_deferred")
+      expect(observed.notified).toBe(true)
+      expect(observed.after).toContain("fixture_deferred")
+      expect(observed.call).toEqual({ content: [{ type: "text", text: '{"ok":true}' }] })
     }),
   )
 })

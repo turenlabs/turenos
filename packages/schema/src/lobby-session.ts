@@ -38,6 +38,9 @@ export function capabilityRules(profile: CapabilityProfile): Permission.Ruleset 
         "apply_agent_improvement",
         "memory.write",
         "memory.forget",
+        // Team tools reach every Team room and start teammate Sessions that run without this profile.
+        // The wildcard keeps Team tools added later denied too.
+        "team_*",
       ].map((action): Permission.Rule => ({ action, resource: "*", effect: "deny" })),
     ]
   return [

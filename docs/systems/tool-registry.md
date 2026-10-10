@@ -42,7 +42,9 @@ closed, the call returns `Stale tool call: <name>` and nothing executes; a name 
 
 A tool made with `deferred: true` (or `Tool.withDeferred`) stays callable but its schema isn't sent until selected, which
 keeps rarely used capabilities out of context. The model finds deferred tools with `tool_search` and selects one with
-`tool_load`; the selected definition appears on the next provider turn. `mcp_search` and `mcp_load` are hidden aliases
+`tool_load`; the selected definition appears on the next provider turn. Claude Code, which runs its whole agent loop in
+one provider turn, receives it in the same turn instead (see
+[Claude Code tool routing](../providers/claude-code/tool-routing.md#deferred-tools)). `mcp_search` and `mcp_load` are hidden aliases
 over the MCP subset. A direct call to a deferred tool that wasn't selected still executes, and any allow rule other than
 the catch-all `*` whose action pattern matches the tool keeps it inline.
 

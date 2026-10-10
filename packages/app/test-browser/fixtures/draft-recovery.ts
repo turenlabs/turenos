@@ -46,6 +46,8 @@ const platform: Platform = {
   forward() {},
   notify: async () => undefined,
   openDirectoryPickerDialog: async () => null,
+  // No server answers this fixture; the shared working-folder sync's reads get a local refusal instead of DNS.
+  fetch: async () => new Response(null, { status: 404 }),
   storage(name = "default"): AsyncStorage {
     const data = values.get(name) ?? new Map<string, string>()
     values.set(name, data)

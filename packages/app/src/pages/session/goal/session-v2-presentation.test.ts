@@ -83,6 +83,28 @@ describe("presentSessionV2Messages", () => {
     ])
   })
 
+  test.each([
+    ["Provider turn interrupted", "MessageAbortedError"],
+    ["Provider rejected the request", "UnknownError"],
+  ])("presents the assistant error %p as %s", (message, name) => {
+    const result = present([
+      user,
+      {
+        id: "msg_assistant",
+        type: "assistant",
+        agent: "build",
+        model: { providerID: "provider", id: "model" },
+        time: { created: 2, completed: 4 },
+        error: { type: "unknown", message },
+        content: [],
+      },
+    ])
+
+    expect(result.messages.find((item) => item.id === "msg_assistant")).toMatchObject({
+      error: { name, data: { message } },
+    })
+  })
+
   test("carries agent/model switches into subsequent user presentation", () => {
     const result = present([
       { id: "msg_agent", type: "agent-switched", agent: "research", time: { created: 1 } },

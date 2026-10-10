@@ -1,0 +1,406 @@
+import { afterEach, expect, test } from "bun:test"
+import {
+  CodeRenderable,
+  StyledText,
+  RGBA,
+  TextRenderable,
+  TextTableRenderable,
+  type Renderable,
+  type TextChunk,
+} from "@opentui/core"
+import { createTestRenderer } from "@opentui/core/testing"
+import { createMarkdown, normalizeMarkdown } from "../src/markdown"
+import { transcript } from "../src/messages"
+import { color } from "../src/theme"
+
+const cleanup: (() => void)[] = []
+afterEach(() => {
+  for (const dispose of cleanup.splice(0).reverse()) dispose()
+})
+
+async function setup(width = 80) {
+  const view = await createTestRenderer({ width, height: 32 })
+  const markdown = createMarkdown(view.renderer)
+  view.renderer.root.add(markdown)
+  cleanup.push(() => view.renderer.destroy())
+  return { ...view, markdown }
+}
+
+async function rendered(view: Awaited<ReturnType<typeof setup>>, text: string) {
+  const deadline = Date.now() + 5000
+  while (Date.now() < deadline) {
+    await view.renderOnce()
+    if (
+      view.captureCharFrame().includes(text) &&
+      descendants(view.markdown).every((node) => !(node instanceof CodeRenderable) || !node.isHighlighting)
+    )
+      return view.captureCharFrame()
+    await Bun.sleep(10)
+  }
+  throw new Error(`Markdown did not settle:\n${view.captureCharFrame()}`)
+}
+
+function descendants(node: Renderable): Renderable[] {
+  return node.getChildren().flatMap((child) => [child, ...descendants(child)])
+}
+
+test("appended text reparses the trailing paragraph instead of creating a new line per fragment", async () => {
+  const view = await setup()
+  view.markdown.content = "Agent\nInitial snapshot"
+  await rendered(view, "Initial snapshot")
+  view.markdown.content += " live text"
+  const frame = await rendered(view, "Initial snapshot live text")
+  expect(frame).toContain("Initial snapshot live text")
+  view.markdown.content += " and more"
+  expect(await rendered(view, "Initial snapshot live text and more")).toContain("Initial snapshot live text and more")
+})
+
+test.each([38])("numbered items with next-line text align their marker at %s columns", async (width) => {
+  const view = await setup(width)
+  const source =
+    "1.\n   **First item** has enough descriptive words to wrap on narrow screens.\n\n   Separate paragraph.\n2.\n   Second item.\n   1.\n      Nested item."
+  view.markdown.content = source
+  const frame = await rendered(view, "Nested item.")
+  expect(frame).toMatch(/1\. First item/)
+  expect(frame).toMatch(/2\. Second item\./)
+  expect(frame).toMatch(/1\. Nested item\./)
+  const rows = frame.split("\n")
+  const paragraph = rows.findIndex((line) => line.includes("Separate paragraph."))
+  expect(rows[paragraph - 1]?.trim()).toBe("")
+  expect(view.markdown.content).toBe(source)
+})
+
+test("streamed numbered items retain baseline alignment as markers widen", async () => {
+  const view = await setup(38)
+  view.markdown.content = "9.\n   Ninth item."
+  expect(await rendered(view, "Ninth item.")).toMatch(/9\. Ninth item\./)
+  for (const suffix of ["\n10.", "\n    Tenth", " item."]) {
+    view.markdown.content += suffix
+    await rendered(view, "Ninth item.")
+  }
+  const frame = await rendered(view, "Tenth item.")
+  expect(frame).toMatch(/9\. Ninth item\./)
+  expect(frame).toMatch(/10\. Tenth item\./)
+  view.resize(60, 32)
+  expect(await rendered(view, "Tenth item.")).toMatch(/10\. Tenth item\./)
+})
+
+test.each([1, 9])("response metadata does not swallow an ordered list starting at %s", async (start) => {
+  const view = await setup(54)
+  view.markdown.content = transcript([
+    {
+      id: "msg_list",
+      type: "assistant",
+      agent: "build",
+      model: { providerID: "test", id: "model" },
+      time: { created: 1 },
+      content: [
+        {
+          id: "part_list",
+          type: "text",
+          text: `${start}.\n   First body.\n${start + 1}.\n${" ".repeat(String(start + 1).length + 2)}Second body.`,
+        },
+      ],
+    },
+  ])
+  const frame = await rendered(view, "Second body.")
+  expect(frame).toMatch(new RegExp(`${start}\\. First body\\.`))
+  expect(frame).toMatch(new RegExp(`${start + 1}\\. Second body\\.`))
+})
+
+test("a preceding response part cannot turn the answer list into a paragraph", async () => {
+  const view = await setup(54)
+  view.markdown.content = transcript([
+    {
+      id: "msg_parts",
+      type: "assistant",
+      agent: "build",
+      model: { providerID: "test", id: "model" },
+      time: { created: 1 },
+      content: [
+        { id: "part_reasoning", type: "reasoning", text: "Earlier reasoning." },
+        { id: "part_answer", type: "text", text: "1.\n   First answer.\n2.\n   Second answer." },
+      ],
+    },
+  ])
+  const frame = await rendered(view, "Second answer.")
+  expect(frame).toContain("1. First answer.")
+  expect(frame).toContain("2. Second answer.")
+})
+
+test("renders readable headings, emphasis, code and tables, then replaces the content", async () => {
+  const view = await setup()
+  expect(view.markdown.syntaxStyle.getStyle("markup.heading.1")?.fg).toEqual(RGBA.fromHex(color.accent))
+  expect(view.markdown.syntaxStyle.getStyle("markup.raw.block")?.bg).toEqual(RGBA.fromHex(color.panel))
+  expect(view.markdown.syntaxStyle.getStyle("markup.link")?.fg).toEqual(RGBA.fromHex(color.accent))
+  view.markdown.content = [
+    "# Review complete",
+    "The **session switcher** keeps _your place_.",
+    "- Open `src/index.ts`\n- Run the checks",
+    '```typescript\nconst active = "server"\nconsole.log(active)\n```',
+    "| Session | State |\n| --- | --- |\n| UI polish | Ready |",
+    "[Documentation](https://example.com/docs)",
+  ].join("\n\n")
+  const frame = await rendered(view, "Documentation")
+  expect(frame).toContain("Review complete")
+  expect(frame).not.toContain("# Review")
+  expect(frame).toContain("session switcher")
+  expect(frame).not.toContain("**session")
+  expect(frame).toContain('const active = "server"')
+  expect(frame).not.toContain("```typescript")
+  expect(frame).toContain("UI polish")
+  const spans = view.captureSpans().lines.flatMap((line) => line.spans)
+  expect(spans.some((span) => span.text.includes("Review complete") && span.attributes !== 0)).toBe(true)
+  expect(descendants(view.markdown).some((node) => node instanceof TextTableRenderable)).toBe(true)
+
+  view.markdown.content = "## Updated\n\n**Fresh content** replaces the original."
+  const updated = await rendered(view, "Fresh content")
+  expect(updated).not.toContain("Review complete")
+  expect(updated).not.toContain("## Updated")
+  expect(updated).not.toContain("**Fresh")
+})
+
+test("only HTTP and HTTPS links survive in prose and reused table cells", async () => {
+  const view = await setup()
+  const seen: TextChunk[] = []
+  function observe() {
+    for (const node of descendants(view.markdown)) {
+      if (!(node instanceof CodeRenderable)) continue
+      const original = node.onChunks!
+      node.onChunks = async (chunks, context) => {
+        const result = (await original(chunks, context)) ?? chunks
+        seen.push(...result)
+        return result
+      }
+    }
+  }
+  view.markdown.content = [
+    "[Secure](https://example.com/docs) [File](file:///tmp/example) [Script](javascript:alert(1))",
+    "| Links |\n| --- |\n| [HTTP](http://example.com) |\n| [Bad](custom:launch) |",
+  ].join("\n\n")
+  observe()
+  await rendered(view, "Secure")
+  const table = descendants(view.markdown).find((node) => node instanceof TextTableRenderable)!
+  expect([...new Set(table.content.flat(2).flatMap((chunk) => chunk?.link?.url ?? []))]).toEqual([
+    "http://example.com/",
+  ])
+  expect(seen.some((chunk) => chunk.link?.url === "https://example.com/docs")).toBe(true)
+  expect(seen.filter((chunk) => chunk.link).every((chunk) => chunk.link!.url.startsWith("https://"))).toBe(true)
+
+  seen.length = 0
+  view.markdown.content = [
+    "[Allowed](HTTP://example.com) [Custom](custom:launch-two)",
+    "| Links |\n| --- |\n| [Changed](javascript:launch) |\n| [Good](https://example.com/new) |",
+  ].join("\n\n")
+  observe()
+  await rendered(view, "Allowed")
+  const updated = descendants(view.markdown).find((node) => node instanceof TextTableRenderable)!
+  expect(updated).toBe(table)
+  expect([...new Set(updated.content.flat(2).flatMap((chunk) => chunk?.link?.url ?? []))]).toEqual([
+    "https://example.com/new",
+  ])
+  expect(seen.some((chunk) => chunk.link?.url === "http://example.com/")).toBe(true)
+  expect(seen.filter((chunk) => chunk.link).every((chunk) => chunk.link!.url.startsWith("http://"))).toBe(true)
+})
+
+test("disables malformed and control-bearing hyperlink targets without hiding their labels", async () => {
+  const view = await setup()
+  view.markdown.content = "A paragraph."
+  const node = descendants(view.markdown).find((child) => child instanceof CodeRenderable)!
+  const targets = [
+    "javascript:alert(1)",
+    "file:///tmp/example",
+    "custom:launch",
+    "//example.com",
+    "https://example.com/\u001b]8;;file:///tmp/example",
+    "ht\ttps://example.com",
+    "https://example.com/\u009c",
+    "http://",
+    "https://example.com/docs",
+  ]
+  const chunks: TextChunk[] = targets.map((url) => ({ __isChunk: true, text: "Read more", link: { url } }))
+  const result = await node.onChunks!(chunks, {
+    content: "",
+    filetype: "markdown",
+    syntaxStyle: view.markdown.syntaxStyle,
+    highlights: [],
+  })
+  expect(result?.map((chunk) => chunk.text)).toEqual(targets.map(() => "Read more"))
+  expect(result?.flatMap((chunk) => chunk.link?.url ?? [])).toEqual(["https://example.com/docs"])
+})
+
+test("preserves output past the six-message window budget as plain text and resumes rich rendering on the next update", async () => {
+  const view = await setup()
+  for (const value of ["x".repeat(96_001), ">".repeat(3073) + " kept", "row\n".repeat(1537)]) {
+    view.markdown.content = value
+    expect(view.markdown.content).toBe(value)
+    const fallback = view.markdown.getChildren().find((node) => node instanceof TextRenderable)!
+    expect(fallback.plainText).toBe(value)
+    expect(descendants(view.markdown).some((node) => node instanceof CodeRenderable)).toBe(false)
+  }
+  view.markdown.content = "# Back to reading\n\n**Ready** for review."
+  const frame = await rendered(view, "Ready")
+  expect(frame).toContain("Back to reading")
+  expect(frame).not.toContain("# Back")
+  expect(frame).not.toContain("**Ready")
+})
+
+test("normalizeMarkdown collapses next-line list items and preserves code blocks", () => {
+  expect(normalizeMarkdown("1.\nFirst item\n2.\nSecond item")).toBe("1. First item\n2. Second item")
+  expect(normalizeMarkdown("1. \nFirst item\n2. \nSecond item")).toBe("1. First item\n2. Second item")
+  expect(normalizeMarkdown("1.\n   First item\n2.\n   Second item")).toBe("1. First item\n2. Second item")
+  expect(normalizeMarkdown("1. First item\n2. Second item")).toBe("1. First item\n2. Second item")
+  expect(normalizeMarkdown("1)\nFirst item\n2)\nSecond item")).toBe("1) First item\n2) Second item")
+  expect(normalizeMarkdown("1.\n\nFirst item")).toBe("1.\n\nFirst item")
+  expect(normalizeMarkdown("1.\n2. Item")).toBe("1.\n2. Item")
+  expect(normalizeMarkdown("- \nFirst item\n- \nSecond item")).toBe("- First item\n- Second item")
+  expect(normalizeMarkdown("  1.\n  Nested item")).toBe("  1. Nested item")
+  const code = "1.\nFirst\n\n```\n1.\nCode line\n```\n2.\nSecond"
+  expect(normalizeMarkdown(code)).toBe("1. First\n\n```\n1.\nCode line\n```\n2. Second")
+})
+
+test("normalizeMarkdown keeps status-row brackets and leaves links and code alone", () => {
+  expect(normalizeMarkdown("  [failed · exit 1] bash\n  [x] done\n  [ ] todo")).toBe(
+    "  `[failed · exit 1]` bash\n  `[x]` done\n  `[ ]` todo",
+  )
+  expect(normalizeMarkdown("[docs](https://x.test) and [ref]: https://x.test")).toBe(
+    "[docs](https://x.test) and [ref]: https://x.test",
+  )
+  expect(normalizeMarkdown("```\n[x] code\n```")).toBe("```\n[x] code\n```")
+})
+
+test("a bracketed span with no link target keeps its brackets and plain style", async () => {
+  const view = await setup()
+  view.markdown.content =
+    'Done: it returned:\n\n[\n  {\n    "status": "completed"\n  }\n]\n\nSee [the docs](https://x.test) and [note] here.'
+  const frame = await rendered(view, "here.")
+  expect(frame).toMatch(/^\[ *$/m)
+  expect(frame).toContain('"status": "completed"')
+  expect(frame).toMatch(/^\] *$/m)
+  expect(frame).toContain("[note] here.")
+  expect(frame).toContain("the docs")
+  expect(frame).not.toContain("[the docs]")
+})
+
+test("normalizeMarkdown keeps target-less brackets as text: JSON blocks fenced, inline spans as code", () => {
+  expect(normalizeMarkdown('Result:\n\n[\n  {"a": [1, 2]}\n]')).toBe('Result:\n\n```json\n[\n  {"a": [1, 2]}\n]\n```')
+  expect(normalizeMarkdown("a [note] b, `[kept]`, ![img](x.png), [docs](https://x.test) [r][ref]")).toBe(
+    "a `[note]` b, `[kept]`, ![img](x.png), [docs](https://x.test) [r][ref]",
+  )
+  expect(normalizeMarkdown("```\n[x] code\n```\n[y] text")).toBe("```\n[x] code\n```\n`[y]` text")
+  expect(normalizeMarkdown("already \\[escaped] and an [open bracket")).toBe("already \\[escaped] and an [open bracket")
+  expect(normalizeMarkdown('{\n  "a": 1\n]')).toBe('{\n  "a": 1\n]')
+})
+
+test("a role chip renders its words in the accent colour without backticks", async () => {
+  const view = await setup()
+  view.markdown.content = "`USER`\nhello there"
+  const frame = await rendered(view, "hello there")
+  expect(frame).toMatch(/^USER *$/m)
+  expect(frame).not.toContain("`")
+  const user = view
+    .captureSpans()
+    .lines.flatMap((line) => line.spans)
+    .find((span) => span.text.includes("USER"))
+  expect(user?.fg).toEqual(RGBA.fromHex(color.accent))
+})
+
+test("identifiers with an underscore before a digit keep their underscores; real emphasis still works", async () => {
+  expect(normalizeMarkdown("ids ses_4ab6 and msg_01 here")).toBe("ids `ses_4ab6` and `msg_01` here")
+  expect(normalizeMarkdown("snake_case_name and _real emphasis_")).toBe("snake_case_name and _real emphasis_")
+  expect(normalizeMarkdown("[docs](https://x.test/a_1/b) and src/file_1.ts")).toBe(
+    "[docs](https://x.test/a_1/b) and src/file_1.ts",
+  )
+  const view = await setup()
+  view.markdown.content = "ids ses_4ab6 and msg_01 here\nthen _real emphasis_ end"
+  const frame = await rendered(view, "end")
+  expect(frame).toContain("ids ses_4ab6 and msg_01 here")
+  expect(frame).toContain("then real emphasis end")
+})
+
+test("the chunks painted before the first highlight carry only HTTP and HTTPS links", async () => {
+  const view = await setup()
+  view.markdown.content = [
+    "[Script](javascript:alert(1)) and [Docs](https://example.com/docs) in a paragraph",
+    "- [File](file:///tmp/example) in a list",
+  ].join("\n\n")
+  // Streaming paints OpenTUI's initial inline chunks at once; none may keep a non-HTTP target.
+  const initial = descendants(view.markdown)
+    .filter((node) => node instanceof CodeRenderable)
+    .flatMap((node) => (node as unknown as { _initialStyledText?: StyledText })._initialStyledText?.chunks ?? [])
+  expect(initial.length).toBeGreaterThan(0)
+  expect([...new Set(initial.flatMap((chunk) => chunk.link?.url ?? []))]).toEqual(["https://example.com/docs"])
+  expect(initial.some((chunk) => chunk.text === "Script")).toBe(true)
+  await rendered(view, "Docs")
+})
+
+test("normalizeMarkdown leaves underscores alone inside link destinations, autolinks and bare URLs", () => {
+  for (const text of [
+    "[docs](https://x.com/p?a=1&user_1=2)",
+    "see https://x.com/?foo_1=bar now",
+    "<https://a.b/c?x_1>",
+  ])
+    expect(normalizeMarkdown(text)).toBe(text)
+  expect(normalizeMarkdown("id ses_4ab6 here")).toBe("id `ses_4ab6` here")
+})
+
+test("normalizeMarkdown leaves indented code, footnotes and defined references alone", () => {
+  expect(normalizeMarkdown("Code:\n\n    a[0] = 1\n\nand a [note].")).toBe("Code:\n\n    a[0] = 1\n\nand a `[note]`.")
+  expect(normalizeMarkdown("- item\n\n    nested [0] stays in the list")).toBe(
+    "- item\n\n    nested `[0]` stays in the list",
+  )
+  expect(normalizeMarkdown("Text[^1] and [foo] here.\n\n[^1]: A note.\n[foo]: https://x.test")).toBe(
+    "Text[^1] and [foo] here.\n\n[^1]: A note.\n[foo]: https://x.test",
+  )
+  expect(normalizeMarkdown("[Foo] first\n\n[foo]: https://x.test")).toBe("[Foo] first\n\n[foo]: https://x.test")
+})
+
+test("a longer fence is closed only by a fence at least as long", () => {
+  const nested = "````md\n```js\n[0] inner\n```\n[1] still code\n````\n[2] after"
+  expect(normalizeMarkdown(nested)).toBe("````md\n```js\n[0] inner\n```\n[1] still code\n````\n`[2]` after")
+  expect(normalizeMarkdown("~~~~\n~~~\n[0]\n~~~~")).toBe("~~~~\n~~~\n[0]\n~~~~")
+})
+
+function rowsBetween(frame: string, first: string, second: string) {
+  const rows = frame.split("\n")
+  return rows.slice(
+    rows.findIndex((row) => row.includes(first)) + 1,
+    rows.findIndex((row) => row.includes(second)),
+  )
+}
+
+// OpenTUI's default block mode drops the blank-line tokens once a renderNode is set, so paragraphs ran together.
+test("paragraphs separated by a blank line render with one blank row between them", async () => {
+  const view = await setup()
+  view.markdown.content = "First paragraph.\n\nSecond paragraph.\nSame paragraph.\n\nThird paragraph."
+  const frame = await rendered(view, "Third paragraph.")
+  expect(rowsBetween(frame, "First paragraph.", "Second paragraph.").map((row) => row.trim())).toEqual([""])
+  expect(rowsBetween(frame, "Second paragraph.", "Same paragraph.")).toEqual([])
+  expect(rowsBetween(frame, "Same paragraph.", "Third paragraph.").map((row) => row.trim())).toEqual([""])
+})
+
+test("each turn is set apart: a rule between a reply and the next message, a header tight on its text", async () => {
+  const view = await setup()
+  view.markdown.content = transcript(
+    [
+      { id: "u1", type: "user", text: "First prompt", time: { created: 1 } },
+      {
+        id: "a1",
+        type: "assistant",
+        agent: "build",
+        model: { providerID: "test", id: "model" },
+        time: { created: 1 },
+        content: [{ id: "p1", type: "text", text: "Reply one.\n\nReply two." }],
+      },
+      { id: "u2", type: "user", text: "Second prompt", time: { created: 2 } },
+    ],
+    false,
+    true,
+  )
+  const frame = await rendered(view, "Second prompt")
+  expect(rowsBetween(frame, "USER", "First prompt")).toEqual([])
+  expect(rowsBetween(frame, "build", "Reply one.")).toEqual([])
+  const between = rowsBetween(frame, "Reply two.", "Second prompt").map((row) => row.trim())
+  expect(between.filter((row) => row.startsWith("─")).length).toBe(1)
+  expect(between.filter((row) => row === "").length).toBeGreaterThanOrEqual(2)
+})

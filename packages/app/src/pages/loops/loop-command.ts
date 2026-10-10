@@ -1,3 +1,5 @@
+import { minimumIntervalSeconds, parseInterval } from "@turenlabs/client/automation-schedule"
+
 export type AutomationCommand = {
   name: string
   intervalSeconds: number
@@ -22,8 +24,6 @@ export type AutomationCommandResult =
   | { type: "invalid"; message: string }
   | { type: "automation"; value: AutomationCommand }
 
-const UNIT_SECONDS = { s: 1, m: 60, h: 3_600, d: 86_400 } as const
-
 /** Parses the deterministic `/loop` grammar: bare or `list` opens loop management, `stop` pauses
  *  the project's active loop, and `/loop <interval> <prompt>` creates one. */
 export function parseLoopCommand(text: string): LoopCommandResult {
@@ -37,9 +37,11 @@ export function parseLoopCommand(text: string): LoopCommandResult {
   if (!match)
     return { type: "invalid", message: "Use /loop <integer><s|m|h|d> <prompt>, or /loop to manage loops" }
 
-  const intervalSeconds = Number(match[1]) * UNIT_SECONDS[match[2] as keyof typeof UNIT_SECONDS]
-  if (!Number.isSafeInteger(intervalSeconds)) return { type: "invalid", message: "The loop interval is too large" }
-  if (intervalSeconds < 60) return { type: "invalid", message: "Loop intervals must be at least 60 seconds" }
+  // The pattern already matched, so only an interval too large for whole seconds is undefined here.
+  const intervalSeconds = parseInterval(`${match[1]}${match[2]}`)
+  if (intervalSeconds === undefined) return { type: "invalid", message: "The loop interval is too large" }
+  if (intervalSeconds < minimumIntervalSeconds)
+    return { type: "invalid", message: "Loop intervals must be at least 60 seconds" }
 
   const prompt = match[3].trimEnd()
   return { type: "loop", value: { prompt, intervalSeconds } }
@@ -52,10 +54,10 @@ export function parseAutomationCommand(text: string): AutomationCommandResult {
   const match = text.match(/^\/automation ([1-9]\d*)([smhd]) (\S[\s\S]*)$/)
   if (!match) return { type: "invalid", message: "Use /automation <integer><s|m|h|d> <prompt>" }
 
-  const intervalSeconds = Number(match[1]) * UNIT_SECONDS[match[2] as keyof typeof UNIT_SECONDS]
-  if (!Number.isSafeInteger(intervalSeconds))
-    return { type: "invalid", message: "The automation interval is too large" }
-  if (intervalSeconds < 60) return { type: "invalid", message: "Automation intervals must be at least 60 seconds" }
+  const intervalSeconds = parseInterval(`${match[1]}${match[2]}`)
+  if (intervalSeconds === undefined) return { type: "invalid", message: "The automation interval is too large" }
+  if (intervalSeconds < minimumIntervalSeconds)
+    return { type: "invalid", message: "Automation intervals must be at least 60 seconds" }
 
   const prompt = match[3].trimEnd()
   return { type: "automation", value: { name: prompt, intervalSeconds, prompt } }

@@ -1,0 +1,51 @@
+import type { Run } from "./context"
+import { usage } from "./errors"
+import { checkOutside, finish, messageText, retryCommand, writeFailure } from "./delivery"
+import { takes } from "./options"
+import { checkLaunch, refused } from "../server"
+import { idArgument } from "./state"
+import { validDirectory } from "./folder"
+
+/** The launch's own field checks as usage errors: an invalid field is the caller's mistake, and nothing was sent. */
+function checkFields(input: Parameters<typeof checkLaunch>[0]) {
+  try {
+    checkLaunch(input)
+  } catch (error) {
+    throw usage(error instanceof Error ? error.message : "Invalid launch fields.")
+  }
+}
+
+/** `send --new`: starts a session and sends its first message under frozen IDs, so a retry cannot duplicate it. */
+export async function startSession(run: Run, timeout: number) {
+  const values = run.values
+  if (values.queue) throw usage("--queue applies to a session that already exists; it cannot be used with --new.")
+  const text = await messageText(run, takes("send --new", run.positionals, [], ["text"])[0])
+  const ids = {
+    sessionID:
+      values["session-id"] !== undefined ? idArgument(values["session-id"], "ses_", "--session-id") : undefined,
+    messageID: values.id !== undefined ? idArgument(values.id, "msg_", "--id") : undefined,
+  }
+  const directory = run.folder?.directory ?? (await run.connection.client.location.get({})).directory
+  validDirectory(directory)
+  const input = { directory, agent: values.agent, model: values.model, variant: values.variant, prompt: text }
+  checkFields(input)
+  // A slash command's arguments are not file mentions; text that only starts with "/" is a prompt.
+  if (!(await run.connection.resolveCommand(text, directory))) checkOutside(run, text, directory)
+  const launcher = run.connection.launch(ids)
+  const session = await launcher(input).catch((error: unknown) => {
+    // Once the launch froze its fields, bytes may have gone out; before that nothing was sent.
+    if (!refused(error) && !launcher.input()) throw error
+    throw writeFailure(
+      error,
+      launcher,
+      retryCommand(run, ` --new --session-id ${launcher.sessionID} --id ${launcher.messageID}`),
+    )
+  })
+  return finish(run, {
+    sessionID: session.id,
+    messageID: launcher.messageID,
+    delivery: "steer",
+    created: true,
+    timeout,
+  })
+}

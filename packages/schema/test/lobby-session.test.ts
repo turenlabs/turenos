@@ -25,6 +25,14 @@ describe("LobbySession capability profiles", () => {
     expect(effect("workspace", "memory.write")).toBe("deny")
   })
 
+  test("workspace denies every Team tool", () => {
+    expect(LobbySession.capabilityRules("workspace")).toContainEqual({
+      action: "team_*",
+      resource: "*",
+      effect: "deny",
+    })
+  })
+
   test("read-only and full profiles remain explicit", () => {
     expect(effect("read_only", "read")).toBe("allow")
     expect(effect("read_only", "edit")).toBe("deny")

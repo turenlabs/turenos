@@ -1,5 +1,5 @@
 import { useFile } from "@/context/file"
-import { encodeFilePath } from "@/context/file/path"
+import { encodeFilePath } from "@turenlabs/client/paths"
 import { Collapsible } from "@turenlabs/ui/collapsible"
 import { FileIcon } from "@turenlabs/ui/file-icon"
 import { Icon } from "@turenlabs/ui/icon"

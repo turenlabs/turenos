@@ -26,10 +26,10 @@ Session runner
                               `-- model-visible result and annotations
 ```
 
-The MCP server does not implement tools independently and does not rematerialize the registry. It calls the exact
-materialization whose definitions were advertised for that provider turn. This preserves session overlays,
-registration-generation checks, agent permissions, interceptor ordering, canonical `ToolOutput`, and managed output
-paths.
+The MCP server does not implement tools independently and does not rematerialize the registry. It calls the
+materialization whose definitions it advertises. This preserves session overlays, registration-generation checks, agent
+permissions, interceptor ordering, canonical `ToolOutput`, and managed output paths. The one change during a turn comes
+from the runner, after `tool_load` (see [Deferred tools](#deferred-tools)).
 
 ## CLI isolation
 
@@ -162,6 +162,19 @@ The `ToolRegistry` remains the authority for durable execution reconciliation.
 
 Provider-executed tool envelopes from non-TurenOS sources are normalized to TurenOS's canonical tool names, but they remain
 marked `providerExecuted` and are never settled a second time by TurenOS.
+
+## Deferred tools
+
+Deferred tools, such as the Team tools and connected MCP integrations, are advertised only after `tool_search` and
+`tool_load` select them. Other providers see the selection on their next provider turn. Claude Code runs its whole agent
+loop inside one provider turn, so the next provider turn is the next user message.
+
+After a successful `tool_load`, the runner rematerializes the turn's tools without advancing the deferral turn clock,
+settles later calls through the new materialization, and replaces the MCP server's tool list. The server then sends
+`notifications/tools/list_changed` on the CLI's standalone SSE stream before it returns the `tool_load` result. Claude
+Code lists the tools again and can call the loaded tool in the same run. HTTP responses are streamed rather than
+buffered, because that SSE stream stays open for the whole turn. If the refresh fails, the runner logs a warning and
+the loaded tool becomes available on the next provider turn.
 
 ## Design constraints
 

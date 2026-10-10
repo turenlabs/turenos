@@ -1,3 +1,4 @@
+import { defaultModel } from "@turenlabs/client/models"
 import { createSimpleContext } from "@turenlabs/ui/context"
 import { base64Encode } from "@turenlabs/core/util/encode"
 import { useParams } from "@solidjs/router"
@@ -176,25 +177,12 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       }
     }
 
-    const defaultModel = () => {
-      const defaults = providers().default
-      for (const providerID of connected()) {
-        const provider = providers().all.get(providerID)
-        if (!provider) continue
-        const configured = defaults[providerID]
-        if (configured) {
-          const model = { providerID, modelID: configured }
-          if (availableModel(model)) return model
-        }
-
-        const first = Object.values(provider.models)[0]
-        if (!first) continue
-        const model = { providerID, modelID: first.id }
-        if (availableModel(model)) return model
-      }
-    }
-
-    const fallback = createMemo<ModelKey | undefined>(() => configuredModel() ?? recentModel() ?? defaultModel())
+    const fallback = createMemo<ModelKey | undefined>(
+      () =>
+        configuredModel() ??
+        recentModel() ??
+        defaultModel(providers().all, providers().default, connected(), availableModel),
+    )
 
     const agent = {
       list,

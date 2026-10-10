@@ -20,6 +20,7 @@ import { SessionV2 } from "@turenlabs/core/session"
 import { SessionTable } from "@turenlabs/core/session/sql"
 import { SessionStore } from "@turenlabs/core/session/store"
 import { SessionTaskV2 } from "@turenlabs/core/session/task"
+import { TeamWorkspaceTool } from "@turenlabs/core/tool/team-workspace"
 import { eq } from "drizzle-orm"
 import { location } from "./fixture/location"
 import { testEffect } from "./lib/effect"
@@ -306,6 +307,61 @@ describe("PermissionV2", () => {
     }),
   )
 
+  it.effect("blocks every Team tool in workspace and read-only Lobby sessions", () =>
+    Effect.gen(function* () {
+      yield* setup([{ action: "*", resource: "*", effect: "allow" }])
+      const { db } = yield* Database.Service
+      const service = yield* PermissionV2.Service
+      const teamActions = Object.entries(TeamWorkspaceTool).flatMap(([key, value]) =>
+        key.endsWith("Name") && typeof value === "string" ? [value] : [],
+      )
+      expect(teamActions).toContain(TeamWorkspaceTool.runFactoryName)
+      // A Team tool added later is covered by the same rule.
+      const actions = [...teamActions, "team_future_tool"]
+      const decide = (action: string) =>
+        service.assert(assertion({ action, resources: ["*"] })).pipe(
+          Effect.as("allow" as const),
+          Effect.catchTag("PermissionV2.BlockedError", () => Effect.succeed("deny" as const)),
+        )
+      const outcomes = (profile?: LobbySession.CapabilityProfile) =>
+        Effect.gen(function* () {
+          yield* db
+            .update(SessionTable)
+            .set({
+              metadata: {
+                [LobbySession.MetadataKey]: {
+                  baseURL: "http://127.0.0.1:8787",
+                  roomID: "room_test",
+                  agentMemberID: "forge-agent-test",
+                  ...(profile ? { capabilityProfile: profile } : {}),
+                },
+              },
+            })
+            .where(eq(SessionTable.id, SessionV2.ID.make("ses_test")))
+            .run()
+            .pipe(Effect.orDie)
+          return {
+            control: yield* decide("automation_create"),
+            team: [...new Set(yield* Effect.forEach(actions, decide))],
+          }
+        })
+
+      expect(yield* outcomes("workspace")).toEqual({ control: "deny", team: ["deny"] })
+      // Bindings saved before capability profiles default to workspace.
+      expect(yield* outcomes()).toEqual({ control: "deny", team: ["deny"] })
+      expect(yield* outcomes("read_only")).toEqual({ control: "deny", team: ["deny"] })
+      expect(yield* outcomes("full")).toEqual({ control: "allow", team: ["allow"] })
+      // The full profile cannot widen what the agent denies.
+      yield* setRules([
+        { action: "*", resource: "*", effect: "allow" },
+        { action: TeamWorkspaceTool.runFactoryName, resource: "*", effect: "deny" },
+      ])
+      yield* outcomes("full")
+      expect(yield* decide(TeamWorkspaceTool.runFactoryName)).toBe("deny")
+      expect(yield* decide(TeamWorkspaceTool.readName)).toBe("allow")
+    }),
+  )
+
   it.effect("allows managed output reads without granting external directory access", () =>
     Effect.gen(function* () {
       yield* setup([
@@ -544,7 +600,11 @@ describe("PermissionV2", () => {
         assertion({ action: "bash", resources: ["rg secret.ts"], metadata: { workdir: ".", command: "rg secret.ts" } }),
         assertion({ action: "bash", resources: [" rg *.ts"], metadata: { workdir: ".", command: " rg *.ts" } }),
         assertion({ action: "bash", resources: ["rg *.ts "], metadata: { workdir: ".", command: "rg *.ts " } }),
-        assertion({ action: "bash", resources: ["TOKEN=value rg *.ts"], metadata: { workdir: ".", command: "TOKEN=value rg *.ts" } }),
+        assertion({
+          action: "bash",
+          resources: ["TOKEN=value rg *.ts"],
+          metadata: { workdir: ".", command: "TOKEN=value rg *.ts" },
+        }),
         assertion({ action: "bash", resources: ["rg *.ts"], metadata: { workdir: "src", command: "rg *.ts" } }),
         assertion({ action: "bash", resources: ["rg *.ts"], metadata: { workdir: "/tmp", command: "rg *.ts" } }),
       ])

@@ -35,7 +35,7 @@ describe("TurenOS version authority", () => {
 
   test("keeps every version-bearing manifest synchronized", async () => {
     const version = await loadCanonicalVersion()
-    expect(VERSIONED_PACKAGE_FILES).toHaveLength(16)
+    expect(VERSIONED_PACKAGE_FILES).toHaveLength(17)
     expect(await discoverVersionedPackageFiles()).toEqual(
       [...VERSIONED_PACKAGE_FILES, ...INDEPENDENTLY_VERSIONED_PACKAGE_FILES].sort(),
     )
@@ -46,6 +46,11 @@ describe("TurenOS version authority", () => {
     const mismatches = await versionMismatches("0.1.1")
     expect(mismatches.some((message) => message.startsWith("package.json:"))).toBe(true)
     expect(mismatches.some((message) => message.startsWith("bun.lock["))).toBe(true)
+  })
+
+  test("blocks release preparation when VERSION has no bundled release notes", async () => {
+    const mismatches = await versionMismatches("999.0.0")
+    expect(mismatches).toContain("release-notes: Missing release notes for VERSION 999.0.0")
   })
 
   test("fails closed for every unapproved package publication lane", () => {

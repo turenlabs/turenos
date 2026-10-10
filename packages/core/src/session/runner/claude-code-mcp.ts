@@ -6,7 +6,7 @@ import { Effect } from "effect"
 import { ClaudeCodeGuidance } from "../../claude-code-guidance"
 
 const metadataKey = "forge/claude-code-mcp"
-const bridges = new Map<string, Bridge>()
+const bridges = new Map<string, Registered>()
 const REQUEST_LIMIT = 2 * 1024 * 1024
 const ACTIVE_DRAIN_TIMEOUT = 5_000
 
@@ -18,6 +18,12 @@ interface Bridge {
     readonly input: unknown
   }) => Effect.Effect<ToolResultValue, unknown>
   readonly steering?: Steering
+}
+
+interface Registered extends Omit<Bridge, "definitions"> {
+  definitions: ReadonlyArray<ToolDefinition>
+  /** One per served MCP connection: re-describes the tools and notifies the CLI. */
+  readonly listeners: Set<() => Effect.Effect<void>>
 }
 
 export class BridgeError extends Error {
@@ -96,13 +102,28 @@ export const steering = (token: string) => bridges.get(token)?.steering
 
 export const register = Effect.fn("ClaudeCodeMcp.register")(function* (bridge: Bridge) {
   const token = randomUUID()
-  bridges.set(token, bridge)
+  const registered: Registered = { ...bridge, listeners: new Set() }
+  bridges.set(token, registered)
   yield* Effect.addFinalizer(() =>
     Effect.sync(() => {
-      if (bridges.get(token) === bridge) bridges.delete(token)
+      if (bridges.get(token) === registered) bridges.delete(token)
     }),
   )
   return token
+})
+
+/**
+ * Replaces the tools a running turn serves. The CLI runs its whole agent loop inside one provider
+ * turn, so a tool `tool_load` selects reaches it only through `tools/list_changed`.
+ */
+export const refresh = Effect.fn("ClaudeCodeMcp.refresh")(function* (
+  token: string,
+  definitions: ReadonlyArray<ToolDefinition>,
+) {
+  const bridge = bridges.get(token)
+  if (!bridge) return
+  bridge.definitions = definitions
+  yield* Effect.forEach(bridge.listeners, (listener) => listener(), { discard: true })
 })
 
 export const requestMetadata = (token: string) => ({ [metadataKey]: token })
@@ -130,33 +151,37 @@ export const serve = Effect.fn("ClaudeCodeMcp.serve")(function* (token: string) 
     try: () => import("./claude-code-mcp-runtime"),
     catch: (cause) => new BridgeError(`Failed to load MCP runtime: ${String(cause)}`),
   })
-  const tools: ReturnType<typeof runtime.ToolSchema.parse>[] = []
-  for (const definition of bridge.definitions) {
-    // `outputSchema` is deliberately never sent. No direct provider path ships it
-    // (every protocol lowers `inputSchema` only), and the CLI treats a missing
-    // output schema as "unstructured result" — which these are. Forwarding it
-    // roughly doubled the per-tool payload (~6-8KB per request) and was re-sent
-    // on every internal CLI round trip for nothing.
-    const parsed = runtime.ToolSchema.safeParse({
-      name: definition.name,
-      description: definition.description,
-      inputSchema: definition.inputSchema,
-    })
-    if (parsed.success) {
-      tools.push(parsed.data)
-      continue
+  const describe = Effect.fnUntraced(function* () {
+    const tools: ReturnType<typeof runtime.ToolSchema.parse>[] = []
+    for (const definition of bridge.definitions) {
+      // `outputSchema` is deliberately never sent. No direct provider path ships it
+      // (every protocol lowers `inputSchema` only), and the CLI treats a missing
+      // output schema as "unstructured result" — which these are. Forwarding it
+      // roughly doubled the per-tool payload (~6-8KB per request) and was re-sent
+      // on every internal CLI round trip for nothing.
+      const parsed = runtime.ToolSchema.safeParse({
+        name: definition.name,
+        description: definition.description,
+        inputSchema: definition.inputSchema,
+      })
+      if (parsed.success) {
+        tools.push(parsed.data)
+        continue
+      }
+      yield* Effect.logWarning("Claude Code MCP bridge cannot describe a tool; skipping it", {
+        tool: definition.name,
+        issues: parsed.error.message,
+      })
     }
-    yield* Effect.logWarning("Claude Code MCP bridge cannot describe a tool; skipping it", {
-      tool: definition.name,
-      issues: parsed.error.message,
-    })
-  }
+    return tools
+  })
+  let tools = yield* describe()
   const controller = new AbortController()
   const active = new Set<Promise<CallToolResult>>()
   const workflow = ClaudeCodeGuidance.workflowState()
   const subagents = tools.some((tool) => tool.name === "spawn_agent" || tool.name === "task")
-  const available = new Set(tools.map((tool) => tool.name))
-  const mcp = new runtime.Server({ name: "forge", version: "1" }, { capabilities: { tools: {} } })
+  let available = new Set(tools.map((tool) => tool.name))
+  const mcp = new runtime.Server({ name: "forge", version: "1" }, { capabilities: { tools: { listChanged: true } } })
   mcp.setRequestHandler(runtime.ListToolsRequestSchema, () => ({ tools }))
   mcp.setRequestHandler(runtime.CallToolRequestSchema, (request, extra) => {
     if (!available.has(request.params.name))
@@ -187,6 +212,19 @@ export const serve = Effect.fn("ClaudeCodeMcp.serve")(function* (token: string) 
     try: () => mcp.connect(transport),
     catch: (cause) => new BridgeError(`Failed to start MCP transport: ${String(cause)}`),
   })
+  // The notification travels on the CLI's standalone SSE stream; without one it is dropped and
+  // the CLI keeps its old list, which is no worse than not refreshing.
+  const listener = Effect.fnUntraced(function* () {
+    tools = yield* describe()
+    available = new Set(tools.map((tool) => tool.name))
+    yield* Effect.tryPromise(() => mcp.sendToolListChanged()).pipe(
+      Effect.catch((cause) => Effect.logWarning("Claude Code MCP bridge could not announce new tools", { cause })),
+    )
+  })
+  yield* Effect.acquireRelease(
+    Effect.sync(() => bridge.listeners.add(listener)),
+    () => Effect.sync(() => bridge.listeners.delete(listener)),
+  )
   const mcpPath = `/${token}`
   const hookPath = `${mcpPath}/workflow-hook`
   const http = createServer((request, response) => {
@@ -244,7 +282,16 @@ export const serve = Effect.fn("ClaudeCodeMcp.serve")(function* (token: string) 
         }),
       )
       response.writeHead(result.status, Object.fromEntries(result.headers.entries()))
-      response.end(Buffer.from(await result.arrayBuffer()))
+      if (!result.body) {
+        response.end()
+        return
+      }
+      // Streamed, not buffered: the CLI's GET stream stays open for the whole turn and carries
+      // `tools/list_changed`, so buffering it would hold every notification until disconnect.
+      const reader = result.body.getReader()
+      response.once("close", () => void reader.cancel().catch(() => undefined))
+      for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) response.write(chunk.value)
+      response.end()
     })().catch((cause) => {
       if (!response.headersSent) response.writeHead(500).end(String(cause))
       else response.destroy(cause instanceof Error ? cause : new Error(String(cause)))

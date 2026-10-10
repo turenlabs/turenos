@@ -24,6 +24,7 @@ import { loopApi, loopCatalog, responseData, type LoopInfo, type LoopModel, type
 import {
   buildTriggerInput,
   formatInterval,
+  minimumIntervalSeconds,
   parseEventPaths,
   parseInterval,
   triggerFromAutomation,
@@ -1416,7 +1417,7 @@ function LoopsWorkspace(props: { connection: ServerConnection.Any }) {
                       <Show when={triggerKind() === "interval"}>
                         <FieldV2
                           class="min-w-0"
-                          invalid={!!interval() && (!parseInterval(interval()) || parseInterval(interval())! < 60)}
+                          invalid={!!interval() && (!parseInterval(interval()) || parseInterval(interval())! < minimumIntervalSeconds)}
                         >
                           <FieldV2.Label>Interval</FieldV2.Label>
                           <TextInputV2

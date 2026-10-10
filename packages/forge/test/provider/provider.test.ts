@@ -2317,6 +2317,47 @@ it.effect("plugin config providers persist after instance dispose", () =>
   }).pipe(provideMultiInstance),
 )
 
+it.effect("plugin auth for a provider missing from the catalog does not break provider listing", () =>
+  Effect.gen(function* () {
+    const dir = yield* tmpdirScoped()
+    const configDir = path.join(dir, ".forge")
+    const root = path.join(configDir, "plugin")
+    yield* Effect.promise(() => mkdir(root, { recursive: true }))
+    yield* Effect.promise(() => markPluginDependenciesReady(configDir))
+    yield* Effect.promise(() => markPluginDependenciesReady(Global.Path.config))
+    yield* Effect.promise(() =>
+      Bun.write(
+        path.join(root, "uncataloged-auth.ts"),
+        [
+          "export default {",
+          '  id: "demo.uncataloged-auth",',
+          "  server: async () => ({",
+          "    auth: {",
+          '      provider: "uncataloged-provider",',
+          '      methods: [{ type: "api", label: "Key" }],',
+          "      loader: async () => ({ apiKey: 'x' }),",
+          "    },",
+          "  }),",
+          "}",
+          "",
+        ].join("\n"),
+      ),
+    )
+    yield* trustProject(dir)
+
+    const listed = yield* Effect.gen(function* () {
+      const auth = yield* Auth.Service
+      yield* auth.set("uncataloged-provider", new Auth.Api({ type: "api", key: "sk-test" }))
+      const plugin = yield* Plugin.Service
+      const provider = yield* Provider.Service
+      yield* plugin.init()
+      return yield* provider.list()
+    }).pipe(provideInstanceEffect(dir))
+
+    expect(listed[ProviderV2.ID.make("uncataloged-provider")]).toBeUndefined()
+  }).pipe(Effect.provide(providerLayer()), provideMultiInstance),
+)
+
 it.instance(
   "plugin config enabled and disabled providers are honored",
   Effect.gen(function* () {

@@ -160,6 +160,7 @@ export const ExperimentalPaths = {
   tool: "/experimental/tool",
   toolIDs: "/experimental/tool/ids",
   worktree: "/experimental/worktree",
+  worktreeStatus: "/experimental/worktree/status",
   worktreeReset: "/experimental/worktree/reset",
   session: "/experimental/session",
   sessionBackground: "/experimental/session/:sessionID/background",
@@ -247,6 +248,17 @@ export const ExperimentalApi = HttpApi.make("experimental")
             identifier: "worktree.list",
             summary: "List worktrees",
             description: "List all sandbox worktrees for the current project.",
+          }),
+        ),
+        HttpApiEndpoint.get("worktreeStatus", ExperimentalPaths.worktreeStatus, {
+          query: Schema.Struct({ ...WorkspaceRoutingQueryFields, name: Schema.String.check(Schema.isMaxLength(512)) }),
+          success: described(Worktree.CreationStatus, "Recorded checkout and bootstrap outcome"),
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "worktree.creationStatus",
+            summary: "Get named worktree creation status",
+            description:
+              "Read a named creation in this server process. Unknown means no retained outcome, never ready.",
           }),
         ),
         HttpApiEndpoint.post("worktreeCreate", ExperimentalPaths.worktree, {

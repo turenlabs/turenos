@@ -20,6 +20,7 @@ import { exportDebugLogs, initCrashReporter, initLogging, startNetLog, write as 
 import { parseMarkdown } from "./markdown"
 import { createMenu } from "./menu"
 import { createOnboarding } from "./onboarding"
+import { createReleaseNotesCoordinator } from "./release-notes"
 import { preferAppEnv, spawnLocalServer, type SidecarListener } from "./server"
 import { setupAutoUpdater, showUpdaterDialog } from "./updater"
 import { safeWebContentsURL } from "./window-state"
@@ -318,6 +319,14 @@ const main = Effect.gen(function* () {
     productStorage.resume()
   }
   const onboarding = createOnboarding(productStorage)
+  const releaseNotes = createReleaseNotesCoordinator({
+    version: app.getVersion(),
+    storage: productStorage,
+    legacy: () => storage.get("main/release-notes", "default.dat", "highlights.v1"),
+    warn: (error) => logger.warn("release notes unavailable for this launch", error),
+  })
+  // Seed fresh profiles before onboarding can turn them into existing installs.
+  void releaseNotes.initialize()
   const updater = setupAutoUpdater(stopSidecars, productStorage)
   wslServers = createWslServersController(
     app.getVersion(),
@@ -396,8 +405,14 @@ const main = Effect.gen(function* () {
     getDefaultServerUrl: (owner) => productStorage.getDefaultServerUrl(owner),
     setDefaultServerUrl: (owner, url) => productStorage.setDefaultServerUrl(owner, url),
     isFirstLaunchOnboardingPending: (owner) => onboarding.isFirstLaunchOnboardingPending(owner),
-    finishFirstLaunchOnboarding: (owner) => onboarding.finishFirstLaunchOnboarding(owner),
-    isOldLayoutEligible: (owner) => onboarding.isOldLayoutEligible(owner),
+    finishFirstLaunchOnboarding: async (owner) => {
+      await releaseNotes.initialize()
+      await onboarding.finishFirstLaunchOnboarding(owner)
+    },
+    isOldLayoutEligible: async (owner) => {
+      await releaseNotes.initialize()
+      return onboarding.isOldLayoutEligible(owner)
+    },
     getDisplayBackend: async () => null,
     setDisplayBackend: async () => undefined,
     parseMarkdown: async (markdown) => parseMarkdown(markdown),
@@ -405,6 +420,7 @@ const main = Effect.gen(function* () {
     resolveAppPath: async (appName) => resolveAppPath(appName),
     updater,
     storage,
+    releaseNotes,
     releaseProductStorage: (owner) => productStorage.release(owner),
     getPinchZoomEnabled,
     setPinchZoomEnabled,

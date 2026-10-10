@@ -29,11 +29,11 @@ session list API returns them only when asked with `internal: "lobby"`, which th
 `LobbySession.capabilityRules` (`packages/schema/src/lobby-session.ts`) adds one ruleset to every permission check in a
 Lobby session:
 
-| Profile               | Rules                                                                                                                                                                      |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `read_only`           | Deny everything except `lobby_room_context`, `read`, `grep`, `glob`, `list`, `webfetch`, `websearch`, `lsp`, `skill`, and `memory.read`.                                   |
-| `workspace` (default) | Allow everything except `external_directory`, `handoff_session`, `automation_create`, `automation_update`, `apply_agent_improvement`, `memory.write`, and `memory.forget`. |
-| `full`                | Allow everything.                                                                                                                                                          |
+| Profile               | Rules                                                                                                                                                                                                  |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `read_only`           | Deny everything except `lobby_room_context`, `read`, `grep`, `glob`, `list`, `webfetch`, `websearch`, `lsp`, `skill`, and `memory.read`.                                                               |
+| `workspace` (default) | Allow everything except `external_directory`, `handoff_session`, `automation_create`, `automation_update`, `apply_agent_improvement`, `memory.write`, `memory.forget`, and every Team tool (`team_*`). |
+| `full`                | Allow everything.                                                                                                                                                                                      |
 
 Because the most restrictive result across rulesets wins, a profile can only narrow what the agent's own permissions
 allow.

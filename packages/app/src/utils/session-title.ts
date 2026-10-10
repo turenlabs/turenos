@@ -1,7 +1,8 @@
-const pattern = /^(New session|Child session) - \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/
+import { SessionTitle } from "@turenlabs/client/session-title"
 
 export function sessionTitle(title?: string) {
   if (!title) return title
-  const match = title.match(pattern)
-  return match?.[1] ?? title
+  const placeholder = SessionTitle.parsePlaceholder(title)
+  if (!placeholder) return title
+  return placeholder.kind === "new" ? "New session" : "Child session"
 }
