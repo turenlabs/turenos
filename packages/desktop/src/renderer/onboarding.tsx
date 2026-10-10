@@ -8,14 +8,14 @@ import {
 } from "@turenlabs/app"
 import { Button } from "@turenlabs/ui/button"
 import { Mark } from "@turenlabs/ui/logo"
-import { createMemo, createSignal, For, onMount, Show } from "solid-js"
+import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js"
 import { t } from "./i18n"
 import { selectedOnboardingDirectory, shouldShowFirstLaunchOnboarding } from "./onboarding-model"
 
 const steps = ["welcome", "provider", "workspace"] as const
 type Step = (typeof steps)[number]
 
-export function DesktopFirstLaunchOnboarding(props: { initialUrl: string }) {
+export function DesktopFirstLaunchOnboarding(props: { initialUrl: string; onReady: (ready: boolean) => void }) {
   const server = useServer()
   const settings = useSettings()
   const tabs = useTabs()
@@ -27,6 +27,12 @@ export function DesktopFirstLaunchOnboarding(props: { initialUrl: string }) {
   const connected = createMemo(() => providers.connected().length)
   const stepIndex = createMemo(() => steps.indexOf(step()))
 
+  let disposed = false
+  props.onReady(false)
+  onCleanup(() => {
+    disposed = true
+    props.onReady(false)
+  })
   onMount(() => void evaluate())
 
   async function evaluate() {
@@ -52,7 +58,9 @@ export function DesktopFirstLaunchOnboarding(props: { initialUrl: string }) {
         initialUrl: props.initialUrl,
         tabs: tabs.store.length,
       })
+      if (disposed) return
       setVisible(shouldShow)
+      props.onReady(!shouldShow)
     } catch (error) {
       console.error("[desktop-onboarding] first launch onboarding failed", error)
     }
@@ -63,6 +71,7 @@ export function DesktopFirstLaunchOnboarding(props: { initialUrl: string }) {
     try {
       await window.api.finishFirstLaunchOnboarding()
       setVisible(false)
+      if (!disposed) props.onReady(true)
     } finally {
       setBusy(false)
     }
@@ -80,6 +89,7 @@ export function DesktopFirstLaunchOnboarding(props: { initialUrl: string }) {
       tabs.select(await tabs.newDraft({ server: server.key, directory }))
       await window.api.finishFirstLaunchOnboarding()
       setVisible(false)
+      if (!disposed) props.onReady(true)
     } finally {
       setBusy(false)
     }

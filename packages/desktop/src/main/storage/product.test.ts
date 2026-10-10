@@ -5,6 +5,8 @@ import { join } from "node:path"
 import { StorageHttpError } from "./client"
 import type { StorageMigrationReceipt, StorageRemote, StorageState } from "./client"
 import { createDesktopProductStorage } from "./product"
+import { createDesktopStorage } from "./bridge"
+import { createReleaseNotesCoordinator } from "../release-notes"
 
 const roots: string[] = []
 
@@ -19,6 +21,83 @@ async function setup() {
 }
 
 describe("Desktop product Storage", () => {
+  test("an optional release-notes write failure does not prevent product storage from draining", async () => {
+    const app = await setup()
+    let fail = false
+    const storage = createDesktopProductStorage({
+      remote: {
+        ...app.state.api,
+        set: async (...args) => {
+          if (fail) throw new Error("write unavailable")
+          return app.state.api.set(...args)
+        },
+      },
+      userDataPath: app.root,
+      legacy: () => ({ store: {} }),
+      oldLayoutEligible: () => true,
+    })
+    await storage.setReleaseNotesVersion("main", "1.0.40")
+    const warnings: unknown[] = []
+    const notes = createReleaseNotesCoordinator({
+      version: "1.0.44",
+      storage,
+      legacy: async () => null,
+      warn: (error) => warnings.push(error),
+    })
+    expect(await notes.claim(1, true)).toEqual({ previous: "1.0.40" })
+    fail = true
+    await notes.shown(1)
+    expect(warnings).toHaveLength(1)
+    await storage.drain()
+    expect(await storage.getReleaseNotesVersion("main")).toBe("1.0.40")
+    await expect(storage.setPinchZoomEnabled("main", true)).rejects.toThrow("write unavailable")
+    await expect(storage.drain()).rejects.toThrow("write unavailable")
+  })
+
+  test("release notes migrate through the existing bridge and survive coordinator and storage recreation", async () => {
+    const app = await setup()
+    const highlights = JSON.stringify({ version: "1.0.40" })
+    const options = {
+      remote: app.state.api,
+      userDataPath: app.root,
+      legacy: (name: string) => ({ store: name === "default.dat" ? { "highlights.v1": highlights } : {} }),
+      oldLayoutEligible: () => true,
+    }
+    const create = (version: string) => {
+      const bridge = createDesktopStorage(options)
+      return createReleaseNotesCoordinator({
+        version,
+        storage: createDesktopProductStorage(options),
+        legacy: () => bridge.get("main/release-notes", "default.dat", "highlights.v1"),
+        warn: (error) => {
+          throw error
+        },
+      })
+    }
+    const first = create("1.0.44")
+    expect(await first.claim(1, true)).toEqual({ previous: "1.0.40" })
+    await first.shown(1)
+    expect(await create("1.0.44").claim(2, true)).toBeNull()
+    expect(await create("1.0.39").claim(2, true)).toBeNull()
+    expect(await create("1.0.50").claim(2, true)).toEqual({ previous: "1.0.44" })
+    expect(options.legacy("default.dat").store["highlights.v1"]).toBe(highlights)
+  })
+
+  test("retains the release-notes baseline across product storage recreation", async () => {
+    const app = await setup()
+    const options = {
+      remote: app.state.api,
+      userDataPath: app.root,
+      legacy: () => ({ store: {} }),
+      oldLayoutEligible: () => false,
+    }
+    const first = createDesktopProductStorage(options)
+    expect(await first.getReleaseNotesVersion("main")).toBeUndefined()
+    await first.setReleaseNotesVersion("main", "1.0.40")
+    const restarted = createDesktopProductStorage(options)
+    expect(await restarted.getReleaseNotesVersion("main")).toBe("1.0.40")
+  })
+
   test("atomically imports typed settings, updater, and window geometry without mutating legacy inputs", async () => {
     const app = await setup()
     const geometry = JSON.stringify({ x: 11, y: 22, width: 1200, height: 700, isMaximized: true })

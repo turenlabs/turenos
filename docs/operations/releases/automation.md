@@ -32,8 +32,11 @@ verified artifact count to the Actions job summary.
 ## Normal release
 
 Review and merge product changes, the root `VERSION`, all entries in
-`VERSIONED_PACKAGE_FILES`, and the matching lockfile versions through normal CI on
-public `main` first. The release command intentionally does not commit a dirty
+`VERSIONED_PACKAGE_FILES`, matching lockfile versions, and
+[bundled release notes](./README.md#bundle-the-release-notes) through normal CI on
+public `main` first. The existing `version:check` command and Script version
+tests reject missing or invalid notes for the exact root `VERSION`.
+The release command intentionally does not commit a dirty
 worktree, bump versions, merge unreviewed changes, or bypass branch protection.
 
 Once the version-bump commit is on public `main` and `main` HEAD has green CI:
