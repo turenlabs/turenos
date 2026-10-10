@@ -216,6 +216,8 @@ import type {
   SessionMessageResponses,
   SessionMessagesErrors,
   SessionMessagesResponses,
+  SessionPredictionErrors,
+  SessionPredictionResponses,
   SessionPromptAsyncErrors,
   SessionPromptAsyncResponses,
   SessionPromptErrors,
@@ -3691,6 +3693,38 @@ export class Provider extends HeyApiClient {
 }
 
 export class Session2 extends HeyApiClient {
+  /**
+   * Predict the next user message
+   *
+   * Suggest a draft from recent conversation text without running tools or changing the session.
+   */
+  public prediction<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SessionPredictionResponses, SessionPredictionErrors, ThrowOnError>({
+      url: "/session/{sessionID}/prediction",
+      ...options,
+      ...params,
+    })
+  }
+
   /**
    * List sessions
    *

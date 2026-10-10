@@ -16,6 +16,7 @@ export type Event =
   | EventMessageRemoved
   | EventMessagePartUpdated
   | EventMessagePartRemoved
+  | EventSessionExecutionSettled
   | EventSessionNextAgentSwitched
   | EventSessionNextModelSwitched
   | EventSessionNextTitleUpdated
@@ -829,6 +830,14 @@ export type GlobalEvent = {
           sessionID: string
           messageID: string
           partID: string
+        }
+      }
+    | {
+        id: string
+        type: "session.execution.settled"
+        properties: {
+          sessionID: string
+          outcome: "success" | "failure"
         }
       }
     | {
@@ -3313,6 +3322,7 @@ export type V2Event =
   | MessageRemoved
   | MessagePartUpdated
   | MessagePartRemoved
+  | SessionExecutionSettled
   | SessionNextAgentSwitched
   | SessionNextModelSwitched
   | SessionNextTitleUpdated
@@ -6674,6 +6684,24 @@ export type MessagePartRemoved = {
   }
 }
 
+export type SessionExecutionSettled = {
+  id: string
+  metadata?: {
+    [key: string]: unknown
+  }
+  type: "session.execution.settled"
+  durable?: {
+    aggregateID: string
+    seq: number
+    version: number
+  }
+  location?: LocationRef
+  data: {
+    sessionID: string
+    outcome: "success" | "failure"
+  }
+}
+
 export type SessionNextTextDelta = {
   id: string
   metadata?: {
@@ -8258,6 +8286,15 @@ export type EventMessagePartRemoved = {
     sessionID: string
     messageID: string
     partID: string
+  }
+}
+
+export type EventSessionExecutionSettled = {
+  id: string
+  type: "session.execution.settled"
+  properties: {
+    sessionID: string
+    outcome: "success" | "failure"
   }
 }
 
@@ -11994,6 +12031,42 @@ export type ProviderOauthCallbackResponses = {
 }
 
 export type ProviderOauthCallbackResponse = ProviderOauthCallbackResponses[keyof ProviderOauthCallbackResponses]
+
+export type SessionPredictionData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/session/{sessionID}/prediction"
+}
+
+export type SessionPredictionErrors = {
+  /**
+   * BadRequest | InvalidRequestError
+   */
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+  /**
+   * NotFoundError
+   */
+  404: NotFoundError
+}
+
+export type SessionPredictionError = SessionPredictionErrors[keyof SessionPredictionErrors]
+
+export type SessionPredictionResponses = {
+  /**
+   * Success
+   */
+  200: {
+    text: string
+  }
+}
+
+export type SessionPredictionResponse = SessionPredictionResponses[keyof SessionPredictionResponses]
 
 export type SessionListData = {
   body?: never

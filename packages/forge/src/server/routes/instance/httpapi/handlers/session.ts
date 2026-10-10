@@ -599,10 +599,11 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
           const predict = Effect.gen(function* () {
             const secretOutput = yield* SecretOutput.Service
             const protection = yield* SecretOutput.reuse(secretOutput)
-            const conversation = predictionConversation(
-              (yield* predictionStore.context(info.id)).slice(-40),
-              protection,
-            )
+            const history = (yield* predictionStore.context(info.id)).slice(-40)
+            const conversation = yield* Effect.try({
+              try: () => predictionConversation(history, protection),
+              catch: () => "unprotectable",
+            })
             if (!conversation.some((item) => item.role === "user") || conversation.at(-1)?.role !== "assistant") {
               return { text: "" }
             }

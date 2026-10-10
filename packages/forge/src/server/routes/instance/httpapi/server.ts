@@ -77,6 +77,7 @@ import { SessionReviewer } from "@turenlabs/core/session/reviewer"
 import { SessionV2 } from "@turenlabs/core/session"
 import { SessionExecution } from "@turenlabs/core/session/execution"
 import { SessionStore } from "@turenlabs/core/session/store"
+import { SecretOutput } from "@turenlabs/core/secret-output"
 import * as SessionExecutionLocal from "@turenlabs/core/session/execution/local"
 import { SessionLegacyExecution } from "@turenlabs/core/session/legacy-execution"
 import { SessionTaskV2 } from "@turenlabs/core/session/task"
@@ -259,6 +260,7 @@ const app = LayerNode.group([
   Todo.node,
   Session.node,
   SessionStore.node,
+  SecretOutput.node,
   SessionTaskV2.node,
   SessionProjector.node,
   SessionHarness.node,
