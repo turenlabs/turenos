@@ -1,5 +1,6 @@
 import type { MessagesListOutput, PermissionsListOutput, QuestionsListOutput } from "@turenlabs/client"
 import { identifier } from "../response-validation"
+import { ACTIVE_OMITTED } from "../response-validation/session-routes"
 import { httpStatus, type Connection } from "../server"
 import { AgentError, usage } from "./errors"
 import { turnFailure } from "./failure"
@@ -52,9 +53,20 @@ export function idArgument(value: string | undefined, prefix: string, label: str
   }
 }
 
-/** The running sessions' IDs. */
+/**
+ * The running sessions' IDs, without the key the validator adds when it cuts an oversized map. `omitted` counts
+ * the running sessions that were cut: an ID missing from the set may then still be running.
+ */
 export async function activeIDs(connection: Connection) {
-  return new Set(Object.keys(await connection.client.sessions.active()))
+  const active = await connection.client.sessions.active()
+  return Object.assign(new Set(Object.keys(active).filter((id) => id !== ACTIVE_OMITTED)), {
+    omitted: Number(active[ACTIVE_OMITTED] ?? 0),
+  })
+}
+
+/** Whether the session may be running: listed, or possibly among the running sessions that were cut. */
+export function mayBeRunning(active: Awaited<ReturnType<typeof activeIDs>>, sessionID: string) {
+  return active.has(sessionID) || active.omitted > 0
 }
 
 /** Pending permissions and questions for one session; a session deleted meanwhile has none. */

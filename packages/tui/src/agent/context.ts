@@ -48,9 +48,21 @@ export function resumeLine(run: Run, sessionID: string) {
   return `resume: turen-tui send ${sessionID}${run.flags} "<text>" --wait`
 }
 
+/**
+ * One JSON document. Characters that `display` strips from text output are written as \uXXXX escapes, so a terminal
+ * or editor showing the raw output cannot be steered by them and the parsed values stay the same. Outside strings
+ * JSON holds only ASCII, so the replacement reaches string contents alone.
+ */
+export function jsonText(json: unknown) {
+  return JSON.stringify(json).replace(
+    /[\u007f-\u009f\u061c\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g,
+    (char) => `\\u${char.charCodeAt(0).toString(16).padStart(4, "0")}`,
+  )
+}
+
 /** Prints one JSON document, or the text, and returns the success exit code. */
 export function emit(run: Run, json: unknown, text: string, exit = 0) {
-  run.io.stdout(run.values.json ? `${JSON.stringify(json)}\n` : `${text}\n`)
+  run.io.stdout(run.values.json ? `${jsonText(json)}\n` : `${text}\n`)
   return exit
 }
 

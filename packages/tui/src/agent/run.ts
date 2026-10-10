@@ -1,7 +1,7 @@
 import { errorText, httpStatus } from "../server"
 import { CliError } from "../tui-auth"
 import { answer } from "./answer"
-import { clean, targetFlags } from "./context"
+import { clean, jsonText, targetFlags } from "./context"
 import { openServer } from "./endpoint"
 import { AgentError, usage } from "./errors"
 import { commandHelp } from "./help"
@@ -82,7 +82,7 @@ function report(error: unknown, io: Io, json: boolean) {
   io.stderr(`turen-tui: ${message}\n`)
   const retry = error instanceof AgentError ? error.retry : undefined
   const detail = error instanceof AgentError ? error.detail : undefined
-  if (json) io.stdout(`${JSON.stringify({ error: { message, ...(retry ? { retry } : {}), ...detail } })}\n`)
+  if (json) io.stdout(`${jsonText({ error: { message, ...(retry ? { retry } : {}), ...detail } })}\n`)
   if (error instanceof AgentError) return error.exit
   return error instanceof CliError ? 2 : 1
 }
