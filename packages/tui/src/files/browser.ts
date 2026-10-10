@@ -8,6 +8,9 @@ import { entryList, type Entry } from "./entries"
 
 const MAX_LINES = 5000
 
+// Arrow keys move faster than files load: a preview starts once the selection rests this long.
+const PREVIEW_DELAY_MS = 120
+
 /** Hint parts by priority: the trailing ones drop first when the panel is narrow. Enter acts only on a folder. */
 const hints = (entry: Entry | undefined) => [
   "↑↓ choose",
@@ -31,6 +34,8 @@ export type FileBrowser = {
   request: number
   /** Previews count separately so one cannot discard a folder listing, or a listing a preview. */
   preview: number
+  /** The preview read in flight, stopped when the selection moves on. */
+  reading?: AbortController
 }
 
 export async function listFolder(b: FileBrowser, path: string, select = "") {
@@ -71,18 +76,32 @@ function fitPath(b: FileBrowser) {
   return fitHeading(panelWidth(b.panel), "", `${label(b.directory, 400)}/${label(b.folder, 400)}`, "", "start")
 }
 
-export async function preview(b: FileBrowser) {
+/** `moved` marks a preview the selection asked for, which waits for the selection to rest; a new listing previews at once. */
+export async function preview(b: FileBrowser, moved = false) {
   const { state, connection } = b.ctx
   // Counted before the early returns, so a file preview still in flight cannot overwrite them.
   const version = ++b.preview
+  b.reading?.abort()
+  b.reading = undefined
   const entry = b.entries[b.panel.list.getSelectedIndex()]
   b.panel.hints(hints(entry), ["Esc close"])
   if (!entry) return b.panel.show(b.folder ? "Empty folder." : "No files.")
   if (entry.type === "directory") return b.panel.show(`${label(entry.path, 300)}/\n\n→ or Enter opens this folder.`)
   const title = label(entry.path, 300)
   b.panel.show(`Loading ${title}…`)
+  if (moved) {
+    await Bun.sleep(PREVIEW_DELAY_MS)
+    if (version !== b.preview || state.modal !== b.panel.dialog) return
+  }
+  const reading = (b.reading = new AbortController())
   try {
-    const file = object(await connection.api("/file/content", { directory: b.directory, query: { path: entry.path } }))
+    const file = object(
+      await connection.api("/file/content", {
+        directory: b.directory,
+        query: { path: entry.path },
+        signal: reading.signal,
+      }),
+    )
     if (version !== b.preview || state.modal !== b.panel.dialog) return
     choice(file.type, ["text", "binary"])
     optional(file.mimeType, string)

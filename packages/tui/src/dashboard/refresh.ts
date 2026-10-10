@@ -17,6 +17,8 @@ export async function refresh(d: DashboardContext) {
 async function update(d: DashboardContext) {
   const state = d.state
   if (d.run.timer) clearTimeout(d.run.timer)
+  // Nothing on screen needs the snapshot while a terminal is attached; the attach refreshes when it ends.
+  if (state.attached) return
   try {
     const snapshot = await d.connection.snapshot(state.folder)
     if (state.closed) return
@@ -34,7 +36,8 @@ async function update(d: DashboardContext) {
     if (state.closed) return
     showDisconnected(d, error)
   } finally {
-    if (!state.closed) d.run.timer = setTimeout(() => void refresh(d), 2000)
+    // While the live stream works it carries the selected session's changes, so the poll only reconciles the rest.
+    if (!state.closed) d.run.timer = setTimeout(() => void refresh(d), state.streamStatus === "live" ? 5000 : 2000)
   }
 }
 
@@ -66,7 +69,9 @@ function showDisconnected(d: DashboardContext, error: unknown) {
   if (!d.state.snapshot)
     d.ui.renderContent(
       errorText(error).includes("Authentication required")
-        ? "Authentication required.\n\nSet FORGE_SERVER_PASSWORD to the server's password and restart the TUI.\nUse --username if the server has a custom username."
+        ? `Authentication required.\n\n${
+            d.options.servers ? "Press s to choose a server and enter its password, or set" : "Set"
+          } FORGE_SERVER_PASSWORD to the server's password and restart the TUI.\nUse --username if the server has a custom username.`
         : `Could not connect to the server.\n\n${errorText(error)}\n\nPress r to retry.`,
     )
 }

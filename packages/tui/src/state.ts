@@ -106,6 +106,8 @@ export type DashboardState = {
   closed: boolean
   connected: boolean
   streamStatus: "connecting" | "live" | "polling"
+  /** A terminal attach owns the screen, so the snapshot poll waits until it ends. */
+  attached?: boolean
   detailVersion: number
   detailFocused: boolean
   /** Esc left the reply editor: single-letter shortcuts work until Enter, f or opening a session types again. */

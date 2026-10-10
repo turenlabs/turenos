@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { backspace, session, sized, until, type Route } from "./support"
+import { backspace, openSwarmRoom, session, sized, until, type Route } from "./support"
 
 const loop = {
   id: "loop_1",
@@ -64,16 +64,9 @@ test("the automation menu names its automation and Esc from Runs and Edit return
 })
 
 test("a post typed in the swarm room survives Esc and comes back on reopening", async () => {
-  const { view, screen } = await sized(120, 36, {})
-  await screen("main task")
-  view.mockInput.pressEnter()
-  await screen("Typing")
-  view.mockInput.pressEscape()
-  await until(() => !view.captureCharFrame().includes("Typing"))
-  await view.mockInput.typeText("w")
-  await screen("Swarm room")
-  await screen("No swarm room")
-  view.mockInput.pressTab()
+  const app = await sized(120, 36, {})
+  const { view, screen } = app
+  await openSwarmRoom(app)
   await view.mockInput.typeText("half a thought")
   await screen("half a thought")
   view.mockInput.pressKey("ESCAPE")

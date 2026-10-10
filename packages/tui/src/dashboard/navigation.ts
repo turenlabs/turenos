@@ -2,6 +2,7 @@ import { errorText, type Session } from "../server"
 import type { Tab } from "../state"
 import { label } from "../state"
 import { renderList } from "./list"
+import { refresh } from "./refresh"
 import { resize } from "./status"
 import type { DashboardContext } from "./context"
 
@@ -25,6 +26,8 @@ export function changeTab(d: DashboardContext, tab: Tab) {
   if (tab !== "sessions") d.c.conversation.cancelPosition()
   void d.c.conversation.render()
   if (tab === "team") void d.c.team.sync()
+  // The live stream does not carry terminals or automations, and the poll is slow while it is connected.
+  if (tab === "terminals" || tab === "automations") void refresh(d)
 }
 
 /** Switches to the Automations tab with `id` selected, as the Team duty list does. */

@@ -171,6 +171,19 @@ export async function dashboard(routes: Record<string, Route>) {
   return { ...app, confirm }
 }
 
+/** Opens the selected session's swarm room on a `sized` dashboard and moves to its post field. */
+export async function openSwarmRoom(app: Awaited<ReturnType<typeof sized>>) {
+  await app.screen("main task")
+  app.view.mockInput.pressEnter()
+  await app.screen("Typing")
+  app.view.mockInput.pressEscape()
+  await until(() => !app.view.captureCharFrame().includes("Typing"))
+  await app.view.mockInput.typeText("w")
+  await app.screen("Swarm room")
+  await app.screen("No swarm room")
+  app.view.mockInput.pressTab()
+}
+
 /** A dashboard whose Ctrl+C is left to it (as the client's renderer does), waiting for `ready` to show. */
 export async function mount(
   width: number,

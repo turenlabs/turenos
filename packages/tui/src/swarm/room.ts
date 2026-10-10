@@ -32,6 +32,8 @@ export type SwarmView = {
   entries: Entry[]
   head: number
   loading: boolean
+  /** A post is on its way, so another Enter must not send the same text twice. */
+  sending?: boolean
 }
 
 export async function load(v: SwarmView, reset = false) {
@@ -105,12 +107,16 @@ function entryText(entries: Entry[]) {
 
 export async function send(v: SwarmView) {
   const text = v.post.value.trim()
-  if (!text) return
+  if (!text || v.sending) return
+  v.sending = true
+  v.panel.dialog.error.content = `Posting…\n${KEYS}`
   try {
     await v.connection.client.sessions.swarmRoomPost({ sessionID: v.session.id, text })
     v.post.value = ""
     await load(v, true)
   } catch (error) {
     v.panel.dialog.error.content = `! ${errorText(error)}\n${KEYS}`
+  } finally {
+    v.sending = false
   }
 }
