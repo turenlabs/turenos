@@ -1,17 +1,18 @@
 import type { SessionMessage } from "./message"
+import type { SecretOutput } from "../secret-output"
 
-export function predictionConversation(messages: SessionMessage.Message[]) {
+export function predictionConversation(messages: SessionMessage.Message[], guard: SecretOutput.Snapshot) {
   return messages
     .flatMap((message) => {
       if (message.type === "user" && (!message.source || message.source === "user")) {
-        return [{ role: "user", text: message.text.slice(0, 2000) }]
+        return [{ role: "user", text: guard.text(message.text).slice(0, 2000) }]
       }
       if (message.type === "assistant") {
         const text = message.content
           .filter((part) => part.type === "text")
           .map((part) => part.text)
           .join("\n")
-        return text ? [{ role: "assistant", text: text.slice(-4000) }] : []
+        return text ? [{ role: "assistant", text: guard.text(text).slice(-4000) }] : []
       }
       return []
     })

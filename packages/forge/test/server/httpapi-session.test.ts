@@ -2,7 +2,7 @@ import { PermissionV1 } from "@turenlabs/core/v1/permission"
 import { afterEach, describe, expect } from "bun:test"
 import { NodeHttpServer, NodeServices } from "@effect/platform-node"
 import { SessionV1 } from "@turenlabs/core/v1/session"
-import { mkdir } from "node:fs/promises"
+import { mkdir, readFile, rm } from "node:fs/promises"
 import path from "node:path"
 import { Cause, Clock, Config, Deferred, Effect, Exit, Fiber, Layer, Stream } from "effect"
 import * as TestClock from "effect/testing/TestClock"
@@ -13,6 +13,8 @@ import { LayerNode } from "@turenlabs/core/effect/layer-node"
 import { CrossSpawnSpawner } from "@turenlabs/core/cross-spawn-spawner"
 import { Flag } from "@turenlabs/core/flag/flag"
 import { Ripgrep } from "@turenlabs/core/ripgrep"
+import { Global } from "@turenlabs/core/global"
+import { SecretRedaction } from "@turenlabs/core/secret-redaction"
 import { registerAdapter } from "../../src/control-plane/adapters"
 import type { WorkspaceAdapter } from "../../src/control-plane/types"
 import { Workspace } from "../../src/control-plane/workspace"
@@ -55,6 +57,7 @@ import { and, eq } from "drizzle-orm"
 import { resetDatabase } from "../fixture/db"
 import { disposeAllInstances, provideInstanceEffect, TestInstance, tmpdirScoped } from "../fixture/fixture"
 import { pollWithTimeout, testEffect } from "../lib/effect"
+import { TestLLMServer } from "../lib/llm-server"
 
 const originalWorkspaces = Flag.FORGE_EXPERIMENTAL_WORKSPACES
 const noopBootstrapLayer = Layer.succeed(
@@ -88,6 +91,7 @@ const httpApiLayer = servedRoutes.pipe(
   Layer.provideMerge(NodeServices.layer),
 )
 const it = testEffect(Layer.mergeAll(appLayer, httpApiLayer))
+const predictionIt = testEffect(Layer.mergeAll(appLayer, httpApiLayer, TestLLMServer.layer))
 const stuckExecution = Layer.succeed(
   SessionExecution.Service,
   SessionExecution.Service.of({
@@ -393,6 +397,138 @@ afterEach(async () => {
 })
 
 describe("session HttpApi", () => {
+  for (const scenario of [
+    "stored secrets",
+    "truncation boundary",
+    "protection outage",
+    "text protection refusal",
+  ] as const) {
+    predictionIt.instance(`protects populated prediction provider requests: ${scenario}`, () =>
+      Effect.gen(function* () {
+        const test = yield* TestInstance
+        const llm = yield* TestLLMServer
+        const secret = "prediction-synthetic-credential-123456789"
+        const configFile = path.join(Global.Path.config, "forge.json")
+        const original = yield* Effect.promise(() =>
+          readFile(configFile, "utf8").catch((error: NodeJS.ErrnoException) => {
+            if (error.code === "ENOENT") return undefined
+            throw error
+          }),
+        )
+        const api = {
+          type: "aisdk",
+          package: "@ai-sdk/openai-compatible",
+          url: llm.url,
+          settings: { apiKey: "fixture" },
+        }
+        yield* Effect.acquireRelease(
+          Effect.promise(() =>
+            Bun.write(
+              configFile,
+              JSON.stringify({
+                providers: {
+                  "prediction-fixture": {
+                    api,
+                    models: {
+                      chat: {
+                        api: { ...api, id: "chat" },
+                        capabilities: { tools: true, input: ["text"], output: ["text"] },
+                        limit: { context: 32000, output: 2000 },
+                      },
+                    },
+                  },
+                },
+              }),
+            ),
+          ),
+          () =>
+            Effect.promise(async () => {
+              if (original === undefined) {
+                await rm(configFile, { force: true })
+                return
+              }
+              await Bun.write(configFile, original)
+            }),
+        )
+        yield* requestJson<boolean>("/auth/prediction-secret", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ type: "api", key: scenario === "protection outage" ? "x".repeat(65537) : secret }),
+        })
+        yield* Effect.addFinalizer(() =>
+          request("/auth/prediction-secret", { method: "DELETE" }).pipe(Effect.asVoid, Effect.orDie),
+        )
+        const session = yield* createSession({ title: "populated prediction" })
+        const database = yield* Database.Service
+        yield* database.db
+          .update(SessionTable)
+          .set({ model: { id: "chat", providerID: "prediction-fixture" } })
+          .where(eq(SessionTable.id, session.id))
+          .run()
+          .pipe(Effect.orDie)
+        const userText =
+          scenario === "text protection refusal"
+            ? "a".repeat(SecretRedaction.MAX_BYTES + 1)
+            : scenario === "truncation boundary"
+              ? "a".repeat(1990) + secret
+              : `Use ${secret}`
+        const assistantText = scenario === "truncation boundary" ? secret + "b".repeat(3990) : `I found ${secret}`
+        yield* database.db
+          .insert(SessionMessageTable)
+          .values([
+            {
+              id: SessionMessage.ID.create(),
+              session_id: session.id,
+              type: "user",
+              seq: 1,
+              time_created: 1,
+              data: { text: userText, time: { created: 1 } } as NonNullable<
+                (typeof SessionMessageTable.$inferInsert)["data"]
+              >,
+            },
+            {
+              id: SessionMessage.ID.create(),
+              session_id: session.id,
+              type: "assistant",
+              seq: 2,
+              time_created: 2,
+              data: {
+                agent: "build",
+                model: { id: "chat", providerID: "prediction-fixture", variant: "default" },
+                time: { created: 2 },
+                content: [{ type: "text", id: "prediction-text", text: assistantText }],
+              } as NonNullable<(typeof SessionMessageTable.$inferInsert)["data"]>,
+            },
+          ])
+          .run()
+          .pipe(Effect.orDie)
+        yield* llm.text("run the tests")
+        const result = yield* requestJson<{ text: string }>(`/session/${session.id}/prediction`, {
+          method: "POST",
+          headers: { "x-forge-directory": test.directory },
+        })
+        if (scenario === "protection outage" || scenario === "text protection refusal") {
+          expect(result).toEqual({ text: "" })
+          expect(yield* llm.calls).toBe(0)
+          return
+        }
+        expect(result).toEqual({ text: "run the tests" })
+        expect(yield* llm.calls).toBe(1)
+        const inputs = JSON.stringify(yield* llm.inputs)
+        expect(inputs).not.toContain(secret)
+        expect(inputs).not.toContain(secret.slice(0, 10))
+        expect(inputs).not.toContain(secret.slice(-10))
+        const retained = yield* database.db
+          .select()
+          .from(SessionMessageTable)
+          .where(eq(SessionMessageTable.session_id, session.id))
+          .all()
+        expect(retained).toHaveLength(2)
+        expect(JSON.stringify(retained)).toContain(secret)
+      }),
+    )
+  }
+
   it.instance("returns no prediction for an empty session without changing its transcript", () =>
     Effect.gen(function* () {
       const test = yield* TestInstance

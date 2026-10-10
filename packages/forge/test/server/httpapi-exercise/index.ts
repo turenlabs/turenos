@@ -2019,6 +2019,17 @@ const scenarios: Scenario[] = [
       "status",
     ),
   http.protected
+    .post("/session/{sessionID}/prediction", "session.prediction")
+    .seeded((ctx) => ctx.session({ title: "Empty prediction" }))
+    .at((ctx) => ({
+      path: route("/session/{sessionID}/prediction", { sessionID: ctx.state.id }),
+      headers: ctx.headers(),
+    }))
+    .json(200, (body) => {
+      object(body)
+      check(body.text === "", "empty session should not produce a prediction")
+    }),
+  http.protected
     .get("/session/{sessionID}", "session.get")
     .seeded((ctx) => ctx.session({ title: "Get me" }))
     .at((ctx) => ({ path: route("/session/{sessionID}", { sessionID: ctx.state.id }), headers: ctx.headers() }))

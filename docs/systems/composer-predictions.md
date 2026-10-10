@@ -23,6 +23,9 @@ The server uses the session model through `SessionRunnerModel`. It does not invo
 It reads up to 40 recent context messages, then selects at most 12 user and assistant text messages.
 It excludes synthetic inputs, machine-origin user inputs, reasoning, and tool output.
 User text is limited to its first 2,000 characters; assistant text is limited to its last 4,000 characters.
+The server protects complete text before applying these limits, using one operation-local `SecretOutput` snapshot.
+It reuses that snapshot with `SessionDisclosure.request` before provider generation.
+Unavailable protection or text protection failure returns an empty suggestion without sending conversation text to the provider.
 
 The server returns an empty suggestion for child sessions or unsuitable conversation history.
 A suitable history contains a user message and ends with assistant text.
@@ -34,7 +37,7 @@ Press Escape or click the dismiss button to hide the suggestion for that complet
 
 ## Verification
 
-- `packages/core/test/session-prediction.test.ts` checks text selection, bounds, and output cleaning.
+- `packages/core/test/session-prediction.test.ts` checks text selection, protection before truncation, protection refusal, bounds, and output cleaning.
 - `packages/sdk/js/test/composer-prediction.test.ts` checks the request method, path, authentication, Location header, and cancellation signal.
 - `packages/forge/test/server/httpapi-session.test.ts` covers the prediction HTTP endpoint.
 
@@ -52,4 +55,6 @@ Aborting a client request does not prove that a provider stopped processing it o
 - [HTTP endpoint](../../packages/forge/src/server/routes/instance/httpapi/groups/session.ts)
 - [Prediction handler](../../packages/forge/src/server/routes/instance/httpapi/handlers/session.ts)
 - [Text selection and output cleaning](../../packages/core/src/session/prediction.ts)
+- [Credential snapshot protection](../../packages/core/src/secret-output.ts)
+- [Provider request protection](../../packages/core/src/session/disclosure.ts)
 - [SDK request](../../packages/sdk/js/src/v2/client.ts)
