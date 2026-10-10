@@ -41,12 +41,15 @@ export async function verified(
   }
 }
 
-/** A record that names a serverID is only its owner's when the server answers with that same ID. */
+/**
+ * A record that names a serverID is only its owner's when the server answers with that same ID, and a persistent
+ * record's server must also say it is persistent, as the desktop's `verifyDescriptor` requires.
+ */
 async function sameServer(record: AttachRecord, signal: AbortSignal) {
   const response = await request(record, "/global/server", signal)
   if (!response?.ok) return false
   const body = parseJSON((await boundedText(response, VERIFY_BYTES)) ?? "")
-  return isRecord(body) && body.serverID === record.serverID
+  return isRecord(body) && body.serverID === record.serverID && (!record.persistent || body.mode === "persistent")
 }
 
 function request(record: AttachRecord, path: string, signal: AbortSignal) {

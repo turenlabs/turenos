@@ -75,7 +75,7 @@ async function load(view: View) {
   const request = ++view.loads
   try {
     const list = await ctx.connection.client.memories.list({ wingID: place.wingID, roomID: place.roomID })
-    if (ctx.state.modal !== panel.dialog || request !== view.loads) return
+    if (ctx.state.closed || ctx.state.modal !== panel.dialog || request !== view.loads) return
     view.items = list
       .filter((item) => !item.supersededBy)
       .toSorted((a, b) => Number(b.timeUpdated) - Number(a.timeUpdated))
@@ -86,7 +86,7 @@ async function load(view: View) {
     hints(view, view.note)
     describe(view)
   } catch (error) {
-    if (ctx.state.modal === panel.dialog) panel.show(`Memories unavailable: ${errorText(error)}`)
+    if (!ctx.state.closed && ctx.state.modal === panel.dialog) panel.show(`Memories unavailable: ${errorText(error)}`)
   }
 }
 

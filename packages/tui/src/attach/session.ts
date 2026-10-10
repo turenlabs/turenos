@@ -95,7 +95,12 @@ async function connect(session: Session) {
   for (const [key, value] of Object.entries(session.location)) address.searchParams.set(key, value)
   if (session.cursor !== undefined) address.searchParams.set("cursor", String(session.cursor))
   address.searchParams.set("ticket", ticket)
-  const current = opened(session, address.href)
+  // Bun dials a Unix socket as ws+unix://<socket>:<path>; a ws: URL with a socket option is not supported.
+  const socketPath = session.options.socketPath
+  const current = opened(
+    session,
+    socketPath ? `ws+unix://${socketPath}:${address.pathname}${address.search}` : address.href,
+  )
   if (!current) return
   session.socket = current
   current.binaryType = "arraybuffer"

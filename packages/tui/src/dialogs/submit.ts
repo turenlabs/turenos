@@ -35,6 +35,7 @@ export async function submit(ctx: DialogContext) {
     current.busy = false
     close(ctx, false)
     await ctx.hooks.submitted()
+    if (ctx.state.closed) return
     current.afterSubmit?.()
   } catch (error) {
     if (ctx.state.closed) return
