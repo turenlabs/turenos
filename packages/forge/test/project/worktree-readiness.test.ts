@@ -153,7 +153,7 @@ it.instance(
       yield* Effect.promise(() => Bun.write(`${test.directory}/README.md`, "committed project file"))
       yield* git.run(["add", "README.md"], { cwd: test.directory })
       yield* git.run(["commit", "-m", "add file"], { cwd: test.directory })
-      const entered = Bun.file(`${test.directory}/hook-entered`)
+      const entered = `${test.directory}/hook-entered`
       const running = (pid: number) =>
         Effect.try({ try: () => process.kill(pid, 0), catch: (error) => error }).pipe(
           Effect.as(true),
@@ -162,8 +162,8 @@ it.instance(
       // Record only synthetic processes. Cleanup also runs if readiness or interruption fails.
       yield* Effect.addFinalizer(() =>
         Effect.gen(function* () {
-          if (!(yield* Effect.promise(() => entered.exists()))) return
-          const pids = (yield* Effect.promise(() => entered.text())).trim().split(" ").map(Number)
+          if (!(yield* Effect.promise(() => Bun.file(entered).exists()))) return
+          const pids = (yield* Effect.promise(() => Bun.file(entered).text())).trim().split(" ").map(Number)
           for (const pid of pids) {
             if (!Number.isSafeInteger(pid) || pid <= 1) continue
             yield* Effect.try({ try: () => process.kill(pid, "SIGKILL"), catch: (error) => error }).pipe(Effect.ignore)
@@ -189,7 +189,9 @@ wait "$child"
       const fiber = yield* svc.create({ name: "cancelled" }).pipe(Effect.forkScoped)
       const pids = yield* pollWithTimeout(
         Effect.promise(async () =>
-          (await entered.exists()) ? (await entered.text()).trim().split(" ").map(Number) : undefined,
+          (await Bun.file(entered).exists())
+            ? (await Bun.file(entered).text()).trim().split(" ").map(Number)
+            : undefined,
         ),
         "Git hook never entered",
       )
@@ -201,7 +203,9 @@ wait "$child"
       expect(yield* svc.creationStatus("cancelled")).toMatchObject({ status: "pending" })
       yield* awaitWithTimeout(Fiber.interrupt(fiber), "stalled Git interruption did not finish")
       yield* pollWithTimeout(
-        Effect.all(pids.map(running)).pipe(Effect.map((states) => (states.every((state) => !state) ? true : undefined))),
+        Effect.all(pids.map(running)).pipe(
+          Effect.map((states) => (states.every((state) => !state) ? true : undefined)),
+        ),
         "Git, hook, or hook child survived interruption",
       )
       yield* Effect.promise(() => rm(`${test.directory}/hook-entered`))
@@ -209,9 +213,7 @@ wait "$child"
       yield* Effect.promise(() => rm(`${test.directory}/.git/hooks/reference-transaction`))
       const retry = yield* svc.create({ name: "cancelled" })
       const status = yield* pollWithTimeout(
-        svc
-          .creationStatus("cancelled")
-          .pipe(Effect.map((state) => (state.status === "failed" ? state : undefined))),
+        svc.creationStatus("cancelled").pipe(Effect.map((state) => (state.status === "failed" ? state : undefined))),
         "retry was not recorded",
       )
       expect(status.directory).toBe(retry.directory)
