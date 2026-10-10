@@ -44,6 +44,8 @@ export type DashboardOptions = {
   session?: string
   /** The folder to show first; one the server cannot read is dropped, and every folder shows. */
   folder?: string
+  /** Settings carried from the dashboard this one replaces; the first reads the environment instead. */
+  settings?: { reducedMotion: boolean; attention: boolean }
   /** Where the bell and title go; the default is the process's terminal, only when it is one. */
   terminal?: { write(text: string): void }
 }

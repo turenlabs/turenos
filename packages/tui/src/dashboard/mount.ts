@@ -42,6 +42,8 @@ export function mountDashboard(
     refresh: () => refresh(d),
     dispose: listeners.dispose,
     connected: () => d.state.connected,
+    /** What a replacing dashboard starts with: the settings this one's user chose. */
+    settings: () => ({ reducedMotion: d.state.reducedMotion, attention: d.state.attention }),
     drafts: () =>
       (d.c.launch.hasDraft ? 1 : 0) +
       d.c.requests.unsentDrafts() +
@@ -66,6 +68,7 @@ function createContext(
 ) {
   const state = createDashboardState()
   state.serverSwitching = !!options.servers
+  if (options.settings) Object.assign(state, options.settings)
   const ui = createLayout(renderer, state)
   ui.serversButton.visible = !!options.servers
   const d: DashboardContext = {
