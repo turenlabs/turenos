@@ -33,6 +33,7 @@ The [systems catalog](./systems/README.md) lists every system and subsystem with
 outputs, ownership, failure behavior, and implementation links. These systems have their own pages:
 
 - Agents and sessions
+  - [Composer predictions](./systems/composer-predictions.md): optional automatic session-model calls, provider costs, draft acceptance, and failure limits.
   - [Durable subagent workstreams](./systems/subagent-workstreams.md): nonblocking V2 delegation, swarm-room
     updates, delivery/recovery semantics, tool availability, and verification.
   - [Swarm orchestration](./systems/swarm.md): `@swarm` investigations with a bounded worker budget, planning and
