@@ -1,6 +1,6 @@
 import type { Forge, SessionsListOutput } from "@turenlabs/client"
 import type { Api } from "../api"
-import type { createWorkingFolders } from "../working-folders"
+import type { localFolders } from "../working-folders/local"
 
 export type ConnectionOptions = {
   url: string
@@ -25,7 +25,7 @@ export type Context = {
   options: ConnectionOptions
   transport: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
   client: Client
-  folders: ReturnType<typeof createWorkingFolders>
+  folders: ReturnType<typeof localFolders>
   api: Api
   missingFiles: Set<string>
 }

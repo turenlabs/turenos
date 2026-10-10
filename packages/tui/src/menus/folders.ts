@@ -174,7 +174,7 @@ async function openFolder(ctx: FoldersContext, directory: string) {
   if (state.closed) return
   if (state.snapshot) state.snapshot.workingFolders = result
   await focusFolder(ctx, directory, folder)
-  ctx.actions.say(`Opened ${label(directory, 200)}.`)
+  ctx.actions.say(`Opened ${label(directory, 200)}. ${connection.folders.takeNotice()}`.trim())
 }
 
 async function closeFolder(ctx: FoldersContext, directory: string) {
@@ -184,7 +184,7 @@ async function closeFolder(ctx: FoldersContext, directory: string) {
   if (state.snapshot) state.snapshot.workingFolders = result
   if (state.workingDirectory === directory) state.workingDirectory = undefined
   if (state.folder && pathKey(state.folder.directory) === pathKey(directory)) state.folder = undefined
-  ctx.actions.say(`Closed ${label(directory, 200)}.`)
+  ctx.actions.say(`Closed ${label(directory, 200)}. ${connection.folders.takeNotice()}`.trim())
 }
 
 /**

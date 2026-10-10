@@ -52,7 +52,8 @@ export async function submitLaunch(form: LaunchForm) {
   if (state.closed) return
   const folderError = await syncFolder(form)
   openSession(session.id, false, session)
-  say(`Task sent. The session is open.${folderError ? ` ${folderError}` : ""}`, !!folderError)
+  const notice = form.deps.connection.folders.takeNotice()
+  say(`Task sent. The session is open.${folderError ? ` ${folderError}` : ""} ${notice}`.trim(), !!folderError)
 }
 
 async function prepare(form: LaunchForm) {

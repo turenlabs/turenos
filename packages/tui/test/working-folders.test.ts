@@ -272,7 +272,9 @@ for (const status of [401, 403, 404, 500]) {
     expect(snapshot.inventoryErrors).toEqual({ terminals: "", automations: "" })
     expect(snapshot.sessions).toEqual([])
     const before = control.gets
-    await expect(connection.folders.open("/no-write")).rejects.toThrow()
+    // A server with no storage route keeps the folder in memory; other failures, including auth, throw.
+    if (status === 404) expect(await connection.folders.open("/no-write")).toEqual(["/good", "/no-write"])
+    else await expect(connection.folders.open("/no-write")).rejects.toThrow()
     expect(control.gets).toBe(before + 1)
     expect(control.puts).toHaveLength(0)
     control.status = 200
