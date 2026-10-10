@@ -59,6 +59,7 @@ sidecar supervises the product server but does not create a separate session imp
 | System | Responsibilities | Inputs and outputs | Owner and failure behavior | Source |
 | --- | --- | --- | --- | --- |
 | Team rooms | Shared conversations, persistent teammates, duties, and factory coordination. | Human messages, direct mentions, task results, and room controls. | Core owns durable admission. Archived rooms reject new work. Native Sessions enforce existing permissions. | [Team](./team.md), [Room service](../../packages/core/src/team/workspace.ts) |
+| Composer predictions | Automatically suggests the next user message when enabled; off by default. | Recent conversation text goes to the session model; returns a draft suggestion and can incur provider costs. | App owns the toggle and 800 ms trigger. Server returns empty text for unsuitable history, child sessions, generation errors, or a 15-second timeout. Acceptance fills the composer without sending. | [Composer predictions](./composer-predictions.md) |
 
 Inline tool reference pages:
 

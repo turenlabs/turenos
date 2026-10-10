@@ -21,6 +21,7 @@ export interface SoundSettings {
 
 export interface Settings {
   general: {
+    composerPredictions?: boolean
     autoSave: boolean
     releaseNotes: boolean
     followup: "queue" | "steer"
@@ -324,6 +325,10 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
         return store
       },
       general: {
+        composerPredictions: withFallback(() => store.general?.composerPredictions, false),
+        setComposerPredictions(value: boolean) {
+          setStore("general", "composerPredictions", value)
+        },
         autoSave: withFallback(() => store.general?.autoSave, defaultSettings.general.autoSave),
         setAutoSave(value: boolean) {
           setStore("general", "autoSave", value)

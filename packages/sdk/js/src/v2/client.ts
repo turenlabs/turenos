@@ -94,5 +94,14 @@ export function createForgeClient(config?: Config & { directory?: string; experi
     return response
   })
   client.interceptors.error.use(wrapClientError)
-  return new ForgeClient({ client })
+  return Object.assign(new ForgeClient({ client }), {
+    predictMessage(sessionID: string, signal?: AbortSignal) {
+      return client.post<{ 200: { text: string } }, unknown, true>({
+        url: "/session/{sessionID}/prediction",
+        path: { sessionID },
+        signal,
+        throwOnError: true,
+      })
+    },
+  })
 }
