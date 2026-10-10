@@ -27,7 +27,7 @@ type Pane = {
   rows: Row[]
   cursor: number
   closing: boolean
-  /** The row Enter or a tap acted on; undefined when Ctrl+S acts on the typed folder. */
+  /** The row Enter or a tap acted on, kept after a failure so Ctrl+S retries it; undefined when Ctrl+S acts on the typed folder. */
   chosen: Row | undefined
 }
 
@@ -47,6 +47,8 @@ export function workingFolders(ctx: FoldersContext) {
   hint(pane)
   dialog.key = (key) => paneKey(pane, key)
   dialog.submit = () => apply(pane)
+  // A new path or row is a new choice, so Ctrl+S no longer retries the row that failed.
+  field.on("input", () => (pane.chosen = undefined))
   void connection.folders
     .read()
     .then((result) => {
@@ -93,8 +95,8 @@ function rowText(pane: Pane, index: number) {
       pane.cursor = index
       paint(pane)
       // A tap shows the folder at once; closing one still takes Enter or Ctrl+S.
+      pane.chosen = pane.closing ? undefined : pane.rows[index]
       if (pane.closing) return
-      pane.chosen = pane.rows[index]
       void pane.ctx.dialogs.submit()
     },
   })
@@ -128,6 +130,7 @@ function paneKey(pane: Pane, key: KeyEvent) {
   if (matchesKey(key, "up") || matchesKey(key, "down")) {
     const step = matchesKey(key, "up") ? -1 : 1
     pane.cursor = (pane.cursor + step + pane.rows.length) % pane.rows.length
+    pane.chosen = undefined
     paint(pane)
     return true
   }
@@ -138,14 +141,17 @@ function paneKey(pane: Pane, key: KeyEvent) {
   }
   if (!matchesKey(key, "r", { ctrl: true })) return false
   pane.closing = !pane.closing
+  pane.chosen = undefined
   hint(pane)
   return true
 }
 
-/** Enter or a tap acts on its row; Ctrl+S acts on the typed folder, or on the chosen row when nothing is typed. */
+/**
+ * Enter or a tap acts on its row, and Ctrl+S after that row failed retries it; otherwise Ctrl+S acts on the typed
+ * folder, or on the row under the cursor when nothing is typed.
+ */
 async function apply(pane: Pane) {
   const row = pane.chosen
-  pane.chosen = undefined
   const typed = pane.field.value.trim()
   const target = row ? row.directory : typed || pane.rows[pane.cursor]?.directory
   if (pane.closing) {

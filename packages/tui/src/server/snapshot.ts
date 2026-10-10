@@ -31,8 +31,10 @@ export async function snapshot(ctx: Context, folder?: Folder) {
   const sessions = await recentAndActive(ctx.client, recent, active, request)
   for (const session of inFolderPage) if (!sessions.has(session.id)) sessions.set(session.id, session)
   const needsInput = omitted > 0 ? [] : await waitingOnInput(ctx.client, Object.keys(active).slice(0, 8), request)
-  // Terminals are location-scoped on the server; read the server location and open folders.
-  const directories = [...new Set([location.directory, ...(ctx.folders.current() ?? [])])].slice(0, 8)
+  // Terminals are location-scoped on the server; read the server location, the shown folder, and every open folder.
+  const directories = [
+    ...new Set([location.directory, ...(folder ? [folder.directory] : []), ...(ctx.folders.current() ?? [])]),
+  ]
   const terminals = await readTerminals(ctx.client, directories, request, inventoryErrors)
   const folderStatus: { workingFolders?: string[]; folderError?: string } = {
     workingFolders: ctx.folders.current(),
@@ -64,21 +66,28 @@ export async function snapshot(ctx: Context, folder?: Folder) {
   }
 }
 
-/** Each folder's terminals. Folders that fail beside ones that answer are listed, not reported as the whole inventory failing. */
+/**
+ * Each folder's terminals, eight folders at a time. Folders that fail beside ones that answer are listed, not
+ * reported as the whole inventory failing.
+ */
 async function readTerminals(
   client: Client,
   directories: string[],
   request: () => { signal: AbortSignal },
   inventoryErrors: InventoryErrors,
 ) {
-  const results = await Promise.all(
-    directories.map((directory) =>
-      client.ptys.list({ location: { directory } }, request()).then(
-        (page) => ({ page }),
-        (error: unknown) => ({ directory, error: rethrowUnauthorized(error) }),
-      ),
-    ),
-  )
+  const results = []
+  for (let offset = 0; offset < directories.length; offset += 8)
+    results.push(
+      ...(await Promise.all(
+        directories.slice(offset, offset + 8).map((directory) =>
+          client.ptys.list({ location: { directory } }, request()).then(
+            (page) => ({ page }),
+            (error: unknown) => ({ directory, error: rethrowUnauthorized(error) }),
+          ),
+        ),
+      )),
+    )
   const pages = results.flatMap((result) => ("page" in result ? [result.page] : []))
   const failures = results.flatMap((result) => ("error" in result ? [result] : []))
   if (!pages.length) failures.forEach((failure) => inventoryError(inventoryErrors, "terminals", failure.error))

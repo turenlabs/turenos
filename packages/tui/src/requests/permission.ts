@@ -43,8 +43,11 @@ export function permission(ctx: RequestContext, auto = false) {
   })
   dialog.form.add(choice)
   ctx.dialogs.track(dialog, choice)
-  // Ctrl+S must not save rules the user could not read in full.
+  const digit = { sending: false }
   dialog.beforeSubmit = () => {
+    // A Ctrl+S meant to confirm the digit that answered the previous prompt must not answer this one.
+    if (!digit.sending && Date.now() < (ctx.answeredUntil ?? 0)) return true
+    // Ctrl+S must not save rules the user could not read in full.
     if (!cut || choice.getSelectedIndex() !== 2) return false
     dialog.error.content = `! The saved rules are too long to show in full, so Allow always is unavailable.\nChoose Allow once or Reject.`
     return true
@@ -59,7 +62,7 @@ export function permission(ctx: RequestContext, auto = false) {
       ["Permission rejected.", "Allowed once.", "Allowed always."][choice.getSelectedIndex()] ?? "Permission rejected.",
     )
   }
-  wireChoice(ctx, dialog, choice, auto ? Date.now() + autoOpenGuardMs : 0)
+  wireChoice(ctx, dialog, choice, auto ? Date.now() + autoOpenGuardMs : 0, digit)
   ctx.dialogs.resize()
   choice.focus()
 }
@@ -134,7 +137,13 @@ function describe(ctx: RequestContext, dialog: ModalState, request: Request) {
 }
 
 /** Digits answer at once, Up/Down keep the chosen row on screen for Ctrl+S, and the hints name each key. */
-function wireChoice(ctx: RequestContext, dialog: ModalState, choice: SelectRenderable, sendAfter: number) {
+function wireChoice(
+  ctx: RequestContext,
+  dialog: ModalState,
+  choice: SelectRenderable,
+  sendAfter: number,
+  digit: { sending: boolean },
+) {
   // Up/Down move the select inside a scrolling form; keep the chosen row visible so Ctrl+S never sends blind.
   choice.on("selectionChanged", () => {
     showChoice(dialog, choice)
@@ -147,7 +156,9 @@ function wireChoice(ctx: RequestContext, dialog: ModalState, choice: SelectRende
     if (Date.now() >= sendAfter) {
       // A Ctrl+S that follows the digit meant to confirm it; by then the reply editor is back and empty.
       ctx.answeredUntil = Date.now() + 1500
+      digit.sending = true
       void ctx.dialogs.submit()
+      digit.sending = false
     }
     return true
   }
