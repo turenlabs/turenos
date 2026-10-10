@@ -1,6 +1,8 @@
 import { afterEach, expect } from "bun:test"
+import { mkdir, symlink } from "node:fs/promises"
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
 import { FSUtil } from "@turenlabs/core/fs-util"
+import { Global } from "@turenlabs/core/global"
 import { Effect, Layer } from "effect"
 import { InstanceState } from "../../src/effect/instance-state"
 import { Git } from "../../src/git"
@@ -50,6 +52,36 @@ it.instance(
       expect(yield* fs.exists(`${info.directory}/README.md`)).toBe(true)
       yield* svc.remove({ directory: info.directory })
       expect(yield* svc.creationStatus("bootstrap-failure")).toEqual({ status: "unknown" })
+    }),
+  { git: true },
+)
+
+it.instance(
+  "a worktree under a symlinked path reads unknown after removal",
+  () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      const git = yield* Git.Service
+      const ctx = yield* InstanceState.context
+      const svc = yield* Worktree.Service
+      yield* Effect.promise(() => Bun.write(`${test.directory}/README.md`, "committed project file"))
+      yield* git.run(["add", "README.md"], { cwd: test.directory })
+      yield* git.run(["commit", "-m", "add file"], { cwd: test.directory })
+      // Worktrees live under Global.Path.data/worktree/<project id>; make that root a symlink.
+      const root = `${Global.Path.data}/worktree/${ctx.project.id}`
+      yield* Effect.promise(async () => {
+        await mkdir(`${Global.Path.data}/worktree`, { recursive: true })
+        await mkdir(`${root}-real`, { recursive: true })
+        await symlink(`${root}-real`, root)
+      })
+      const info = yield* svc.create({ name: "linked" })
+      expect(info.directory.startsWith(`${root}/`)).toBe(true)
+      yield* pollWithTimeout(
+        svc.creationStatus("linked").pipe(Effect.map((state) => (state.status === "failed" ? state : undefined))),
+        "failure was not recorded",
+      )
+      yield* svc.remove({ directory: info.directory })
+      expect(yield* svc.creationStatus("linked")).toEqual({ status: "unknown" })
     }),
   { git: true },
 )
