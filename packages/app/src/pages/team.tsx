@@ -992,7 +992,7 @@ export default function TeamPage() {
           role="log"
           aria-label="Room messages"
           aria-live="polite"
-          class="min-h-0 flex-1 overflow-y-auto px-6 py-5 font-mono text-[12px] max-sm:px-4"
+          class="min-h-0 flex-1 overflow-y-auto px-6 py-5 font-mono text-[12px] select-text max-sm:px-4"
         >
           <Show when={state.loading}>
             <p class="text-v2-text-text-muted">Loading room history...</p>
