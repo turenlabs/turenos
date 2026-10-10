@@ -1,4 +1,4 @@
-import type { LiveEvent } from "../live-events"
+import { LOST_EVENT, type LiveEvent } from "../live-events"
 import type { LiveSession } from "./context"
 import { current, dropSession, paint, snapshot } from "./schedule"
 import { settleBusy, trackSequence } from "./sequence"
@@ -34,6 +34,13 @@ export async function run(s: LiveSession) {
 function handle(s: LiveSession, event: LiveEvent) {
   const { state } = s
   if (event.type === "server.connected") return connected(s)
+  // A dropped frame may have held an update the overlay will never see, so the transcript is read again instead.
+  // The tracked projection may belong to a session the reader just left, so it is dropped whichever it is.
+  if (event.type === LOST_EVENT && !event.id) {
+    dropSession(s, s.selected)
+    snapshot(s)
+    return
+  }
   const sessionID = event.data.sessionID
   settleBusy(s, event)
   if (trackRetry(state, event)) s.hooks.status()

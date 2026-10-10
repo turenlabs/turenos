@@ -25,13 +25,18 @@ const HINT =
 // F3 and Ctrl+L are named by their field labels, so a narrow screen keeps the keys the labels do not.
 const SHORT_HINT = "Tab next · Ctrl+S save · Esc cancel"
 
-/** The add form (no `mate`) or the edit form for a teammate; `back` returns to the list or menu that opened it. */
+/**
+ * The add form (no `mate`) or the edit form for a teammate; `back` returns to the list or menu that opened it.
+ * `roomID` is the room a reopened form belongs to: a chooser can outlast the room on screen.
+ */
 export function memberForm(
   ctx: TeamContext,
-  input: { mate?: Teammate; draft?: MemberDraft; back: () => void; saved: () => void },
+  input: { mate?: Teammate; draft?: MemberDraft; roomID?: string; back: () => void; saved: () => void },
 ) {
   const view = viewOf(ctx.state)
   const room = view.room
+  if (input.roomID && room?.id !== input.roomID)
+    return ctx.say("The room changed while you chose, so the teammate form closed unsaved.", true)
   if (!room) return
   if (room.archived) return ctx.say("Archived rooms are read-only. Restore the room first.", true)
   const mate = input.mate
@@ -60,7 +65,7 @@ export function memberForm(
     agent: agent.value,
     model: model.value,
   })
-  const reopen = (next: MemberDraft) => memberForm(ctx, { ...input, draft: next })
+  const reopen = (next: MemberDraft) => memberForm(ctx, { ...input, draft: next, roomID: room.id })
   dialog.key = (key) => choose(ctx, key, read, reopen)
   enterAdvances(dialog)
   dialog.submit = () => submitMember(ctx, room.id, mate, read(), { name, handle: handleField, mission, model })

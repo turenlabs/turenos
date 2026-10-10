@@ -1,5 +1,5 @@
 import { expect, spyOn, test } from "bun:test"
-import { liveEvents } from "../src/live-events"
+import { LOST_EVENT, liveEvents } from "../src/live-events"
 
 const connected = { id: "evt_ready", type: "server.connected", data: {} }
 const encode = (value: unknown) => `data: ${JSON.stringify(value)}\n\n`
@@ -137,6 +137,8 @@ for (const [label, payload] of [
     try {
       f.send(payload)
       f.send(encode({ ...connected, id: "evt_after" }))
+      // A dropped frame may have carried an update, so it is reported before reading goes on.
+      if (label.endsWith(" frame")) expect((await f.events.next()).value?.type).toBe(LOST_EVENT)
       expect((await f.events.next()).value?.id).toBe("evt_after")
     } finally {
       await f.stop()

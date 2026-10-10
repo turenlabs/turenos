@@ -24,6 +24,8 @@ export async function startHeadless(
       "The private server stopped responding.",
     )
   await refuseOwnedData(ctx)
+  // A caller that stopped waiting during the check above gets no server it would have to stop.
+  signal.throwIfAborted()
   progress?.(`Starting forge serve from ${shortPath(target.binary, ctx.home)}…`)
   const password = randomBytes(24).toString("base64url")
   const child = Bun.spawn([target.binary, "serve", "--hostname", "127.0.0.1", "--port", "0"], {
@@ -40,6 +42,8 @@ export async function startHeadless(
   const started = await waitForPort(child, signal)
   if (!started.port) {
     child.kill()
+    // A caller that stopped waiting is told so, not that the server failed to start.
+    signal.throwIfAborted()
     throw new Error(headlessFailure(started.output()))
   }
   const url = `http://127.0.0.1:${started.port}`
@@ -84,6 +88,7 @@ async function waitForPort(
   const timer = setTimeout(() => ready.resolve(undefined), 90_000)
   const abort = () => ready.resolve(undefined)
   signal.addEventListener("abort", abort, { once: true })
+  if (signal.aborted) abort()
   // Keep draining both pipes after startup so a chatty server never blocks on a full pipe.
   const read = async (stream: ReadableStream<Uint8Array>) => {
     const reader = stream.getReader()

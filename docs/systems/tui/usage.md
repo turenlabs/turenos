@@ -221,7 +221,7 @@ The permission dialog names the session (`For:`) and its `Directory:`, shows the
 
 ## Terminal and automation tabs
 
-Press `2` or choose **Terminal processes** in `Ctrl+P` to see the server's terminals. Terminals belong to a location on the server, so the client reads `GET /api/pty` for the server's default location and each open working folder (at most eight). It does not enumerate the local machine's processes. The sidebar shows each terminal's status and title, with its PID and working directory below; selecting one shows its command, PID, exit code when it has ended and the keys that act on it, with `Terminal ID:` after them; its status and folder are in the line above. The sidebar's two entries follow the tab: **New terminal** (`a`) and **Find a terminal** (`/`).
+Press `2` or choose **Terminal processes** in `Ctrl+P` to see the server's terminals. Terminals belong to a location on the server, so the client reads `GET /api/pty` for the server's default location, the shown folder and each open working folder. It does not enumerate the local machine's processes. The sidebar shows each terminal's status and title, with its PID and working directory below; selecting one shows its command, PID, exit code when it has ended and the keys that act on it, with `Terminal ID:` after them; its status and folder are in the line above. The sidebar's two entries follow the tab: **New terminal** (`a`) and **Find a terminal** (`/`).
 
 | Key     | Terminals tab                                                                                                                           |
 | ------- | --------------------------------------------------------------------------------------------------------------------------------------- |

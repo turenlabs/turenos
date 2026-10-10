@@ -42,7 +42,18 @@ export function workingFolders(ctx: FoldersContext) {
   dialog.form.add(list)
   const field = dialogs.input(dialog, "Open another folder (its path on the server, then Ctrl+S)", "", "/absolute/path")
   const directories = state.snapshot?.workingFolders ?? []
-  const pane: Pane = { ctx, dialog, note, list, field, directories, rows: [], cursor: -1, closing: false, chosen: undefined }
+  const pane: Pane = {
+    ctx,
+    dialog,
+    note,
+    list,
+    field,
+    directories,
+    rows: [],
+    cursor: -1,
+    closing: false,
+    chosen: undefined,
+  }
   build(pane)
   hint(pane)
   dialog.key = (key) => paneKey(pane, key)

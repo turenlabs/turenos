@@ -302,7 +302,7 @@ function flash(ctx: RequestContext, text: string) {
 
 /** Decides, once per draft, whether the text is a shell command, a slash command or a prompt. */
 async function classify(ctx: RequestContext, draft: MessageDraft, text: string, current: Session) {
-  const shell = /^!(.+)/s.exec(text)?.[1]?.trim()
+  const shell = draft.literal ? undefined : /^!(.+)/s.exec(text)?.[1]?.trim()
   // A shell command is not a prompt, so it cannot carry the staged revert
   // that this editor promises to commit on send.
   if (shell && current.revert)

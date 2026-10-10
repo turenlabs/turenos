@@ -18,12 +18,15 @@ export function showAttachments(ctx: RequestContext, dialog: ModalState, task: R
   })
   dialog.frame.add(line, dialog.frame.getChildren().indexOf(dialog.error))
   const refresh = () => {
+    // Once the restored message loses its leading `!`, a `!` typed again starts a shell command as usual.
+    if (!task.plainText.startsWith("!")) draft.literal = undefined
     const listed = (dialog.mentionRows ?? 0) > 0
     const summary = attachmentSummary(
       listed ? withoutOpenMention(task.plainText, task.cursorOffset) : task.plainText,
       draft.recipient.location.directory,
       { missingFiles: ctx.connection.missingFiles, workspaceID: draft.recipient.location.workspaceID },
       draft.submitted !== undefined ? (draft.prompt?.files ?? []) : undefined,
+      draft.literal,
     )
     line.visible = summary !== undefined
     dialog.attachmentRows = summary === undefined ? 0 : 1

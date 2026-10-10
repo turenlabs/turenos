@@ -2,13 +2,16 @@ import { invalid } from "../response-validation"
 import { dial } from "../server/proxy"
 import { newFrames, pushByte } from "./frames"
 
-/** The data of each server-sent event on `/api/event`, unparsed. */
+/** Yielded in place of a frame the stream dropped, which an empty `data:` frame can never be mistaken for. */
+export const DROPPED = Symbol("dropped frame")
+
+/** The data of each server-sent event on `/api/event`, unparsed, or `DROPPED` for a frame that was dropped. */
 export async function* eventStream(
   baseURL: URL,
   headers: Headers,
   signal: AbortSignal,
   socketPath?: string,
-): AsyncIterable<string> {
+): AsyncIterable<string | typeof DROPPED> {
   const guard = createGuard(signal)
   const controller = guard.controller
   try {
@@ -39,8 +42,10 @@ export async function* eventStream(
       guard.deadline(45000)
       for (const byte of chunk.value) {
         controller.signal.throwIfAborted()
+        const dropped = frames.dropped
         const payload = pushByte(frames, byte)
         if (payload !== undefined) yield payload
+        else if (frames.dropped !== dropped) yield DROPPED
       }
     }
     controller.signal.throwIfAborted()

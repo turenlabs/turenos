@@ -28,4 +28,6 @@ export type Context = {
   folders: ReturnType<typeof localFolders>
   api: Api
   missingFiles: Set<string>
+  /** Which running sessions wait on input, checked eight at a time from `offset` across snapshots. */
+  needsInput: { offset: number; waiting: Set<string> }
 }
