@@ -355,6 +355,9 @@ const layer: Layer.Layer<
         return info
       }).pipe(
         Effect.tapCause((cause) => Effect.sync(() => record?.({ status: "failed", message: errorMessage(cause) }))),
+        // tapCause does not run when this fiber is interrupted (a cancelled request). The checkout may already
+        // exist, so settle as unknown instead of leaving the name pending forever.
+        Effect.onInterrupt(() => Effect.sync(() => record({ status: "unknown" }))),
       )
     })
 

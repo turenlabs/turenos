@@ -1,9 +1,9 @@
 import { afterEach, expect } from "bun:test"
-import { mkdir, symlink } from "node:fs/promises"
+import { chmod, mkdir, rm, symlink } from "node:fs/promises"
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
 import { FSUtil } from "@turenlabs/core/fs-util"
 import { Global } from "@turenlabs/core/global"
-import { Effect, Layer } from "effect"
+import { Effect, Fiber, Layer } from "effect"
 import { InstanceState } from "../../src/effect/instance-state"
 import { Git } from "../../src/git"
 import { InstanceBootstrap } from "../../src/project/bootstrap-service"
@@ -139,6 +139,44 @@ it.instance(
       yield* git.run(["worktree", "lock", info.directory], { cwd: test.directory })
       yield* svc.remove({ directory: info.directory }).pipe(Effect.exit)
       expect(yield* svc.creationStatus("locked")).toMatchObject({ status: "failed", directory: info.directory })
+    }),
+  { git: true },
+)
+
+it.instance(
+  "an interrupted create settles its entry and frees the name",
+  () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      const git = yield* Git.Service
+      const svc = yield* Worktree.Service
+      yield* Effect.promise(() => Bun.write(`${test.directory}/README.md`, "committed project file"))
+      yield* git.run(["add", "README.md"], { cwd: test.directory })
+      yield* git.run(["commit", "-m", "add file"], { cwd: test.directory })
+      // A reference-transaction hook stalls the branch creation in `git worktree add`, so the create is still
+      // in flight when interrupted.
+      yield* Effect.promise(async () => {
+        await Bun.write(`${test.directory}/.git/hooks/reference-transaction`, "#!/bin/sh\nexec sleep 30\n")
+        await chmod(`${test.directory}/.git/hooks/reference-transaction`, 0o755)
+      })
+      const fiber = yield* svc.create({ name: "cancelled" }).pipe(Effect.forkScoped)
+      yield* pollWithTimeout(
+        svc
+          .creationStatus("cancelled")
+          .pipe(Effect.map((state) => (state.status === "pending" ? state : undefined))),
+        "create never started",
+      )
+      yield* Fiber.interrupt(fiber)
+      expect(yield* svc.creationStatus("cancelled")).toEqual({ status: "unknown" })
+      yield* Effect.promise(() => rm(`${test.directory}/.git/hooks/reference-transaction`))
+      const retry = yield* svc.create({ name: "cancelled" })
+      const status = yield* pollWithTimeout(
+        svc
+          .creationStatus("cancelled")
+          .pipe(Effect.map((state) => (state.status === "failed" ? state : undefined))),
+        "retry was not recorded",
+      )
+      expect(status.directory).toBe(retry.directory)
     }),
   { git: true },
 )
