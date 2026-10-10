@@ -29,10 +29,13 @@ export function filterOsc(osc: OscState, text: string) {
     if (start === undefined) return out + input.slice(at)
     out += input.slice(at, start)
     const body = start + (input[start] === OSC8 ? 1 : 2)
+    // A lone final ESC may begin an OSC that the next message completes.
+    if (input[start] === ESC && start + 1 === input.length) {
+      osc.held = ESC
+      return out
+    }
     if (input[start] === ESC && input[start + 1] !== "]") {
-      // A lone final ESC may begin an OSC that the next message completes.
-      if (start + 1 === input.length) osc.held = ESC
-      else out += ESC
+      out += ESC
       at = start + 1
       continue
     }
