@@ -11,21 +11,26 @@ export async function scratch() {
   return directory
 }
 
-/** A TurenOS-shaped server that accepts one Basic credential. */
-export function server(password = "secret", routes: Record<string, unknown> = {}) {
-  const listener = Bun.serve({
-    hostname: "127.0.0.1",
-    port: 0,
-    fetch(request) {
-      if (request.headers.get("authorization") !== `Basic ${btoa(`forge:${password}`)}`)
-        return new Response(null, { status: 401 })
-      const path = new URL(request.url).pathname
-      if (path === "/global/health") return Response.json({ healthy: true, version: "1.0.32" })
-      return path in routes ? Response.json(routes[path]) : new Response(null, { status: 404 })
-    },
-  })
+/** A TurenOS-shaped server that accepts one Basic credential, on a loopback port or on the Unix socket `socket`. */
+export function server(password = "secret", routes: Record<string, unknown> = {}, socket?: string) {
+  const fetch = (request: Request) => {
+    if (request.headers.get("authorization") !== `Basic ${btoa(`forge:${password}`)}`)
+      return new Response(null, { status: 401 })
+    const path = new URL(request.url).pathname
+    if (path === "/global/health") return Response.json({ healthy: true, version: "1.0.32" })
+    return path in routes ? Response.json(routes[path]) : new Response(null, { status: 404 })
+  }
+  const listener = socket ? Bun.serve({ unix: socket, fetch }) : Bun.serve({ hostname: "127.0.0.1", port: 0, fetch })
   cleanup.push(() => listener.stop(true))
   return listener
+}
+
+/** A persistent server's version 2 record in `home`, naming `socket`, and the Linux servers list that reads it. */
+export async function persistent(home: string, socket: string, overrides: Record<string, unknown> = {}) {
+  const record = join(home, "attach.json")
+  const published = { version: 2, serverID: "srv_1", socketPath: socket, username: "forge", password: "secret" }
+  await writeFile(record, JSON.stringify({ ...published, ...overrides }))
+  return local(home, { platform: "linux", uid: undefined, persistentRecord: record, persistentSocket: socket })
 }
 
 export async function desktop(home: string, url: string, overrides: Record<string, unknown> = {}, mode = 0o600) {

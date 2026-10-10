@@ -5,8 +5,8 @@
 ## Conventions
 
 - A record's credentials go only to the server it names. Read local records through `readPrivate` (owner and mode checked) and keep the freshness checks in `freshness.ts`.
-- A record that names a `serverID` is accepted only when `GET /global/server` answers that ID (`verify.ts`).
-- A version 2 persistent record names a Unix socket and must name exactly `PERSISTENT_SOCKET`. That path must match the desktop's `PERSISTENT_SOCKET_PATH` in `packages/desktop/src/main/ssh/persistent.ts`.
+- A record that names a `serverID` is accepted only when `GET /global/server` answers that ID, and a persistent record's server must also answer `mode: "persistent"` (`verify.ts`).
+- A persistent record, local or over SSH, is read only by `persistentAttach`, which follows the desktop's `parseAttachRecord` in `packages/desktop/src/main/ssh/persistent.ts`: version 2, a `serverID`, no `url`, and exactly `PERSISTENT_SOCKET`, which must match the desktop's `PERSISTENT_SOCKET_PATH`. Never accept one naming a TCP port: the health check would send its password to whatever holds the port.
 - A socket record never matches a typed URL (`trustedRecord`), so its `http://localhost` placeholder lends no credentials.
 - An endpoint with `socketPath` is reached through that socket by every request path (see `src/server/AGENTS.md`).
 - An SSH endpoint is the tunnel's loopback end and carries no socket path: the forward ends at the host's socket or port.

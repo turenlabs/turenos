@@ -5,7 +5,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { readBounded } from "../response-validation/body"
 import { running } from "./processes"
-import { attachRecord, shimState } from "./records"
+import { persistentAttach, shimState } from "./records"
 import { sshDestination } from "./targets"
 import { parseJSON, summarize } from "./text"
 import { verified } from "./verify"
@@ -70,7 +70,13 @@ export async function connectSsh(
   return verified(
     target,
     // The tunnel's loopback end is the endpoint now; the remote socket path means nothing on this computer.
-    { url: tunnel.url, username: remote.username, password: remote.password, serverID: remote.serverID },
+    {
+      url: tunnel.url,
+      username: remote.username,
+      password: remote.password,
+      serverID: remote.serverID,
+      persistent: remote.persistent,
+    },
     signal,
     `The tunnel to ${target.name} opened, but its server is not answering.`,
     tunnel.close,
@@ -96,7 +102,7 @@ async function findRemote(
     throw new Error(
       `${target.name} runs a managed persistent server, but ${target.user ?? "this account"} cannot read its attach record. Ask an administrator to add you to turenos-operators.`,
     )
-  const persistent = attach?.[1] === "readable" ? attachRecord(parseJSON(attach[2] ?? "")) : undefined
+  const persistent = attach?.[1] === "readable" ? persistentAttach(parseJSON(attach[2] ?? "")) : undefined
   if (attach?.[1] === "readable" && !persistent)
     throw new Error(`${target.name} publishes a malformed persistent-server record.`)
   const found = persistent ?? shimState(lines)

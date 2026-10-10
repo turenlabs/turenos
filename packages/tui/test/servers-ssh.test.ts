@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { chmod, readFile, stat, writeFile } from "node:fs/promises"
 import { createServer } from "node:net"
 import { dirname, join } from "node:path"
+import { PERSISTENT_SOCKET } from "../src/servers/records"
 import { sshEnvironment } from "../src/servers/ssh"
 import { parseSshTarget } from "../src/servers"
 import { scratch, server, desktop, local, open, healthy, cleanup } from "./servers-fixture"
@@ -12,6 +13,9 @@ test("SSH destinations cannot smuggle options", () => {
   for (const value of ["-oProxyCommand=x", "dad@-oX", "a\nb", "host:99999", "fe80::1", "host%h", "host;x", "host`x`"])
     expect(parseSshTarget(value)).toBeUndefined()
 })
+
+/** A 1.0.44 persistent server's record, as the host publishes it. */
+const RECORD = { version: 2, serverID: "srv_1", socketPath: PERSISTENT_SOCKET, username: "forge", password: "secret" }
 
 describe("SSH servers", () => {
   /** A fake `ssh`; a forward to a host socket path in `sockets` goes to the local socket it maps to. */
@@ -129,17 +133,25 @@ if (forward !== -1) {
   })
 
   test("prefers a managed persistent server's attach record", async () => {
-    const listener = server("secret", { "/global/server": { serverID: "srv_1" } })
-    const record = {
-      version: 1,
-      serverID: "srv_1",
-      url: `http://127.0.0.1:${listener.port}`,
-      username: "forge",
-      password: "secret",
-    }
-    const ssh = await fakeSsh(`FORGE_ATTACH readable ${JSON.stringify(record)}\nFORGE_REMOTE_STOPPED\n`)
+    const socket = join(await scratch(), "server.sock")
+    server("secret", { "/global/server": { serverID: "srv_1", mode: "persistent" } }, socket)
+    const ssh = await fakeSsh(`FORGE_ATTACH readable ${JSON.stringify(RECORD)}\nFORGE_REMOTE_STOPPED\n`, {
+      [PERSISTENT_SOCKET]: socket,
+    })
     const { servers, target } = await lab(ssh.script)
     expect(await healthy(await open(servers, target))).toBe(200)
+  })
+
+  test("a version 1 persistent record naming a loopback port is refused before anything is sent", async () => {
+    const seen: string[] = []
+    const listener = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: (request) => (seen.push(request.url), new Response(null)) })
+    cleanup.push(() => listener.stop(true))
+    const record = { version: 1, serverID: "srv_1", url: listener.url.origin, username: "forge", password: "secret" }
+    const ssh = await fakeSsh(`FORGE_ATTACH readable ${JSON.stringify(record)}\nFORGE_REMOTE_STOPPED\n`)
+    const { servers, target } = await lab(ssh.script)
+    await expect(servers.resolve(target)).rejects.toThrow("publishes a malformed persistent-server record")
+    expect(seen).toEqual([])
+    expect((await ssh.calls()).some((call) => call.args.includes("-L"))).toBe(false)
   })
 
   test("an unreadable persistent record names the operators group", async () => {
@@ -217,13 +229,13 @@ if (forward !== -1) {
   })
 
   test("a record with a serverID is refused when the server does not name itself, and its tunnel closes", async () => {
-    const listener = server()
-    const record = { version: 1, serverID: "srv_1", url: listener.url.origin, username: "forge", password: "secret" }
-    const ssh = await fakeSsh(`FORGE_ATTACH readable ${JSON.stringify(record)}\n`)
+    const remote = join(await scratch(), "server.sock")
+    server("secret", {}, remote)
+    const ssh = await fakeSsh(`FORGE_ATTACH readable ${JSON.stringify(RECORD)}\n`, { [PERSISTENT_SOCKET]: remote })
     const { servers, target } = await lab(ssh.script)
     await expect(servers.resolve(target)).rejects.toThrow("not the server that published")
     const tunnel = (await ssh.calls()).find((call) => call.args.includes("-L"))!
-    const socket = tunnel.args[tunnel.args.indexOf("-L") + 1]!.split(":127.0.0.1:")[0]!
+    const socket = tunnel.args[tunnel.args.indexOf("-L") + 1]!.split(`:${PERSISTENT_SOCKET}`)[0]!
     await Bun.sleep(500)
     expect(await stat(dirname(socket)).then(() => true, () => false)).toBe(false)
   })
@@ -237,12 +249,13 @@ if (forward !== -1) {
         if (request.headers.get("authorization") !== `Basic ${btoa("forge:secret")}`) return new Response(null, { status: 401 })
         const path = new URL(request.url).pathname
         if (path === "/global/health") return Response.json({ healthy: true, version: "1.0.44" })
-        return path === "/global/server" ? Response.json({ serverID: "srv_1" }) : new Response(null, { status: 404 })
+        return path === "/global/server"
+          ? Response.json({ serverID: "srv_1", mode: "persistent" })
+          : new Response(null, { status: 404 })
       },
     })
     cleanup.push(() => listener.stop(true))
-    const record = { version: 2, serverID: "srv_1", socketPath: "/run/turenos/server.sock", username: "forge", password: "secret" }
-    const ssh = await fakeSsh(`FORGE_ATTACH readable ${JSON.stringify(record)}\n`, { "/run/turenos/server.sock": socketPath })
+    const ssh = await fakeSsh(`FORGE_ATTACH readable ${JSON.stringify(RECORD)}\n`, { [PERSISTENT_SOCKET]: socketPath })
     const { servers, target } = await lab(ssh.script)
     const endpoint = await open(servers, target)
     // The tunnel's loopback end is the endpoint; the host's socket path means nothing on this computer.
