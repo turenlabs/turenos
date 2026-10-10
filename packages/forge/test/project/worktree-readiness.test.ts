@@ -10,7 +10,7 @@ import { InstanceBootstrap } from "../../src/project/bootstrap-service"
 import { InstanceStore } from "../../src/project/instance-store"
 import { Worktree } from "../../src/worktree"
 import { disposeAllInstances, TestInstance } from "../fixture/fixture"
-import { pollWithTimeout, testEffect } from "../lib/effect"
+import { awaitWithTimeout, pollWithTimeout, testEffect } from "../lib/effect"
 
 const it = testEffect(
   LayerNode.compile(LayerNode.group([Worktree.node, FSUtil.node, Git.node]), [
@@ -153,20 +153,58 @@ it.instance(
       yield* Effect.promise(() => Bun.write(`${test.directory}/README.md`, "committed project file"))
       yield* git.run(["add", "README.md"], { cwd: test.directory })
       yield* git.run(["commit", "-m", "add file"], { cwd: test.directory })
-      // A reference-transaction hook stalls the branch creation in `git worktree add`, so the create is still
-      // in flight when interrupted.
+      const entered = Bun.file(`${test.directory}/hook-entered`)
+      const running = (pid: number) =>
+        Effect.try({ try: () => process.kill(pid, 0), catch: (error) => error }).pipe(
+          Effect.as(true),
+          Effect.catch(() => Effect.succeed(false)),
+        )
+      // Record only synthetic processes. Cleanup also runs if readiness or interruption fails.
+      yield* Effect.addFinalizer(() =>
+        Effect.gen(function* () {
+          if (!(yield* Effect.promise(() => entered.exists()))) return
+          const pids = (yield* Effect.promise(() => entered.text())).trim().split(" ").map(Number)
+          for (const pid of pids) {
+            if (!Number.isSafeInteger(pid) || pid <= 1) continue
+            yield* Effect.try({ try: () => process.kill(pid, "SIGKILL"), catch: (error) => error }).pipe(Effect.ignore)
+          }
+        }),
+      )
+      // Publish entry only after the hook starts its child. Reap the child on termination.
       yield* Effect.promise(async () => {
-        await Bun.write(`${test.directory}/.git/hooks/reference-transaction`, "#!/bin/sh\nexec sleep 30\n")
+        await Bun.write(
+          `${test.directory}/.git/hooks/reference-transaction`,
+          `#!/bin/sh
+[ "$1" = prepared ] || exit 0
+sleep 30 &
+child=$!
+trap 'kill "$child" 2>/dev/null; wait "$child"; exit 1' TERM INT HUP
+printf '%s %s %s\\n' "$$" "$child" "$PPID" > "${test.directory}/hook-entered.tmp"
+mv "${test.directory}/hook-entered.tmp" "${test.directory}/hook-entered"
+wait "$child"
+`,
+        )
         await chmod(`${test.directory}/.git/hooks/reference-transaction`, 0o755)
       })
       const fiber = yield* svc.create({ name: "cancelled" }).pipe(Effect.forkScoped)
-      yield* pollWithTimeout(
-        svc
-          .creationStatus("cancelled")
-          .pipe(Effect.map((state) => (state.status === "pending" ? state : undefined))),
-        "create never started",
+      const pids = yield* pollWithTimeout(
+        Effect.promise(async () =>
+          (await entered.exists()) ? (await entered.text()).trim().split(" ").map(Number) : undefined,
+        ),
+        "Git hook never entered",
       )
-      yield* Fiber.interrupt(fiber)
+      expect(pids).toHaveLength(3)
+      for (const pid of pids) {
+        expect(Number.isSafeInteger(pid) && pid > 1).toBe(true)
+        expect(yield* running(pid)).toBe(true)
+      }
+      expect(yield* svc.creationStatus("cancelled")).toMatchObject({ status: "pending" })
+      yield* awaitWithTimeout(Fiber.interrupt(fiber), "stalled Git interruption did not finish")
+      yield* pollWithTimeout(
+        Effect.all(pids.map(running)).pipe(Effect.map((states) => (states.every((state) => !state) ? true : undefined))),
+        "Git, hook, or hook child survived interruption",
+      )
+      yield* Effect.promise(() => rm(`${test.directory}/hook-entered`))
       expect(yield* svc.creationStatus("cancelled")).toEqual({ status: "unknown" })
       yield* Effect.promise(() => rm(`${test.directory}/.git/hooks/reference-transaction`))
       const retry = yield* svc.create({ name: "cancelled" })
