@@ -96,7 +96,7 @@ function DesktopMemoryRouter(props: BaseRouterProps & { initialUrl: string }) {
   return <MemoryRouter {...props} history={history} />
 }
 
-const createPlatform = (windowState: DesktopWindowState): Platform => {
+const createPlatform = (windowState: DesktopWindowState, releaseNotesReady: () => boolean): Platform => {
   const attachmentPaths = new WeakMap<File, string>()
   const os = (() => {
     const ua = navigator.userAgent
@@ -157,6 +157,12 @@ const createPlatform = (windowState: DesktopWindowState): Platform => {
     os,
     version: pkg.version,
     windowID: windowState.id,
+    releaseNotes: {
+      ready: releaseNotesReady,
+      claim: (enabled) => window.api.releaseNotes.claim(enabled),
+      shown: () => window.api.releaseNotes.shown(),
+      release: () => window.api.releaseNotes.release(),
+    },
 
     async openDirectoryPickerDialog(opts) {
       return window.api.openDirectoryPicker({
@@ -327,7 +333,8 @@ function LoadingSplash() {
 }
 
 function DesktopRoot(props: { windowState: DesktopWindowState }) {
-  const platform = createPlatform(props.windowState)
+  const [releaseNotesReady, setReleaseNotesReady] = createSignal(false)
+  const platform = createPlatform(props.windowState, releaseNotesReady)
   const loadLocale = async () => {
     const current = await platform.storage?.("forge.global.dat").getItem("language")
     const legacy = current ? undefined : await platform.storage?.().getItem("language.v1")
@@ -436,7 +443,7 @@ function DesktopRoot(props: { windowState: DesktopWindowState }) {
               defaultServer={key}
               servers={servers()}
               router={router}
-              serverScoped={<DesktopFirstLaunchOnboarding initialUrl="/" />}
+              serverScoped={<DesktopFirstLaunchOnboarding initialUrl="/" onReady={setReleaseNotesReady} />}
             >
               <Inner />
             </AppInterface>

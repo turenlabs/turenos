@@ -27,8 +27,9 @@ for the version pins the source to the draft's target commit instead.
 
 A release version is the root `VERSION` file **plus** every entry in
 `VERSIONED_PACKAGE_FILES` (`packages/script/src/version.ts`) **plus** the
-lockfile. Bumping `VERSION` alone fails the `packages (linux)` CI job —
-`version.test.ts` requires them synchronized.
+lockfile. The same change must include bundled notes for that exact version.
+Bumping `VERSION` alone fails CI: `version.test.ts` requires synchronized
+versions and valid release notes.
 
 Current versioned manifests:
 
@@ -40,13 +41,47 @@ packages/{forge,http-recorder,llm,plugin,sdk/js,script,server,session-ui,ui}/pac
 ```
 
 ```sh
-# Set VERSION, update each manifest's "version" field, then:
+# Set VERSION, update each manifest's "version" field and bundled notes, then:
 bun install            # refreshes bun.lock workspace versions
 bun --cwd packages/script version:check
 ```
 
 Commit the result and merge it to public `main` through the normal review and
 CI process. The private repository does not need a source mirror.
+
+### Bundle the release notes
+
+Add an entry to [the bundled content](../../../packages/app/src/release-notes/content.ts)
+in the version-bump change. Use the exact stable `VERSION`, a short summary,
+and plain-text arrays under `changes.new`, `changes.improved`, and `changes.fixed`.
+Describe verified user-facing changes since the preceding release; do not claim
+unreleased work shipped in an older version. No image, video, or remote-content
+fields are accepted.
+
+`version:check` and the Script package's version tests run the same
+[pure validator](../../../packages/app/src/release-notes.ts). Release preparation fails for:
+
+- A missing exact `VERSION`, duplicate versions, noncanonical or prerelease versions,
+  or an entry newer than `VERSION`.
+- Blank summaries or change items, or text longer than 240 characters.
+- Missing change groups, more than 10 items in any group, or fewer than one or
+  more than 20 changes across the entry. Individual groups may be empty.
+- An empty bundle, more than 50 retained releases, or unexpected content fields.
+
+Retain recent entries when adding a release; once the bundle reaches 50, remove
+the oldest entries to stay within the bound. The initial history starts at
+1.0.44; do not invent entries to fill gaps. The selection helper displays at
+most the latest five available entries in `previous < version <= installed`,
+newest first. Without a previous version it selects only the installed version.
+If that exact stable version is absent, either version is malformed, or this is
+a downgrade or unchanged version, automatic selection returns no notes rather
+than substituting another release.
+
+The structured text ships with the app and is available offline without a
+startup request or remote media. Full release links use validated stable tags
+in the fixed `turenlabs/turenos` GitHub repository; opening a link still requires
+network access. Keep older release details there rather than growing the bundle
+without limit.
 
 ## 2. Wait for CI on main HEAD
 

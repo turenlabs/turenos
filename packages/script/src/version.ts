@@ -1,6 +1,7 @@
 import { readdir } from "node:fs/promises"
 import path from "path"
 import semver from "semver"
+import { bundledReleaseNotes, releaseNotesIssues } from "../../app/src/release-notes"
 
 const root = path.resolve(import.meta.dir, "../../..")
 
@@ -187,7 +188,12 @@ export async function versionMismatches(version: string) {
       return [`bun.lock[${directory}]: expected ${version}`]
     })
 
-  return [...untracked, ...manifests, ...workspace]
+  return [
+    ...untracked,
+    ...manifests,
+    ...workspace,
+    ...releaseNotesIssues(bundledReleaseNotes, version).map((issue) => `release-notes: ${issue}`),
+  ]
 }
 
 export function publicationMismatches(file: string, value: { private?: unknown; publishConfig?: unknown }) {
