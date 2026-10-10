@@ -3,7 +3,7 @@ export * as EventV2 from "./event"
 import { Cause, Context, Effect, Layer, Option, PubSub, Queue, Schema, Stream } from "effect"
 import { Event } from "@turenlabs/schema/event"
 import type { Data, Definition, Payload } from "@turenlabs/schema/event"
-import { and, asc, eq, gt, inArray } from "drizzle-orm"
+import { and, asc, eq, gt, inArray, sql } from "drizzle-orm"
 import { Database } from "./database/database"
 import { EventSequenceTable, EventTable } from "./event/sql"
 import { Location } from "./location"
@@ -61,6 +61,25 @@ const decodeSerializedEvent = (event: SerializedEvent): Payload => {
   }
 }
 
+type EventRow = {
+  readonly id: ID
+  readonly aggregate_id: string
+  readonly seq: number
+  readonly type: string
+  readonly data: string
+}
+
+// Not cached: the previous per-id cache held the raw text and the decoded copy of the newest 8,192 events, to skip a
+// small parse and decode that subscribers re-do when they re-read an overlapping range.
+const decodeEventRow = (row: EventRow): Payload =>
+  decodeSerializedEvent({
+    id: row.id,
+    type: row.type,
+    seq: row.seq,
+    aggregateID: row.aggregate_id,
+    data: JSON.parse(row.data),
+  })
+
 export const readAggregate = Effect.fn("EventV2.readAggregate")(function* <A>(
   db: Database.Interface["db"],
   input: {
@@ -112,6 +131,11 @@ export class SubscriberOverflowError extends Schema.TaggedErrorClass<SubscriberO
   "EventV2.SubscriberOverflow",
   { capacity: Schema.Int },
 ) {}
+
+// A lagging subscriber applies backpressure to publishers instead of letting
+// every published event accumulate in process memory — unbounded PubSubs were a
+// heap-growth vector when a consumer stalled mid-failure.
+const PUBSUB_CAPACITY = 8192
 
 export const define = Event.define
 export const versionedType = Event.versionedType
@@ -171,14 +195,16 @@ export const allBounded = (events: Interface, capacity: number) =>
 
 export interface LayerOptions {
   readonly beforeAggregateRead?: (aggregateID: string) => Effect.Effect<void>
+  readonly subscriberCapacity?: number
 }
 
 export const layerWith = (options?: LayerOptions) =>
   Layer.effect(
     Service,
     Effect.gen(function* () {
+      const capacity = options?.subscriberCapacity ?? PUBSUB_CAPACITY
       const pubsub = {
-        all: yield* PubSub.unbounded<Payload>(),
+        all: yield* PubSub.bounded<Payload>(capacity),
         durable: new Map<string, Set<PubSub.PubSub<void>>>(),
         typed: new Map<string, PubSub.PubSub<Payload>>(),
       }
@@ -192,7 +218,7 @@ export const layerWith = (options?: LayerOptions) =>
         Effect.gen(function* () {
           const existing = pubsub.typed.get(definition.type)
           if (existing) return existing
-          const created = yield* PubSub.unbounded<Payload>()
+          const created = yield* PubSub.bounded<Payload>(capacity)
           pubsub.typed.set(definition.type, created)
           return created
         })
@@ -549,24 +575,20 @@ export const layerWith = (options?: LayerOptions) =>
         (options?.beforeAggregateRead?.(aggregateID) ?? Effect.void).pipe(
           Effect.andThen(
             db
-              .select()
+              .select({
+                id: EventTable.id,
+                aggregate_id: EventTable.aggregate_id,
+                seq: EventTable.seq,
+                type: EventTable.type,
+                data: sql<string>`${EventTable.data}`,
+              })
               .from(EventTable)
               .where(and(eq(EventTable.aggregate_id, aggregateID), gt(EventTable.seq, after)))
               .orderBy(asc(EventTable.seq))
               .all(),
           ),
           Effect.orDie,
-          Effect.map((rows) =>
-            rows.map((event) =>
-              decodeSerializedEvent({
-                id: event.id,
-                aggregateID: event.aggregate_id,
-                seq: event.seq,
-                type: event.type,
-                data: event.data,
-              }),
-            ),
-          ),
+          Effect.map((rows) => rows.map(decodeEventRow)),
         )
 
       const subscribeDurable = (aggregateID: string) =>

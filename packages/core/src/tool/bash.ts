@@ -91,7 +91,6 @@ const modelOutput = (output: Output) => {
  * Minimal V2 core shell boundary. Keep parity debt visible without pulling the
  * legacy shell runtime into core.
  */
-// TODO: Port tree-sitter bash / PowerShell parser-based approval reduction.
 // TODO: Port BashArity reusable command-prefix approvals.
 // TODO: Replace token-based command-argument external-directory advisories with parser-based detection.
 // TODO: Restore PowerShell and cmd-specific invocation/path handling on Windows.
@@ -203,11 +202,15 @@ const layer = Layer.effect(
               shell: ShellSafety.kind(shell),
             })
             if (violation) return yield* new ToolFailure({ message: ShellSafety.blockedMessage(violation) })
-            const recommendation = yield* ShellToolRouting.inspect({
+            const inspected = yield* ShellToolRouting.inspect({
               command: input.command,
               cwd: target.canonical,
               shell: ShellSafety.kind(shell),
             })
+            // Redirecting to a search tool that is failing in this session would leave the
+            // agent no way to search, so the command runs under the normal bash permissions.
+            const recommendation =
+              inspected && !ShellToolRouting.searchUnavailable(context.sessionID, inspected.tool) ? inspected : undefined
             if (recommendation) {
               // A bare `apply_patch <<EOF` heredoc is the model writing a patch
               // in Codex style — run it through the real patch pipeline (fuzzy
@@ -253,11 +256,14 @@ const layer = Layer.effect(
               (directory) =>
                 `Command argument references approved external directory ${path.join(directory, "*").replaceAll("\\", "/")}.`,
             )
+            // Rules are matched per simple command, not per line: a `git *` allow must not
+            // approve `git status; cp .env /tmp/leak`, and "always" remembers each command separately.
+            const commands = yield* ShellSafety.commands({ command: input.command, shell: ShellSafety.kind(shell) })
             yield* assertPermission({
               action: name,
-              resources: [input.command],
-              save: [input.command],
-              metadata: { workdir: target.resource },
+              resources: commands,
+              save: commands,
+              metadata: { workdir: target.resource, command: input.command },
               sessionID: context.sessionID,
               agent: context.agent,
               source,

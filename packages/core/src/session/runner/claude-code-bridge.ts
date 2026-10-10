@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { isContextOverflow, LLMError, LLMEvent, LLMRequest, TransportReason } from "@turenlabs/llm"
+import { ProviderShared } from "@turenlabs/llm/protocols"
 import { Endpoint, Protocol, Route, type RouteDefaultsInput, type TransportDef } from "@turenlabs/llm/route"
 import { Cause, Effect, Queue, Schema, Stream } from "effect"
 import { ClaudeCodeGuidance } from "../../claude-code-guidance"
@@ -31,6 +32,9 @@ const ROUTE_ID = "claude-code-cli"
 
 const PROMPT_LIMIT = 4 * 1024 * 1024
 const OUTPUT_LIMIT = 8 * 1024 * 1024
+// Echoed tool results may contain 8 MiB of images (about 10.7 MiB as base64)
+// alongside ordinary output and JSON framing. Keep transcript and total-stream caps separate.
+const OUTPUT_LINE_LIMIT = 20 * 1024 * 1024
 const RAW_OUTPUT_LIMIT = OUTPUT_LIMIT * 4
 const TOOL_RESULT_LIMIT = 2 * 1024 * 1024
 const ASSISTANT_TEXT_LIMIT = 64 * 1024
@@ -129,6 +133,8 @@ const bounded = (value: string, limit: number): string => {
   return decoder.decode(encoder.encode(value).slice(0, Math.max(0, limit - suffix.byteLength - 3))) + TRUNCATED
 }
 
+const FORWARDED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"]
+
 /** Flattens one common-format message into the plain text Claude Code reads on stdin. */
 const messageText = (message: LLMRequest["messages"][number]): string =>
   message.content
@@ -136,35 +142,125 @@ const messageText = (message: LLMRequest["messages"][number]): string =>
       if (part.type === "text") return [part.text]
       if (part.type === "reasoning") return [`[reasoning]\n${part.text}`]
       if (part.type === "media")
-        return part.mediaType.startsWith("image/")
+        return FORWARDED_IMAGE_TYPES.includes(part.mediaType)
           ? [`[image ${part.filename ?? "attachment"} is attached to this conversation]`]
           : [`[${part.filename ?? "attachment"} is attached in TurenOS but is not forwarded to Claude Code]`]
       if (part.type === "tool-call") return [`[tool call ${part.name}] ${json(part.input)}`]
-      if (part.type === "tool-result") return [`[tool result ${part.name}] ${json(part.result.value)}`]
+      if (part.type === "tool-result") {
+        if (part.result.type !== "content") return [`[tool result ${part.name}] ${json(part.result.value)}`]
+        return [
+          `[tool result ${part.name}]`,
+          ...ClaudeCodeMcp.toCallToolResult(part.result).content.flatMap((item) => {
+            if (item.type === "text") return [item.text]
+            if (item.type === "image") return [`[image from ${part.name} is attached to this conversation]`]
+            return []
+          }),
+        ]
+      }
       return []
     })
     .join("\n")
 
-/**
- * Claude Code owns its own conversation state, but TurenOS owns the session
- * timeline. Rather than resume a CLI-side session (deferred), every turn
- * replays the TurenOS transcript as a single prompt — the same shape the v1
- * adapter used for un-resumed turns.
- */
-export const prompt = (request: LLMRequest): string => {
-  const transcript = request.messages
-    .filter((message) => message.role !== "system")
-    .map((message) => `${message.role.toUpperCase()}:\n${messageText(message)}`)
-    .join("\n\n")
-  return bounded(transcript || "Continue.", PROMPT_LIMIT)
-}
+/** Chronological system updates keep the same visible wrapper every other route uses. */
+const replayText = (message: LLMRequest["messages"][number]): string =>
+  message.role === "system"
+    ? ProviderShared.wrapSystemUpdate(message.content.flatMap((part) => (part.type === "text" ? [part] : [])))
+    : `${message.role.toUpperCase()}:\n${messageText(message)}`
 
 const IMAGE_LIMIT = 8
 const IMAGE_BYTES_LIMIT = 8 * 1024 * 1024
+const OMITTED = "[Earlier transcript omitted by TurenOS: it exceeded the prompt limit.]"
 
 type ImageBlock = {
   readonly type: "image"
   readonly source: { readonly type: "base64"; readonly media_type: string; readonly data: string }
+}
+
+type ContentBlock = { readonly type: "text"; readonly text: string } | ImageBlock
+
+type ReplayGroup = {
+  readonly text: string
+  readonly images: ReadonlyArray<{ readonly mediaType: string; readonly data: string | Uint8Array }>
+}
+
+/**
+ * Claude Code owns its own conversation state, but TurenOS owns the session
+ * timeline. Rather than resume a CLI-side session (deferred), every turn
+ * replays the TurenOS transcript as one stream-json user message.
+ *
+ * The replay is split into append-only content blocks so consecutive turns share
+ * a cacheable prefix. The CLI marks only the message's last block for caching,
+ * and the API reuses an earlier turn's entry at a matching block boundary. Each
+ * user or system message is its own block and each run of assistant and tool
+ * messages is one, so a turn appends about two blocks and rewrites none. Images
+ * follow the block of the message that attached them for the same reason.
+ *
+ * One-turn runtime instructions are left out. The todo checkpoint alone arrives
+ * with every new human message, and a block missing from the next replay leaves
+ * that turn's cache entry unreachable.
+ */
+export const content = (request: LLMRequest): ContentBlock[] => {
+  const groups = withinPromptLimit(
+    replayGroups(
+      request.messages.filter((message) => record(message.metadata?.forge)?.internalContext !== "runtime"),
+    ).map((group) => ({
+      text: group.map(replayText).join("\n\n"),
+      images: group.flatMap((message) =>
+        message.content.flatMap<ReplayGroup["images"][number]>((part) => {
+          if (part.type === "media" && part.mediaType.startsWith("image/")) return [part]
+          if (part.type !== "tool-result" || part.result.type !== "content") return []
+          return ClaudeCodeMcp.toCallToolResult(part.result).content.flatMap((item) =>
+            item.type === "image" ? [{ mediaType: item.mimeType, data: item.data }] : [],
+          )
+        }),
+      ),
+    })),
+  )
+  if (groups.length === 0) return [{ type: "text", text: "Continue." }]
+  const admit = imageAdmission()
+  // At the image cap, keep the latest screenshots and attachments. Below the
+  // cap, reversing admission leaves every replay block byte-for-byte stable.
+  const selected = groups
+    .toReversed()
+    .map((group) => group.images.toReversed().flatMap(admit).toReversed())
+    .toReversed()
+  return groups.flatMap((group, index) => [{ type: "text" as const, text: group.text }, ...selected[index]])
+}
+
+/** One stream-json user envelope: the transcript blocks plus attached images. */
+export const stdinEnvelope = (request: LLMRequest): string =>
+  `${JSON.stringify({ type: "user", message: { role: "user", content: content(request) } })}\n`
+
+const standalone = (message: LLMRequest["messages"][number]) => message.role === "user" || message.role === "system"
+
+/** Consecutive assistant and tool messages share a group; user and system messages stand alone. */
+const replayGroups = (messages: LLMRequest["messages"]) => {
+  const starts = messages.flatMap((message, index) =>
+    index === 0 || standalone(message) || standalone(messages[index - 1]) ? [index] : [],
+  )
+  return starts.map((start, index) => messages.slice(start, starts[index + 1]))
+}
+
+/**
+ * Drops the oldest groups, never the newest, until the replay fits the prompt
+ * limit. Only a single group that alone exceeds the limit is cut mid-text.
+ */
+const withinPromptLimit = (groups: ReadonlyArray<ReplayGroup>): ReadonlyArray<ReplayGroup> => {
+  const sizes = groups.map((group) => encoder.encode(group.text).byteLength)
+  const total = sizes.reduce((sum, size) => sum + size, 0)
+  if (total <= PROMPT_LIMIT) return groups
+  const budget = PROMPT_LIMIT - encoder.encode(OMITTED).byteLength
+  const excess = sizes.reduce(
+    (state, size) =>
+      state.remaining > budget ? { dropped: state.dropped + 1, remaining: state.remaining - size } : state,
+    { dropped: 0, remaining: total },
+  )
+  const dropped = Math.min(groups.length - 1, excess.dropped)
+  const kept = groups.slice(dropped)
+  return [
+    ...(dropped > 0 ? [{ text: OMITTED, images: [] }] : []),
+    ...(kept.length === 1 ? [{ ...kept[0], text: bounded(kept[0].text, budget) }] : kept),
+  ]
 }
 
 const imageData = (data: string | Uint8Array): string => {
@@ -174,33 +270,22 @@ const imageData = (data: string | Uint8Array): string => {
 }
 
 /**
- * Image parts travel as real content blocks beside the flattened transcript --
- * the CLI accepts them via `--input-format stream-json`. Bounded so one
- * pathological session cannot write an unbounded prompt to the child's stdin;
- * anything past the caps stays behind as the transcript's attachment note.
+ * Image parts travel as real content blocks -- the CLI accepts them via
+ * `--input-format stream-json`. Bounded so one pathological session cannot write
+ * an unbounded prompt to the child's stdin. Omitted images remain attachment notes.
  */
-export const images = (request: LLMRequest): ImageBlock[] => {
-  const blocks: ImageBlock[] = []
-  let bytes = 0
-  for (const message of request.messages) {
-    for (const part of message.content) {
-      if (part.type !== "media" || !part.mediaType.startsWith("image/")) continue
-      const data = imageData(part.data)
-      const size = Math.floor(data.length * 0.75)
-      if (blocks.length >= IMAGE_LIMIT || bytes + size > IMAGE_BYTES_LIMIT) return blocks
-      bytes += size
-      blocks.push({ type: "image", source: { type: "base64", media_type: part.mediaType, data } })
-    }
+const imageAdmission = () => {
+  const admitted = { count: 0, bytes: 0 }
+  return (part: ReplayGroup["images"][number]): ImageBlock[] => {
+    if (!FORWARDED_IMAGE_TYPES.includes(part.mediaType)) return []
+    const data = imageData(part.data)
+    const size = Buffer.byteLength(data, "base64")
+    if (admitted.count >= IMAGE_LIMIT || admitted.bytes + size > IMAGE_BYTES_LIMIT) return []
+    admitted.count++
+    admitted.bytes += size
+    return [{ type: "image", source: { type: "base64", media_type: part.mediaType, data } }]
   }
-  return blocks
 }
-
-/** One stream-json user envelope: the transcript as text plus attached images. */
-export const stdinEnvelope = (request: LLMRequest): string =>
-  `${JSON.stringify({
-    type: "user",
-    message: { role: "user", content: [{ type: "text", text: prompt(request) }, ...images(request)] },
-  })}\n`
 
 export const systemPrompt = (request: LLMRequest): string => {
   const workflow = ClaudeCodeMcp.requestToken(request.metadata) ? ClaudeCodeGuidance.WORKFLOW : ""
@@ -984,7 +1069,8 @@ const pump = (
 ) => {
   const state = adapterState()
   const stdoutDecoder = new TextDecoder()
-  let buffer = ""
+  let pending: string[] = []
+  let pendingBytes = 0
   let rawBytes = 0
   let closed = false
   let terminalEvents: ReadonlyArray<LLMEvent> | undefined
@@ -1087,16 +1173,27 @@ const pump = (
     try {
       rawBytes += chunk.byteLength
       if (rawBytes > RAW_OUTPUT_LIMIT) throw new Error("Claude Code raw output exceeded TurenOS's safety limit")
-      buffer += stdoutDecoder.decode(chunk, { stream: true })
-      if (Buffer.byteLength(buffer, "utf8") > OUTPUT_LIMIT)
-        throw new Error("Claude Code output line exceeded TurenOS's safety limit")
-      let newline = buffer.indexOf("\n")
+      const text = stdoutDecoder.decode(chunk, { stream: true })
+      pendingBytes += chunk.byteLength
+      if (pendingBytes > OUTPUT_LINE_LIMIT) throw new Error("Claude Code output line exceeded TurenOS's safety limit")
+      // Search only the new text so a long line is not rescanned for every chunk.
+      let newline = text.indexOf("\n")
+      if (newline < 0) {
+        if (text) pending.push(text)
+        return
+      }
+      let start = 0
       while (newline >= 0) {
-        const line = buffer.slice(0, newline).trim()
-        buffer = buffer.slice(newline + 1)
-        newline = buffer.indexOf("\n")
+        pending.push(text.slice(start, newline))
+        const line = pending.join("").trim()
+        pending = []
+        start = newline + 1
+        newline = text.indexOf("\n", start)
         if (line) consume(line)
       }
+      const remainder = text.slice(start)
+      if (remainder) pending.push(remainder)
+      pendingBytes = Buffer.byteLength(remainder, "utf8")
     } catch (error) {
       // Output-limit breach or a malformed envelope: report it and stop reading.
       finish(safeProviderError(error))
@@ -1105,9 +1202,10 @@ const pump = (
   stdout?.on("error", (error) => finish(safeProviderError(error)))
   void child.exit.then((exit) => {
     if (closed) return
-    buffer += stdoutDecoder.decode()
-    const trailing = buffer.trim()
-    buffer = ""
+    pending.push(stdoutDecoder.decode())
+    const trailing = pending.join("").trim()
+    pending = []
+    pendingBytes = 0
     if (trailing) {
       try {
         consume(trailing)

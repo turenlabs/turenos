@@ -7,6 +7,7 @@ import { useSync } from "@/context/sync"
 import { getSessionHandoff, setSessionHandoff } from "@/pages/session/handoff"
 import type { SessionComposerController } from "./session-composer-state"
 import type { SessionGoalInfo } from "@/pages/session/goal/session-goal"
+import type { orderPendingInputs } from "./session-pending-inputs"
 
 export type SessionComposerRevertDock = {
   items: { id: string; text: string }[]
@@ -26,10 +27,12 @@ export type SessionComposerGoalDock = {
 }
 
 export type SessionComposerFollowupDock = {
-  items: { id: string; text: string }[]
-  pending?: boolean
-  onSend: (id: string) => void
+  items: ReturnType<typeof orderPendingInputs>
+  busy: (id: string) => boolean
+  editBlocked: boolean
+  onSteer: (id: string) => void
   onEdit: (id: string) => void
+  onRemove: (id: string) => void
 }
 
 /**

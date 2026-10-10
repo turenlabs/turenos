@@ -4,6 +4,7 @@ import type {
   Message,
   Part,
   PermissionRequest,
+  PermissionV2Request,
   Project,
   QuestionRequest,
   Session,
@@ -11,6 +12,7 @@ import type {
   SnapshotFileDiff,
   Todo,
 } from "@turenlabs/sdk/v2/client"
+import { permissionFromV2 } from "@/context/permission-request"
 import type { State, VcsCache } from "./types"
 import { trimSessions } from "./session-trim"
 import { dropSessionCaches } from "./session-cache"
@@ -30,10 +32,21 @@ const SESSION_CONTENT_EVENTS = new Set([
   "message.part.delta",
   "permission.asked",
   "permission.replied",
+  "permission.v2.asked",
+  "permission.v2.replied",
   "question.v2.asked",
   "question.v2.replied",
   "question.v2.rejected",
 ])
+
+// A `server.connected` the server stamped resume="ok" means the subscriber's
+// cursor was honored and every missed event is being replayed — resyncing
+// stores would only flicker the UI for a reconnect that lost nothing.
+export function eventNeedsResync(event: { type: string; properties?: unknown }) {
+  if (event.type === "global.disposed") return true
+  if (event.type !== "server.connected") return false
+  return (event.properties as { resume?: string } | undefined)?.resume !== "ok"
+}
 
 export function applyGlobalEvent(input: {
   event: { type: string; properties?: unknown }
@@ -42,7 +55,7 @@ export function applyGlobalEvent(input: {
   refresh: () => void
 }) {
   if (input.event.type === "global.disposed" || input.event.type === "server.connected") {
-    input.refresh()
+    if (eventNeedsResync(input.event)) input.refresh()
     return
   }
 
@@ -355,8 +368,12 @@ export function applyDirectoryEvent(input: {
       if (input.vcsCache) input.vcsCache.setStore("value", next)
       break
     }
-    case "permission.asked": {
-      const permission = event.properties as PermissionRequest
+    case "permission.asked":
+    case "permission.v2.asked": {
+      const permission =
+        event.type === "permission.v2.asked"
+          ? permissionFromV2(event.properties as PermissionV2Request)
+          : (event.properties as PermissionRequest)
       const permissions = input.store.permission[permission.sessionID]
       if (!permissions) {
         input.setStore("permission", permission.sessionID, [permission])
@@ -376,7 +393,8 @@ export function applyDirectoryEvent(input: {
       )
       break
     }
-    case "permission.replied": {
+    case "permission.replied":
+    case "permission.v2.replied": {
       const props = event.properties as { sessionID: string; requestID: string }
       const permissions = input.store.permission[props.sessionID]
       if (!permissions) break

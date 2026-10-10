@@ -1,6 +1,7 @@
 import { describe, expect } from "bun:test"
 import { eq } from "drizzle-orm"
-import { Effect } from "effect"
+import { Effect, Fiber } from "effect"
+import { TestClock } from "effect/testing"
 import { Database } from "@turenlabs/core/database/database"
 import { AppNodeBuilder } from "@turenlabs/core/effect/app-node-builder"
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
@@ -312,6 +313,35 @@ describe("Loop", () => {
       expect(resumed.status).toBe("active")
       expect(resumed.nextRunAt).toBeGreaterThanOrEqual(before)
       expect(resumed.nextRunAt).toBeLessThanOrEqual(after)
+    }),
+  )
+
+  it.effect("pause cancels claimed and running child runs so sessions stop draining", () =>
+    Effect.gen(function* () {
+      const loops = yield* Loop.Service
+      yield* loops.create(input("lop_pause_claimed"))
+      yield* loops.create(input("lop_pause_running"))
+      const claimed = yield* loops.runNow({ id: "lop_pause_claimed", owner: "owner" })
+      const running = yield* loops.runNow({ id: "lop_pause_running", owner: "owner" })
+      yield* loops.recordRunSession({ id: running.id, owner: "owner", sessionID: "session-1" })
+      yield* loops.startRun({ id: running.id, owner: "owner", sessionID: "session-1" })
+
+      yield* loops.pause("lop_pause_claimed")
+      yield* loops.pause("lop_pause_running")
+
+      expect((yield* loops.getRun({ id: claimed.id })).status).toBe("cancelled")
+      const stopped = yield* loops.getRun({ id: running.id })
+      expect(stopped.status).toBe("cancelled")
+      expect(stopped.lease).toBeUndefined()
+      expect(stopped.time.completed).toBeDefined()
+      // A cancelled run is fenced: it cannot restart under its old lease.
+      expect(
+        yield* loops
+          .startRun({ id: running.id, owner: "owner", sessionID: "session-1" })
+          .pipe(Effect.flip),
+      ).toBeInstanceOf(Loop.InvalidStateError)
+      // And no new work is admitted while the loop is paused.
+      expect(yield* loops.claimDue({ owner: "worker" })).toEqual([])
     }),
   )
 
@@ -1261,4 +1291,335 @@ describe("Loop", () => {
       expect(finished.outputs["summarize"]).toEqual({ text: "Step failed but continuing: boom", artifacts: [] })
     }),
   )
+
+  describe("listFileChange", () => {
+    const fileLoop = (id: string) =>
+      input(id, { intervalSeconds: undefined, eventTrigger: { type: "file-change", paths: ["src/**"] } })
+
+    const ids = (loops: Loop.Interface["listFileChange"]) =>
+      loops().pipe(Effect.map((found) => found.map((loop) => loop.id)))
+
+    it.effect("returns only active file-change loops", () =>
+      Effect.gen(function* () {
+        const loops = yield* Loop.Service
+        yield* loops.create(input("lop_fc_scheduled"))
+        yield* loops.create(
+          input("lop_fc_session", {
+            intervalSeconds: undefined,
+            eventTrigger: { type: "session-end", outcomes: ["failure"] },
+          }),
+        )
+        yield* loops.create(fileLoop("lop_fc_file"))
+        yield* loops.create({ ...fileLoop("lop_fc_paused"), paused: true })
+
+        expect(yield* ids(loops.listFileChange)).toEqual(["lop_fc_file"])
+      }),
+    )
+
+    it.effect("reflects create, edit, pause, resume and delete on the next read", () =>
+      Effect.gen(function* () {
+        const loops = yield* Loop.Service
+        expect(yield* ids(loops.listFileChange)).toEqual([])
+
+        yield* loops.create(fileLoop("lop_fc_cycle"))
+        expect(yield* ids(loops.listFileChange)).toEqual(["lop_fc_cycle"])
+
+        yield* loops.pause("lop_fc_cycle")
+        expect(yield* ids(loops.listFileChange)).toEqual([])
+
+        yield* loops.resume("lop_fc_cycle")
+        expect(yield* ids(loops.listFileChange)).toEqual(["lop_fc_cycle"])
+
+        yield* loops.edit({ id: "lop_fc_cycle", intervalSeconds: Loop.MIN_INTERVAL_SECONDS })
+        expect(yield* ids(loops.listFileChange)).toEqual([])
+
+        yield* loops.edit({ id: "lop_fc_cycle", eventTrigger: { type: "file-change", paths: ["*.md"] } })
+        expect(yield* ids(loops.listFileChange)).toEqual(["lop_fc_cycle"])
+
+        yield* loops.delete("lop_fc_cycle")
+        expect(yield* ids(loops.listFileChange)).toEqual([])
+      }),
+    )
+
+    it.effect("drops loops that claimDue expires", () =>
+      Effect.gen(function* () {
+        const loops = yield* Loop.Service
+        const database = yield* Database.Service
+        yield* loops.create(fileLoop("lop_fc_expiring"))
+        expect(yield* ids(loops.listFileChange)).toEqual(["lop_fc_expiring"])
+
+        yield* database.db
+          .update(LoopTable)
+          .set({ expires_at: Date.now() - 1 })
+          .where(eq(LoopTable.id, "lop_fc_expiring"))
+          .run()
+          .pipe(Effect.orDie)
+        yield* loops.claimDue({ owner: "worker" })
+
+        expect(yield* ids(loops.listFileChange)).toEqual([])
+      }),
+    )
+
+    it.effect("stays consistent with the table when a write is interrupted", () =>
+      Effect.gen(function* () {
+        const loops = yield* Loop.Service
+        expect(yield* ids(loops.listFileChange)).toEqual([])
+
+        for (const index of [0, 1, 2, 3, 4]) {
+          const fiber = yield* Effect.forkChild(loops.create(fileLoop(`lop_fc_interrupt_${index}`)))
+          yield* Effect.forEach(Array.from({ length: index }), () => Effect.yieldNow)
+          yield* Fiber.interrupt(fiber)
+          const committed = (yield* loops.list())
+            .filter((loop) => loop.id.startsWith("lop_fc_interrupt_"))
+            .map((loop) => loop.id)
+          const cached = (yield* loops.listFileChange()).map((loop) => loop.id)
+          expect(cached.toSorted()).toEqual(committed.toSorted())
+        }
+      }),
+    )
+
+    it.effect("serves a cached result until the TTL picks up writes from another connection", () =>
+      Effect.gen(function* () {
+        const loops = yield* Loop.Service
+        const database = yield* Database.Service
+        yield* loops.create(fileLoop("lop_fc_external"))
+        expect(yield* ids(loops.listFileChange)).toEqual(["lop_fc_external"])
+
+        yield* database.db
+          .update(LoopTable)
+          .set({ status: "paused" })
+          .where(eq(LoopTable.id, "lop_fc_external"))
+          .run()
+          .pipe(Effect.orDie)
+        expect(yield* ids(loops.listFileChange)).toEqual(["lop_fc_external"])
+
+        yield* TestClock.adjust("6 seconds")
+        expect(yield* ids(loops.listFileChange)).toEqual([])
+      }),
+    )
+  })
+})
+
+describe("Loop wake", () => {
+  const update = (id: string, values: Partial<typeof LoopTable.$inferInsert>) =>
+    Database.Service.use(({ db }) =>
+      db.update(LoopTable).set(values).where(eq(LoopTable.id, id)).run().pipe(Effect.orDie),
+    )
+
+  const updateRun = (id: string, values: Partial<typeof LoopRunTable.$inferInsert>) =>
+    Database.Service.use(({ db }) =>
+      db.update(LoopRunTable).set(values).where(eq(LoopRunTable.id, id)).run().pipe(Effect.orDie),
+    )
+
+  // The token is already complete when the write has signalled; otherwise the yield wins the race.
+  const signalled = (token: Effect.Effect<void>) =>
+    token.pipe(Effect.as(true), Effect.race(Effect.yieldNow.pipe(Effect.as(false))))
+
+  describe("nextWakeAt", () => {
+    it.effect("is undefined with nothing scheduled", () =>
+      Effect.gen(function* () {
+        const loops = yield* Loop.Service
+        expect(yield* loops.nextWakeAt(Date.now())).toBeUndefined()
+        yield* loops.create(input("lop_wake_paused", { paused: true }))
+        expect(yield* loops.nextWakeAt(Date.now())).toBeUndefined()
+      }),
+    )
+
+    it.effect("reports the earliest next_run_at of active loops", () =>
+      Effect.gen(function* () {
+        const loops = yield* Loop.Service
+        const later = Date.now() + 600_000
+        const sooner = Date.now() + 120_000
+        yield* loops.create(input("lop_wake_later", { startsAt: later }))
+        yield* loops.create(input("lop_wake_sooner", { startsAt: sooner }))
+        expect(yield* loops.nextWakeAt(Date.now())).toBe(sooner)
+
+        yield* loops.pause("lop_wake_sooner")
+        expect(yield* loops.nextWakeAt(Date.now())).toBe(later)
+      }),
+    )
+
+    it.effect("reports a loop created due as already due", () =>
+      Effect.gen(function* () {
+        const loops = yield* Loop.Service
+        const created = yield* loops.create(input("lop_wake_born_due"))
+        const wake = yield* loops.nextWakeAt(Date.now())
+        expect(wake).toBe(created.nextRunAt)
+        expect(wake).toBeLessThanOrEqual(Date.now())
+      }),
+    )
+
+    it.effect("reports an expiry that precedes the next run and ignores expired loops", () =>
+      Effect.gen(function* () {
+        const loops = yield* Loop.Service
+        yield* loops.create(input("lop_wake_expiry", { startsAt: Date.now() + 600_000 }))
+        const expiresAt = Date.now() + 90_000
+        yield* update("lop_wake_expiry", { expires_at: expiresAt })
+        expect(yield* loops.nextWakeAt(Date.now())).toBe(expiresAt)
+
+        yield* update("lop_wake_expiry", { expires_at: Date.now() - 1, next_run_at: Date.now() - 2 })
+        expect(yield* loops.nextWakeAt(Date.now())).toBeLessThanOrEqual(Date.now())
+        expect(yield* loops.claimDue({ owner: "worker" })).toEqual([])
+        expect((yield* loops.get("lop_wake_expiry")).status).toBe("expired")
+        expect(yield* loops.nextWakeAt(Date.now())).toBeUndefined()
+      }),
+    )
+
+    it.effect("reports a running run's lease expiry", () =>
+      Effect.gen(function* () {
+        const loops = yield* Loop.Service
+        yield* loops.create(input("lop_wake_lease", { paused: true }))
+        const claimed = yield* loops.runNow({ id: "lop_wake_lease", owner: "owner", leaseMs: 60_000 })
+        yield* loops.recordRunSession({ id: claimed.id, owner: "owner", sessionID: "session-wake" })
+        const running = yield* loops.startRun({ id: claimed.id, owner: "owner", sessionID: "session-wake" })
+        expect(yield* loops.nextWakeAt(Date.now())).toBe(running.lease!.expiresAt)
+
+        yield* loops.finishRun({ id: claimed.id, owner: "owner", status: "succeeded" })
+        expect(yield* loops.nextWakeAt(Date.now())).toBeUndefined()
+      }),
+    )
+
+    it.effect("is due now for a claimed manual run", () =>
+      Effect.gen(function* () {
+        const loops = yield* Loop.Service
+        yield* loops.create(input("lop_wake_manual", { paused: true }))
+        yield* loops.runNow({ id: "lop_wake_manual", owner: "manual" })
+        const now = Date.now()
+        expect(yield* loops.nextWakeAt(now)).toBe(now)
+
+        expect(yield* loops.claimDue({ owner: "scheduler" })).toHaveLength(1)
+        // Now owned by the scheduler with a live lease, so the next wake is that lease's expiry.
+        expect(yield* loops.nextWakeAt(now)).toBeGreaterThan(now)
+      }),
+    )
+
+    it.effect("agrees with claimDue about whether work exists", () =>
+      Effect.gen(function* () {
+        const loops = yield* Loop.Service
+        const worker = { owner: "worker" }
+        const due = (wake: number | undefined) => wake !== undefined && wake <= Date.now()
+
+        // Nothing scheduled.
+        expect(due(yield* loops.nextWakeAt(Date.now()))).toBe(false)
+        expect(yield* loops.claimDue(worker)).toEqual([])
+
+        // A future occurrence.
+        yield* loops.create(input("lop_eq_future", { startsAt: Date.now() + 600_000 }))
+        expect(due(yield* loops.nextWakeAt(Date.now()))).toBe(false)
+        expect(yield* loops.claimDue(worker)).toEqual([])
+
+        // A due occurrence.
+        yield* makeDue("lop_eq_future")
+        expect(due(yield* loops.nextWakeAt(Date.now()))).toBe(true)
+        expect(yield* loops.claimDue(worker)).toHaveLength(1)
+
+        // A live lease held by another owner is not due until it expires.
+        yield* loops.create(input("lop_eq_lease", { paused: true }))
+        const held = yield* loops.runNow({ id: "lop_eq_lease", owner: "other", leaseMs: 60_000 })
+        expect(due(yield* loops.nextWakeAt(Date.now()))).toBe(false)
+        expect(yield* loops.claimDue(worker)).toEqual([])
+
+        // An expired claimed lease is recovered.
+        yield* updateRun(held.id, { lease_expires_at: Date.now() - 1 })
+        expect(due(yield* loops.nextWakeAt(Date.now()))).toBe(true)
+        expect(yield* loops.claimDue(worker)).toHaveLength(1)
+
+        // An expired running lease is marked stale, after which nothing is due.
+        yield* loops.recordRunSession({ id: held.id, owner: "worker", sessionID: "session-eq" })
+        yield* loops.startRun({ id: held.id, owner: "worker", sessionID: "session-eq" })
+        yield* updateRun(held.id, { lease_expires_at: Date.now() - 1 })
+        expect(due(yield* loops.nextWakeAt(Date.now()))).toBe(true)
+        expect(yield* loops.claimDue(worker)).toEqual([])
+        expect((yield* loops.getRun({ id: held.id })).status).toBe("stale")
+        expect(due(yield* loops.nextWakeAt(Date.now()))).toBe(false)
+      }),
+    )
+  })
+
+  describe("awaitChange", () => {
+    it.effect("is signalled by every writer that can change what nextWakeAt reads", () =>
+      Effect.gen(function* () {
+        const loops = yield* Loop.Service
+        const none = Effect.void
+        const writers: ReadonlyArray<
+          readonly [string, Effect.Effect<unknown, unknown>, Effect.Effect<unknown, unknown>]
+        > = [
+          ["create", none, loops.create(input("lop_sig_a"))],
+          ["edit", none, loops.edit({ id: "lop_sig_a", name: "renamed" })],
+          ["pause", none, loops.pause("lop_sig_a")],
+          ["resume", none, loops.resume("lop_sig_a")],
+          ["runNow", none, loops.runNow({ id: "lop_sig_a", owner: "manual" })],
+          [
+            "cancelRun",
+            none,
+            Effect.gen(function* () {
+              const [run] = yield* loops.listRuns("lop_sig_a")
+              return yield* loops.cancelRun({ id: run.id })
+            }),
+          ],
+          [
+            "finishRun",
+            loops.runNow({ id: "lop_sig_a", owner: "owner" }),
+            Effect.gen(function* () {
+              const [run] = yield* loops.listRuns("lop_sig_a")
+              return yield* loops.finishRun({ id: run.id, owner: "owner", status: "succeeded" })
+            }),
+          ],
+          [
+            "cancelRunForSession",
+            Effect.gen(function* () {
+              const run = yield* loops.runNow({ id: "lop_sig_a", owner: "owner" })
+              yield* loops.recordRunSession({ id: run.id, owner: "owner", sessionID: "session-sig" })
+            }),
+            loops.cancelRunForSession("session-sig"),
+          ],
+          ["delete", loops.pause("lop_sig_a"), loops.delete("lop_sig_a")],
+        ]
+        for (const [name, setup, write] of writers) {
+          yield* setup
+          const token = yield* loops.awaitChange()
+          expect(yield* signalled(token), `before ${name}`).toBe(false)
+          yield* write
+          expect(yield* signalled(token), `after ${name}`).toBe(true)
+        }
+      }),
+    )
+
+    it.effect("is signalled by fireEvent", () =>
+      Effect.gen(function* () {
+        const loops = yield* Loop.Service
+        yield* loops.create(
+          input("lop_sig_event", { intervalSeconds: undefined, eventTrigger: { type: "file-change", paths: ["**"] } }),
+        )
+        const token = yield* loops.awaitChange()
+        yield* loops.fireEvent({ id: "lop_sig_event", owner: "worker", trigger: "file-change", payload: { file: "a" } })
+        expect(yield* signalled(token)).toBe(true)
+      }),
+    )
+
+    it.effect("is not signalled by claimDue or by lease renewals", () =>
+      Effect.gen(function* () {
+        const loops = yield* Loop.Service
+        yield* loops.create(input("lop_sig_quiet"))
+        const token = yield* loops.awaitChange()
+        const [run] = yield* loops.claimDue({ owner: "worker" })
+        yield* loops.recordRunSession({ id: run.id, owner: "worker", sessionID: "session-quiet" })
+        yield* loops.startRun({ id: run.id, owner: "worker", sessionID: "session-quiet" })
+        yield* loops.renewRun({ id: run.id, owner: "worker" })
+        expect(yield* signalled(token)).toBe(false)
+      }),
+    )
+
+    it.effect("does not lose a create that lands between the token and the read", () =>
+      Effect.gen(function* () {
+        const loops = yield* Loop.Service
+        const token = yield* loops.awaitChange()
+        const before = yield* loops.nextWakeAt(Date.now())
+        yield* loops.create(input("lop_sig_race"))
+        expect(before).toBeUndefined()
+        expect(yield* signalled(token)).toBe(true)
+        expect(yield* loops.nextWakeAt(Date.now())).toBeLessThanOrEqual(Date.now())
+      }),
+    )
+  })
 })

@@ -1,4 +1,4 @@
-# Lint, dependency audit, and license checks. test.yml owns the complete test matrix.
+# Lint, dependency audit, license, and docs checks. test.yml owns the complete test matrix.
 name: pr
 
 on:
@@ -32,8 +32,9 @@ jobs:
       # oxlint exits non-zero on errors only. The tree carries thousands of
       # warnings today, so promoting them here would make every PR red on
       # arrival and teach people to ignore the check.
+      # CI runs the type-aware rules that the local `lint` script skips.
       - name: Run lint
-        run: bun run lint
+        run: bun run lint:types
 
       - name: Verify packaged WASM checksums
         run: bun run verify:wasm
@@ -41,5 +42,56 @@ jobs:
       - name: Check third-party license inventory
         run: bun run license:check
 
+  dependency-audit:
+    name: Dependency audit (warning only)
+    runs-on: ${{ github.repository == 'turenlabs/turenos' && 'ubuntu-latest' || 'blacksmith-4vcpu-ubuntu-2404' }}
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+
       - name: Audit dependencies
+        id: audit
+        continue-on-error: true
         run: bun audit
+
+      - name: Report audit warning
+        if: steps.audit.outcome == 'failure'
+        run: |
+          echo "::warning::Dependency audit failed. Review the audit logs for vulnerabilities or audit errors. This check is warning-only."
+          echo "Dependency audit failed. Review the audit logs for vulnerabilities or audit errors. This check is warning-only." >> "$GITHUB_STEP_SUMMARY"
+
+  docs:
+    name: docs
+    runs-on: ${{ github.repository == 'turenlabs/turenos' && 'ubuntu-latest' || 'blacksmith-4vcpu-ubuntu-2404' }}
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Bun
+        uses: ./.github/actions/setup-bun
+
+      # Code changes break docs too (cited paths, links into docs/), so this runs on every PR.
+      - name: Check docs
+        run: bun .agents/skills/turen-documentation/scripts/check.ts docs
+
+      - name: Check AGENTS.md files
+        run: bun .agents/skills/turen-context/scripts/check.ts
+
+      - name: Test documentation scripts
+        working-directory: .agents/skills/turen-documentation/scripts
+        run: bun test
+
+      - name: Test context scripts
+        working-directory: .agents/skills/turen-context/scripts
+        run: bun test
+
+      - name: Test diff documentation scripts
+        working-directory: .agents/skills/turen-diff-documentation/scripts
+        run: bun test

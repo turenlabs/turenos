@@ -1130,9 +1130,15 @@ export const ConfigProvidersResult = Schema.Struct({
 })
 export type ConfigProvidersResult = Types.DeepMutable<Schema.Schema.Type<typeof ConfigProvidersResult>>
 
+// The serialized form is stable per provider object, so cache it and only pay the
+// stringify+replacer walk once per rebuilt provider. Callers still get a fresh parse,
+// keeping plugin-trigger payloads isolated from each other's mutations.
+const publicInfoJson = new WeakMap<Info, string>()
+
 export function toPublicInfo(provider: Info): Info {
-  return JSON.parse(
-    JSON.stringify(
+  let json = publicInfoJson.get(provider)
+  if (json === undefined) {
+    json = JSON.stringify(
       {
         ...provider,
         key: undefined,
@@ -1148,8 +1154,10 @@ export function toPublicInfo(provider: Info): Info {
         if (typeof value === "bigint") return value.toString()
         return value
       },
-    ),
-  )
+    )
+    publicInfoJson.set(provider, json)
+  }
+  return JSON.parse(json)
 }
 
 const SECRET_OPTION_KEYS = new Set([

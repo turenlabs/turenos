@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test"
+import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import {
   controlPath,
   detectSshPrompt,
+  ensureMaster,
   localPlatformTarget,
   parseRemoteProbe,
   parseSshConfig,
@@ -9,9 +13,79 @@ import {
   remotePlatformTarget,
   sshDestination,
   sshTargetId,
+  spawnTunnel,
   summarizeSshOutput,
 } from "./runtime"
 import { parseRemoteState, remoteInstallMissing } from "./shim"
+
+test("tunnel forwards use TCP for quick connect and a remote socket for persistent attach", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "forge-ssh-forward-"))
+  const binary = join(directory, "ssh")
+  try {
+    await writeFile(
+      binary,
+      `#!/usr/bin/env bun
+const args = process.argv.slice(2)
+if (args.includes("-O")) process.exit(0)
+console.log(args[args.indexOf("-L") + 1])
+await Bun.stdin.text()
+`,
+    )
+    await chmod(binary, 0o755)
+    for (const remote of [4096, "/run/turenos/server.sock"]) {
+      const tunnel = spawnTunnel(
+        binary,
+        directory,
+        { host: "host", user: "me", port: null, identityFile: null },
+        join(directory, "s"),
+        remote,
+      )
+      try {
+        const spec = await new Promise<string>((resolve, reject) => {
+          tunnel.child.stdout!.once("data", (data: Buffer) => resolve(data.toString().trim()))
+          tunnel.child.once("error", reject)
+          tunnel.onExit(() => reject(new Error("fake ssh exited before reporting its forward")))
+        })
+        expect(spec).toBe(`${join(directory, "s")}:${typeof remote === "number" ? `127.0.0.1:${remote}` : remote}`)
+      } finally {
+        const exited = new Promise<void>((resolve) => tunnel.onExit(() => resolve()))
+        tunnel.stop()
+        await exited
+      }
+    }
+    // Let the cancel children finish before removing their executable.
+    await Bun.sleep(100)
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+}, 10_000)
+
+test.skipIf(process.platform === "win32")(
+  "a hostile control directory is rejected before ssh can forward credentials",
+  async () => {
+    const parent = await mkdtemp(join(tmpdir(), "forge-ssh-untrusted-"))
+    const directory = join(parent, "control")
+    try {
+      await symlink(parent, directory)
+      const connect = () =>
+        ensureMaster(
+          "/nonexistent/ssh",
+          directory,
+          { host: "host", user: "user", port: null, identityFile: null },
+          {
+            onPrompt: async () => null,
+          },
+        )
+      await expect(connect()).rejects.toThrow("must be owned by this user and private")
+      await rm(directory)
+      await mkdir(directory)
+      await chmod(directory, 0o777)
+      await expect(connect()).rejects.toThrow("must be owned by this user and private")
+    } finally {
+      await rm(parent, { recursive: true, force: true })
+    }
+  },
+)
 
 describe("parseSshTarget", () => {
   test("parses plain host", () => {

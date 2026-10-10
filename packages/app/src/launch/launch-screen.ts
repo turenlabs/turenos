@@ -8,8 +8,10 @@ import { logoCloud } from "./logo-cloud"
  * the engraved anvil, hardy hole, and waterfall skirt. Particles fly in amber
  * and cool to their baked artwork colors.
  *
- * startForgeScene renders the mark into any host element and runs forever
- * until disposed (used inline as the animated logo). mountLaunchScreen wraps
+ * startForgeScene renders the mark into any host element and runs until
+ * disposed (used inline as the animated logo). The inline (static) logo pauses
+ * while the page is hidden, unfocused, off-screen or idle, and holds a single
+ * still frame under prefers-reduced-motion. mountLaunchScreen wraps
  * it in the boot overlay: it mounts before the Solid tree renders and is
  * dismissed once the app has mounted and the forge sequence has completed
  * (instantly under prefers-reduced-motion).
@@ -18,6 +20,7 @@ import { logoCloud } from "./logo-cloud"
 const BOOT_MS = 4600
 const FADE_MS = 600
 const HARD_CAP_MS = 12_000
+const IDLE_MS = 3000
 
 export interface LaunchScreen {
   /** Call once the app tree has mounted; dismissal waits for the sequence. */
@@ -54,6 +57,21 @@ export interface ForgeSceneOptions {
   }
 }
 
+/** Whether the render loop should run. Only the inline (static) logo ever pauses. */
+export function forgeShouldAnimate(input: {
+  static: boolean
+  reduced: boolean
+  visible: boolean
+  intersecting: boolean
+  focused: boolean
+  idleMs: number
+  idleLimitMs: number
+}) {
+  if (!input.static) return true
+  if (input.reduced) return false
+  return input.visible && input.intersecting && input.focused && input.idleMs < input.idleLimitMs
+}
+
 export function startForgeScene(options: ForgeSceneOptions): ForgeScene {
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches
   const instant = reduced || (options.static ?? false)
@@ -62,7 +80,8 @@ export function startForgeScene(options: ForgeSceneOptions): ForgeScene {
   const layout = options.layout ?? { markX: -1.6, markY: 0.25, scale: 1.65, lookX: -0.55, lookY: 0.2 }
   const host = options.host
 
-  const renderer = new THREE.WebGLRenderer({ canvas: options.canvas, antialias: true, alpha: true })
+  const inline = options.static ?? false
+  const renderer = new THREE.WebGLRenderer({ canvas: options.canvas, antialias: !inline, alpha: true })
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
   const scene = new THREE.Scene()
   scene.fog = new THREE.FogExp2(dark ? 0x05070b : 0xf3f4f6, 0.045)
@@ -194,9 +213,75 @@ export function startForgeScene(options: ForgeSceneOptions): ForgeScene {
   scene.add(new THREE.Points(eGeo, eMat))
 
   const mouse = { x: 0, y: 0 }
+  // A still frame: reduced motion on the inline logo never animates, so time and parallax stay at zero.
+  const still = inline && reduced
+  const started = performance.now()
+  let settled = false
+  let raf = 0
+  let clock = 0
+  let last = 0
+  let lastActive = started
+  let intersecting = true
+
+  const draw = (now: number, t: number) => {
+    const p = instant ? 1 : Math.min(1, (now - started) / BOOT_MS)
+    const eased = p < 0.75 ? p * 0.9 : 0.675 + (p - 0.75) * 1.3
+    const shown = Math.min(1, eased)
+    mat.uniforms.uTime.value = t
+    mat.uniforms.uProgress.value = Math.min(1, shown * 1.12)
+    eMat.uniforms.uTime.value = t
+    options.onShown?.(shown)
+    const sway = still ? 0 : Math.sin(t * 0.12) * 0.2 + mouse.x * 0.15
+    camera.position.x = Math.sin(sway * 0.12) * 6.6
+    camera.position.z = Math.cos(sway * 0.12) * 6.6
+    camera.position.y = still ? 1.5 : 1.5 - mouse.y * 0.25
+    camera.lookAt(layout.lookX, layout.lookY, 0)
+    renderer.render(scene, camera)
+    if (!settled && p >= 1) {
+      settled = true
+      forge.onSettled?.()
+    }
+  }
+
+  const animate = () =>
+    forgeShouldAnimate({
+      static: inline,
+      reduced,
+      visible: document.visibilityState === "visible",
+      intersecting,
+      focused: document.hasFocus(),
+      idleMs: performance.now() - lastActive,
+      idleLimitMs: IDLE_MS,
+    })
+
+  const tick = (now: number) => {
+    if (!animate()) {
+      raf = 0
+      return
+    }
+    // Inline logos keep their own clock so embers resume where they froze instead of jumping.
+    if (inline) clock += last ? Math.min(now - last, 100) / 1000 : 0
+    last = now
+    draw(now, inline ? clock : now / 1000)
+    raf = requestAnimationFrame(tick)
+  }
+  const start = () => {
+    if (raf || !animate()) return
+    last = 0
+    raf = requestAnimationFrame(tick)
+  }
+  const wake = () => {
+    lastActive = performance.now()
+    start()
+  }
+
   const onPointer = (e: PointerEvent) => {
     mouse.x = (e.clientX / window.innerWidth - 0.5) * 2
     mouse.y = (e.clientY / window.innerHeight - 0.5) * 2
+    if (inline) wake()
+  }
+  const onVisible = () => {
+    if (document.visibilityState === "visible") wake()
   }
   const size = { w: 0, h: 0 }
   const onResize = () => {
@@ -209,17 +294,26 @@ export function startForgeScene(options: ForgeSceneOptions): ForgeScene {
     camera.aspect = w / h
     camera.updateProjectionMatrix()
     renderer.setSize(w, h, false)
+    if (!inline) return
+    // setSize cleared the canvas. A queued frame can still exit without drawing if the gate closes first, so always repaint.
+    draw(performance.now(), clock)
+    wake()
+  }
+  const onIntersect = (entries: IntersectionObserverEntry[]) => {
+    for (const entry of entries) intersecting = entry.isIntersecting
+    if (intersecting) wake()
   }
   window.addEventListener("pointermove", onPointer, { passive: true })
   // Observe the host rather than the window: an inline logo can mount before
   // its layout settles (0×0) and would otherwise stay blank until a window resize.
   const resize = new ResizeObserver(onResize)
   resize.observe(host)
-  onResize()
-
-  const started = performance.now()
-  let settled = false
-  let raf = 0
+  const visible = inline ? new IntersectionObserver(onIntersect) : undefined
+  visible?.observe(host)
+  if (inline) {
+    window.addEventListener("focus", wake)
+    document.addEventListener("visibilitychange", onVisible)
+  }
 
   const forge: ForgeScene = {
     get settled() {
@@ -227,8 +321,12 @@ export function startForgeScene(options: ForgeSceneOptions): ForgeScene {
     },
     dispose: () => {
       cancelAnimationFrame(raf)
+      raf = 0
       window.removeEventListener("pointermove", onPointer)
+      window.removeEventListener("focus", wake)
+      document.removeEventListener("visibilitychange", onVisible)
       resize.disconnect()
+      visible?.disconnect()
       geo.dispose()
       eGeo.dispose()
       mat.dispose()
@@ -241,28 +339,8 @@ export function startForgeScene(options: ForgeSceneOptions): ForgeScene {
     },
   }
 
-  const tick = (now: number) => {
-    const t = now / 1000
-    const p = instant ? 1 : Math.min(1, (now - started) / BOOT_MS)
-    const eased = p < 0.75 ? p * 0.9 : 0.675 + (p - 0.75) * 1.3
-    const shown = Math.min(1, eased)
-    mat.uniforms.uTime.value = t
-    mat.uniforms.uProgress.value = Math.min(1, shown * 1.12)
-    eMat.uniforms.uTime.value = t
-    options.onShown?.(shown)
-    const sway = Math.sin(t * 0.12) * 0.2 + mouse.x * 0.15
-    camera.position.x = Math.sin(sway * 0.12) * 6.6
-    camera.position.z = Math.cos(sway * 0.12) * 6.6
-    camera.position.y = 1.5 - mouse.y * 0.25
-    camera.lookAt(layout.lookX, layout.lookY, 0)
-    renderer.render(scene, camera)
-    if (!settled && p >= 1) {
-      settled = true
-      forge.onSettled?.()
-    }
-    raf = requestAnimationFrame(tick)
-  }
-  raf = requestAnimationFrame(tick)
+  onResize()
+  start()
 
   return forge
 }

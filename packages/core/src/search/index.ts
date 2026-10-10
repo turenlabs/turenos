@@ -47,6 +47,7 @@ const MAX_CANDIDATES = 128
 const MAX_SYMBOLS_PER_FILE = 64
 const MAX_CALLEES_PER_NAME = 20
 const MAX_RESULTS = 40
+const THESAURUS_REBUILD_MS = 2000
 
 const EXTENSIONS = new Set([
   ".ts",
@@ -442,7 +443,7 @@ const makeLayer = (load: PotionLoader) =>
 
       let potion: Promise<PotionRuntime> | undefined
       let potionFailures = 0
-      let thesaurus: { version: number; vocab: string[]; vecs: Float32Array; dim: number } | undefined
+      let thesaurus: { version: number; builtAt: number; vocab: string[]; vecs: Float32Array; dim: number } | undefined
       const expansions = new Map<string, Map<string, number>>()
       let expansionVersion = -1
 
@@ -612,9 +613,17 @@ const makeLayer = (load: PotionLoader) =>
         discoveryLex = newLex()
         pathLex = newLex()
         files.clear()
-        const entries = yield* ripgrep
-          .find({ cwd: dir, pattern: "*", limit: Number.MAX_SAFE_INTEGER })
-          .pipe(Effect.catch(() => Effect.succeed([] as const)))
+        // A failed walk must fail the build rather than index nothing: `built` would
+        // otherwise cache an empty corpus, and every query in this directory would answer
+        // "No results found" until the process restarted. The next search retries.
+        const entries = yield* ripgrep.find({ cwd: dir, pattern: "*", limit: Number.MAX_SAFE_INTEGER }).pipe(
+          Effect.tapError((error) =>
+            Effect.logWarning("code search could not list workspace files; the next search retries", {
+              directory: dir,
+              error: error.message,
+            }),
+          ),
+        )
         const candidates = entries.map((entry) => entry.path as string).filter(eligible)
         yield* Effect.forEach(candidates, discoverFile, { concurrency: 2, discard: true })
         version++
@@ -625,7 +634,7 @@ const makeLayer = (load: PotionLoader) =>
         if (!built) {
           building ??= Effect.runPromise(buildIndex.pipe(Effect.asVoid)).finally(() => (building = undefined))
           const pending = building
-          yield* Effect.promise(() => pending)
+          yield* Effect.tryPromise({ try: () => pending, catch: (cause) => cause })
         }
         if (dirty.size) {
           const pending = [...dirty]
@@ -686,7 +695,10 @@ const makeLayer = (load: PotionLoader) =>
         )
 
       const expand = Effect.fnUntraced(function* (q: string) {
-        if (expansionVersion !== version) {
+        // Direct matches stay current while vocabulary rebuilds are throttled during file churn.
+        const rebuildDue =
+          thesaurus && thesaurus.version !== version && Date.now() - thesaurus.builtAt >= THESAURUS_REBUILD_MS
+        if (expansionVersion !== version || rebuildDue) {
           expansions.clear()
           expansionVersion = version
         }
@@ -696,7 +708,7 @@ const makeLayer = (load: PotionLoader) =>
         if (!runtime) return new Map<string, number>()
         const dim = runtime.profile.dimension
         let th = thesaurus
-        if (!th || th.version !== version || th.dim !== dim) {
+        if (!th || rebuildDue || th.dim !== dim) {
           const vocab = [...discoveryLex.inverted.keys()].filter((t) => {
             const df = (discoveryLex.inverted.get(t)?.length ?? 0) / 2
             return t.length >= 3 && !STOP.has(t) && df >= 1 && df <= discoveryLex.n * 0.1
@@ -714,7 +726,7 @@ const makeLayer = (load: PotionLoader) =>
             const norm = Math.sqrt(n2) || 1
             for (let d = 0; d < dim; d++) vecs[off + d]! /= norm
           }
-          th = { version, vocab, vecs, dim }
+          th = { version, builtAt: Date.now(), vocab, vecs, dim }
           thesaurus = th
         }
         const out = new Map<string, number>()
@@ -799,7 +811,14 @@ const makeLayer = (load: PotionLoader) =>
                 include: `*.{${[...EXTENSIONS].map((ext) => ext.slice(1)).join(",")}}`,
                 limit: 2048,
               })
-              .pipe(Effect.catch(() => Effect.succeed([] as const)))
+              .pipe(
+                // Rare-term recovery only adds candidates; ranking still works without it.
+                Effect.catch((error) =>
+                  Effect.logWarning("code search rare-term grep failed", { token, error: error.message }).pipe(
+                    Effect.as([] as const),
+                  ),
+                ),
+              )
             const matched = new Set<string>()
             for (const match of matches) {
               const file = match.entry.path as string

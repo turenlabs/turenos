@@ -26,6 +26,8 @@ export const Flag = {
   FORGE_DISABLE_TERMINAL_TITLE: truthy("FORGE_DISABLE_TERMINAL_TITLE"),
   FORGE_SHOW_TTFD: truthy("FORGE_SHOW_TTFD"),
   FORGE_DISABLE_AUTOCOMPACT: truthy("FORGE_DISABLE_AUTOCOMPACT"),
+  /** Use the provider's native tool search instead of changing the advertised tools. Off until verified live. */
+  FORGE_NATIVE_TOOL_SEARCH: truthy("FORGE_NATIVE_TOOL_SEARCH"),
   FORGE_DISABLE_MODELS_FETCH: truthy("FORGE_DISABLE_MODELS_FETCH"),
   FORGE_DISABLE_MOUSE: truthy("FORGE_DISABLE_MOUSE"),
   FORGE_FAKE_VCS: process.env["FORGE_FAKE_VCS"],
@@ -57,6 +59,11 @@ export const Flag = {
   },
   get FORGE_EXPERIMENTAL_REFERENCES() {
     return enabledByExperimental("FORGE_EXPERIMENTAL_REFERENCES")
+  },
+  // Off until representative-repository cost, crash cleanup and platform gates pass. Deliberately
+  // not enabled by FORGE_EXPERIMENTAL: it hashes the whole worktree when a record is created.
+  get FORGE_EXPERIMENTAL_PRIOR_WORK_CAPTURE() {
+    return truthy("FORGE_EXPERIMENTAL_PRIOR_WORK_CAPTURE")
   },
   get FORGE_CONFIG_DIR() {
     return process.env["FORGE_CONFIG_DIR"]

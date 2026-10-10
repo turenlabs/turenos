@@ -7,8 +7,10 @@ import {
   extensionCategoryLabel,
   dataForgeExtension,
   directOAuthConnect,
+  extensionTabs,
   extensionWriteTools,
   filterExtensionItems,
+  selectedExtensionTab,
   sortExtensionItems,
 } from "./extend-model"
 import { yolkExtension } from "@/utils/extension-surface"
@@ -75,7 +77,7 @@ const tool = item("gitleaks", {
   commands: ["gitleaks"],
   configuration: [],
   tools: { allow: [], write: [] },
-  defaultEnabled: true,
+  defaultEnabled: false,
 })
 
 const yolk = item("yolk", {
@@ -93,7 +95,95 @@ const yolk = item("yolk", {
   defaultEnabled: false,
 })
 
+describe("Extend tabs", () => {
+  test("offers installed, disabled scanners through the Tools tab and existing enable action", () => {
+    expect(extensionTabs).toMatchObject({ tools: { label: "Tools", kind: "tool" } })
+    const scanner = { ...tool, installed: true }
+    const tab = selectedExtensionTab("tools", undefined)
+    expect(tab).toBe("tools")
+    const visible = filterExtensionItems([data, mcp, scanner, yolk], {
+      installed: false,
+      kind: extensionTabs[tab].kind,
+      search: "",
+    })
+    expect(visible).toEqual([scanner])
+    expect(extensionAction(visible[0], {})).toEqual({
+      label: "Enable",
+      missingRequired: false,
+      payload: { enabled: true },
+    })
+    expect(scanner.enabled).toBe(false)
+  })
+
+  test.each([
+    ["skills", "skill"],
+    ["mcp", "mcp"],
+    ["data", "data"],
+    ["tools", "tool"],
+  ] as const)("maps the %s tab and legacy kind query to %s contributions", (tab, kind) => {
+    expect(selectedExtensionTab(tab, undefined)).toBe(tab)
+    expect(selectedExtensionTab(undefined, kind)).toBe(tab)
+    expect(extensionTabs[tab].kind).toBe(kind)
+  })
+
+  test("defaults unknown or missing queries to Skills / Subagents", () => {
+    expect(selectedExtensionTab(undefined, undefined)).toBe("skills")
+    expect(selectedExtensionTab("unknown", "unknown")).toBe("skills")
+  })
+
+  test("keeps installed scanners discoverable with Tools search, focus, and status filters", () => {
+    const scanner = { ...tool, installed: true }
+    const missing = { ...tool, installed: false }
+    const enabled = { ...scanner, enabled: true, status: "available" as const }
+    const options = {
+      installed: true,
+      kind: extensionTabs.tools.kind,
+      search: "gitleaks",
+      category: "application-security" as const,
+      status: "available" as const,
+    }
+    expect(filterExtensionItems([scanner, missing, enabled, data, mcp, yolk], options)).toEqual([scanner])
+    expect(filterExtensionItems([scanner, enabled], { ...options, status: "connected" })).toEqual([enabled])
+    expect(extensionAction(enabled, {})).toEqual({
+      label: "Disable",
+      missingRequired: false,
+      payload: { enabled: false },
+    })
+  })
+
+  test("lists missing scanner commands in the catalog without allowing installation or write opt-in", () => {
+    const scanner = { ...tool, installed: false }
+    const visible = filterExtensionItems([scanner, data, mcp, yolk], {
+      installed: false,
+      kind: extensionTabs.tools.kind,
+      search: "",
+    })
+    expect(visible).toEqual([scanner])
+    expect(extensionAction(visible[0], { "turenlabs/gitleaks:writeTools": "enabled" })).toEqual({
+      label: "Not installed",
+      missingRequired: false,
+      blocked: true,
+      payload: { enabled: false },
+    })
+    expect(
+      extensionAction({ ...scanner, installed: true }, { "turenlabs/gitleaks:writeTools": "enabled" })?.payload,
+    ).toEqual({ enabled: true })
+  })
+
+  test("keeps settings-owned Yolk hidden in both Tools views even when enabled", () => {
+    const enabled = { ...yolk, installed: true, enabled: true, status: "available" as const }
+    expect(filterExtensionItems([enabled], { installed: false, kind: extensionTabs.tools.kind, search: "" })).toEqual(
+      [],
+    )
+    expect(filterExtensionItems([enabled], { installed: true, kind: extensionTabs.tools.kind, search: "" })).toEqual([])
+  })
+})
+
 describe("filterExtensionItems", () => {
+  test.each(["github-actions-security-review", "zizmor"])("classifies %s as supply-chain security", (id) => {
+    expect(extensionCategory({ ...tool, manifest: { ...tool.manifest, id: `turenlabs/${id}` } })).toBe("supply-chain")
+  })
+
   test("uses reviewed manifest IDs for security focus without inferring unknown entries", () => {
     const sentinel = { ...mcp, manifest: { ...mcp.manifest, id: "turenlabs/microsoft-sentinel" } }
     const unknown = { ...mcp, manifest: { ...mcp.manifest, id: "constructor" } }
@@ -115,6 +205,10 @@ describe("filterExtensionItems", () => {
         ["turenlabs/sentry", "observability"],
         ["turenlabs/capec", "security-knowledge"],
         ["turenlabs/mcp-security-review", "application-security"],
+        ["turenlabs/slsa-provenance-review", "supply-chain"],
+        ["turenlabs/agentic-prompt-injection-review", "application-security"],
+        ["turenlabs/oauth-security-review", "application-security"],
+        ["turenlabs/tenant-isolation-review", "application-security"],
       ].map(([id, category]) => [extensionCategory({ ...sentinel, manifest: { ...sentinel.manifest, id } }), category]),
     ).toEqual([
       ["security-operations", "security-operations"],
@@ -131,6 +225,10 @@ describe("filterExtensionItems", () => {
       ["incident-response", "incident-response"],
       ["observability", "observability"],
       ["security-knowledge", "security-knowledge"],
+      ["application-security", "application-security"],
+      ["supply-chain", "supply-chain"],
+      ["application-security", "application-security"],
+      ["application-security", "application-security"],
       ["application-security", "application-security"],
     ])
     expect(extensionCategory({ ...sentinel, manifest: { ...sentinel.manifest, id: "turenlabs/euvd" } })).toBe(

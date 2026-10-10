@@ -1,0 +1,8 @@
+Turen JWT Audit
+Original bounded wrapper and policy checks: Copyright (c) 2026 Turen Labs.
+
+Signature verification uses unmodified RustCrypto rsa, p256, and sha2 crates.
+Dependencies are locked by Cargo.lock. The packaged LICENSE.dependencies.txt
+preserves dependency license and attribution files. SOURCE.json records the
+resolved sources and versions. JWT/JWS/JWK formats follow RFC 7515, RFC 7517,
+RFC 7518, RFC 7519, and RFC 8725. No RFC source code is included.

@@ -60,6 +60,16 @@ One process-global promotion fiber, owned by `SessionExecutionLocal`, watches th
 - `descendants`/`cancelTree` gain a real one-level traversal by `parentTaskID` — interrupting an orchestrator cancels its workers first. Depth is still bounded so traversal cannot recurse.
 - `ancestorPermissionSets` accumulation is unchanged: an orchestrator's workers inherit the same permission narrowing as any nested spawn, and admission additionally rejects a nested grant that widens the orchestrator's own commands or write roots.
 
+## Tool Availability
+
+Task-owned Sessions receive basic filesystem, search, shell, web, skill, task-tracking, context, and coordination tools by default. Existing command grants and write roots still limit shell and file changes.
+
+Basic tools include `question`, `board_read`, and `board_post`. Children can request user input and share board notes without a specialist grant.
+
+Whiteboard, browser, automation, specialist analysis, application, and MCP tools are excluded unless the child's captured agent permissions contain a matching non-catch-all rule. A catch-all allow rule does not grant specialist tools. Parent and ancestor permission ceilings still apply.
+
+The tool snapshot filters registered names separately from leaf permission actions. Excluded tools stay absent from definitions, discovery results, and loadable capabilities. Direct calls to excluded names return an unknown-tool error. Native tool search uses the same filter. Root Session tool availability remains unchanged.
+
 ## Waves
 
 `Info.wave` is an optional bounded string (`MAX_WAVE_NAME_LENGTH` = 64) recorded at spawn, stored in a `wave` column indexed on `(parent_session_id, wave)`. A wave is a tag, not an entity: it is scoped to the parent session, resolved at call time, and may be reused after a wave drains.

@@ -246,7 +246,18 @@ liveClaude(
         env: ClaudeCodeCLI.subscriptionEnvironment(),
         stdio: ["pipe", "pipe", "pipe"],
       })
-      child.stdin.end('Call spawn_agent with {"marker":"live"}, then reply exactly LIVE_MCP_OK.')
+      // The bridge's args select stream-json input, so the prompt travels as one user envelope.
+      child.stdin.end(
+        `${JSON.stringify({
+          type: "user",
+          message: {
+            role: "user",
+            content: [
+              { type: "text", text: 'Call spawn_agent with {"marker":"live"}, then reply exactly LIVE_MCP_OK.' },
+            ],
+          },
+        })}\n`,
+      )
       const exited = new Promise<number | null>((resolve, reject) => {
         child.once("error", reject)
         child.once("close", resolve)
@@ -259,4 +270,28 @@ liveClaude(
       expect(existsSync(hookMarker)).toBe(false)
     }),
   70_000,
+)
+
+it.effect("preserves inline screenshot content and keeps unsupported files as references", () =>
+  Effect.sync(() => {
+    expect(
+      ClaudeCodeMcp.toCallToolResult({
+        type: "content",
+        value: [
+          { type: "text", text: "Screenshot" },
+          { type: "file", mime: "image/png", uri: "data:image/png;base64,aGVsbG8=" },
+          { type: "file", mime: "application/pdf", name: "report.pdf", uri: "file:///report.pdf" },
+          { type: "file", mime: "image/jpeg", uri: "data:image/png;base64,aGVsbG8=" },
+        ],
+      }).content,
+    ).toEqual([
+      { type: "text", text: "Screenshot" },
+      { type: "image", mimeType: "image/png", data: "aGVsbG8=" },
+      { type: "text", text: "[file report.pdf] file:///report.pdf (application/pdf)" },
+      {
+        type: "text",
+        text: "[file inline attachment] Inline image omitted: unsupported format, invalid encoding, or image limit.",
+      },
+    ])
+  }),
 )

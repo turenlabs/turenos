@@ -20,8 +20,8 @@
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    width: 480px;
-    height: 368px;
+    width: min(480px, calc(100vw - 32px));
+    height: min(368px, calc(100dvh - 32px));
     background: var(--v2-background-bg-layer-01);
     /*
      * The TUI drew no dialog border at all — a dialog was a rectangle of

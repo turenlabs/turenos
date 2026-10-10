@@ -796,15 +796,16 @@
   }
 }
 
+/*
+ * The app shell turns off text selection, so transcript content opts back in.
+ * Every tool body counts, not a list of known renderers: a tool that falls back
+ * to the generic Input/Output view must stay copyable too. Triggers and
+ * controls inside a body keep their own `user-select: none`.
+ */
 [data-component="user-message"] [data-slot="user-message-text"],
 [data-component="text-part"],
 [data-component="reasoning-part"],
-[data-component="tool-output"],
-[data-component="bash-output"],
-[data-component="edit-content"],
-[data-component="write-content"],
-[data-component="todos"],
-[data-component="diagnostics"],
+[data-component="collapsible"].tool-collapsible > [data-slot="collapsible-content"],
 .error-card {
   -webkit-user-select: text;
   user-select: text;

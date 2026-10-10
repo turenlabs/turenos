@@ -1,6 +1,8 @@
 .DS_Store
 node_modules
 .worktrees
+# Claude Code worktrees: each is a full checkout, and file search would index every copy
+.claude/worktrees/
 .sst
 .env
 .env.local
@@ -82,6 +84,8 @@ dist
 !packages/sqlite-inspect-wasm/dist/**
 !packages/squashfs-wasm/dist/
 !packages/squashfs-wasm/dist/**
+!packages/text-diff-wasm/dist/
+!packages/text-diff-wasm/dist/**
 !packages/unicode-audit-wasm/dist/
 !packages/unicode-audit-wasm/dist/**
 !packages/wasm-toolkit-wasm/dist/

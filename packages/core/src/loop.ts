@@ -1,13 +1,15 @@
 export * as Loop from "./loop"
 
-import { and, asc, count, desc, eq, gt, inArray, isNull, lte, or } from "drizzle-orm"
+import { and, asc, count, desc, eq, gt, inArray, isNull, lte, min, notExists, or } from "drizzle-orm"
+import { alias } from "drizzle-orm/sqlite-core"
 import type { EffectDrizzleSqlite } from "@turenlabs/effect-drizzle-sqlite"
-import { Context, Effect, Layer, Schema } from "effect"
+import { Clock, Context, Deferred, Effect, Layer, Schema } from "effect"
 import { Database } from "./database/database"
 import { makeGlobalNode } from "./effect/app-node"
 import { Global } from "./global"
 import { Identifier } from "./id/id"
 import { LoopRunTable, LoopTable } from "./loop/sql"
+import { TeamDutyRunTable, TeamDutyTable, TeamRoomTable, TeamTeammateTable } from "./team/workspace.sql"
 import { AgentV2 } from "./agent"
 import { ModelV2 } from "./model"
 
@@ -16,6 +18,7 @@ export const MAX_ACTIVE = 50
 export const MAX_ACTIVE_PER_LOCATION = 10
 export const DEFAULT_EXPIRY_MS = 7 * 24 * 60 * 60 * 1_000
 export const DEFAULT_LEASE_MS = 5 * 60 * 1_000
+const FILE_CHANGE_CACHE_TTL_MS = 5_000
 /** The durable workspace used by Automations that are created without a project. */
 export const DEFAULT_LOCATION_DIRECTORY = Global.Path.data
 
@@ -98,6 +101,7 @@ export type Info = {
   readonly model?: ModelV2.Ref
   readonly skill?: string
   readonly workflow?: Workflow
+  readonly factoryRoomID?: string
   readonly status: Status
   readonly schedule: Schedule
   readonly eventTrigger?: EventTriggerConfig
@@ -127,6 +131,7 @@ export type Run = {
     readonly model?: ModelV2.Ref
     readonly skill?: string
     readonly workflow?: Workflow
+    readonly factoryRoomID?: string
   }
   readonly error?: string
   readonly time: {
@@ -139,6 +144,7 @@ export type Run = {
 
 export type CreateInput = {
   readonly id?: ID
+  readonly teammateID?: string
   readonly name: string
   readonly prompt: string
   readonly location?: { readonly directory: string; readonly workspaceID?: string }
@@ -153,6 +159,7 @@ export type CreateInput = {
   readonly expiresAt?: number
   readonly paused?: boolean
   readonly eventTrigger?: EventTriggerConfig
+  readonly factoryRoomID?: string
 }
 
 export type EditInput = {
@@ -200,10 +207,14 @@ type DatabaseTransaction = Parameters<Parameters<EffectDrizzleSqlite.EffectSQLit
 export interface Interface {
   readonly create: (input: CreateInput) => Effect.Effect<Info, InvalidInputError | ActiveLimitError>
   readonly list: () => Effect.Effect<ReadonlyArray<Info>>
+  /** Active file-change loops, served from a short-lived cache so file events do not query the table. */
+  readonly listFileChange: () => Effect.Effect<ReadonlyArray<Info>>
   readonly get: (id: ID) => Effect.Effect<Info, NotFoundError>
   readonly edit: (input: EditInput) => Effect.Effect<Info, NotFoundError | InvalidInputError | InvalidStateError>
   readonly pause: (id: ID) => Effect.Effect<Info, NotFoundError | InvalidStateError>
-  readonly resume: (id: ID) => Effect.Effect<Info, NotFoundError | InvalidStateError | ActiveLimitError | InvalidInputError>
+  readonly resume: (
+    id: ID,
+  ) => Effect.Effect<Info, NotFoundError | InvalidStateError | ActiveLimitError | InvalidInputError>
   readonly delete: (id: ID) => Effect.Effect<boolean, InvalidStateError>
   readonly runNow: (input: {
     readonly id: ID
@@ -232,6 +243,17 @@ export interface Interface {
     readonly limit?: number
     readonly leaseMs?: number
   }) => Effect.Effect<ReadonlyArray<Run>, InvalidInputError>
+  /**
+   * Earliest time `claimDue` could have work, or undefined when nothing is scheduled. A value at or before
+   * `now` means `claimDue` has work. Read-only, so an idle scheduler can ask without taking the write lock.
+   */
+  readonly nextWakeAt: (now: number) => Effect.Effect<number | undefined>
+  /**
+   * Captures the current change token and returns an effect that completes once this process changes anything
+   * `nextWakeAt` reads. Capture before calling `nextWakeAt` so a change that lands in between is not lost.
+   * Writes from another process are not signalled.
+   */
+  readonly awaitChange: () => Effect.Effect<Effect.Effect<void>>
   readonly recordRunSession: (input: {
     readonly id: RunID
     readonly owner: string
@@ -271,6 +293,26 @@ const layer = Layer.effect(
     const database = yield* Database.Service
     const db = Database.primary(database.db)
 
+    // Active file-change loops are read on every file event. Every status or trigger writer in this
+    // layer must invalidate after its commit through Effect.ensuring, so cancellation cannot skip
+    // it (claimDue included, for expiry); the TTL only covers writes from another process.
+    // The writers other than claimDue also signal the scheduler wake: its only claimDue caller
+    // reads again after every claim.
+    let fileChange: { readonly loops: ReadonlyArray<Info>; readonly expiresAt: number } | undefined
+    let generation = 0
+    const invalidate = () => {
+      generation++
+      fileChange = undefined
+    }
+
+    let changed = Deferred.makeUnsafe<void>()
+    const wake = Effect.suspend(() => {
+      const previous = changed
+      changed = Deferred.makeUnsafe<void>()
+      return Deferred.succeed(previous, undefined)
+    })
+    const stateChanged = Effect.sync(invalidate).pipe(Effect.andThen(wake))
+
     const get = Effect.fn("Loop.get")(function* (id: ID) {
       const row = yield* db.select().from(LoopTable).where(eq(LoopTable.id, id)).get().pipe(Effect.orDie)
       if (!row) return yield* new NotFoundError({ id })
@@ -308,7 +350,44 @@ const layer = Layer.effect(
         .transaction(
           (tx) =>
             Effect.gen(function* () {
-              if (status === "active" && !(yield* hasCapacity(tx, location, now))) return { type: "limit" } as const
+              const teammate =
+                input.teammateID !== undefined
+                  ? yield* tx.select().from(TeamTeammateTable).where(eq(TeamTeammateTable.id, input.teammateID)).get()
+                  : undefined
+              if (input.teammateID !== undefined && !teammate) return { type: "teammate" } as const
+              const teammateRoom = teammate
+                ? yield* tx
+                    .select({ room: TeamRoomTable })
+                    .from(TeamTeammateTable)
+                    .innerJoin(TeamRoomTable, eq(TeamRoomTable.id, TeamTeammateTable.room_id))
+                    .where(eq(TeamTeammateTable.id, teammate.id))
+                    .get()
+                    .pipe(Effect.map((row) => row?.room))
+                : undefined
+              if (teammateRoom?.archived) return { type: "room-archived" } as const
+              const factoryRoom = input.factoryRoomID
+                ? yield* tx.select().from(TeamRoomTable).where(eq(TeamRoomTable.id, input.factoryRoomID)).get()
+                : undefined
+              if (input.factoryRoomID && !factoryRoom) return { type: "factory-room" } as const
+              if (factoryRoom?.archived) return { type: "room-archived" } as const
+              const factoryConfig = factoryRoom?.factory_config
+              const coordinator = factoryConfig
+                ? yield* tx
+                    .select()
+                    .from(TeamTeammateTable)
+                    .where(
+                      and(
+                        eq(TeamTeammateTable.id, factoryConfig.coordinatorTeammateID),
+                        eq(TeamTeammateTable.room_id, factoryRoom!.id),
+                      ),
+                    )
+                    .get()
+                : undefined
+              if (input.factoryRoomID && !factoryConfig) return { type: "factory-config" } as const
+              if (input.factoryRoomID && !coordinator) return { type: "factory-coordinator" } as const
+              const dutyOwner = coordinator ?? teammate
+              const dutyStatus = dutyOwner?.status === "paused" ? "paused" : status
+              if (dutyStatus === "active" && !(yield* hasCapacity(tx, location, now))) return { type: "limit" } as const
               const created = yield* tx
                 .insert(LoopTable)
                 .values({
@@ -321,7 +400,8 @@ const layer = Layer.effect(
                   model: input.model,
                   skill: input.skill,
                   workflow: input.workflow,
-                  status,
+                  factory_room_id: input.factoryRoomID,
+                  status: dutyStatus,
                   schedule_type: schedule.kind === "event" ? "interval" : schedule.scheduleType,
                   interval_seconds:
                     schedule.kind === "event"
@@ -343,19 +423,32 @@ const layer = Layer.effect(
                     : {}),
                   overlap_policy: "skip",
                   starts_at: startsAt,
-                  next_run_at: status === "active" ? initialNext : null,
+                  next_run_at: dutyStatus === "active" ? initialNext : null,
                   expires_at: expiresAt,
                   time_created: now,
                   time_updated: now,
                 })
                 .returning()
                 .get()
+              if (dutyOwner && created)
+                yield* tx
+                  .insert(TeamDutyTable)
+                  .values({ loop_id: created.id, teammate_id: dutyOwner.id, time_created: now })
+                  .run()
               return { type: "created", row: created } as const
             }),
           { behavior: "immediate" },
         )
-        .pipe(Effect.orDie)
+        .pipe(Effect.orDie, Effect.ensuring(stateChanged))
       if (row.type === "limit") return yield* new ActiveLimitError({ limit: MAX_ACTIVE })
+      if (row.type === "teammate") return yield* new InvalidInputError({ message: "Teammate not found" })
+      if (row.type === "factory-room") return yield* new InvalidInputError({ message: "Factory room not found" })
+      if (row.type === "room-archived")
+        return yield* new InvalidInputError({ message: "Archived team rooms are read-only" })
+      if (row.type === "factory-config")
+        return yield* new InvalidInputError({ message: "Factory room is not configured" })
+      if (row.type === "factory-coordinator")
+        return yield* new InvalidInputError({ message: "Factory coordinator not found" })
       return toInfo(row.row!)
     })
 
@@ -369,6 +462,22 @@ const layer = Layer.effect(
       return rows.map(toInfo)
     })
 
+    const listFileChange = Effect.fn("Loop.listFileChange")(function* () {
+      const now = yield* Clock.currentTimeMillis
+      if (fileChange && fileChange.expiresAt > now) return fileChange.loops
+      const started = generation
+      const rows = yield* db
+        .select()
+        .from(LoopTable)
+        .where(and(eq(LoopTable.status, "active"), eq(LoopTable.trigger_type, "file-change")))
+        .orderBy(desc(LoopTable.time_created), desc(LoopTable.id))
+        .all()
+        .pipe(Effect.orDie)
+      const loops = rows.map(toInfo)
+      if (started === generation) fileChange = { loops, expiresAt: now + FILE_CHANGE_CACHE_TTL_MS }
+      return loops
+    })
+
     const edit = Effect.fn("Loop.edit")(function* (input: EditInput) {
       const schedule = validateScheduleEdit(input)
       if (schedule instanceof InvalidInputError) return yield* schedule
@@ -377,22 +486,42 @@ const layer = Layer.effect(
       const invalidWorkflow = input.workflow ? validateWorkflow(input.workflow) : undefined
       if (invalidWorkflow) return yield* invalidWorkflow
       const now = Date.now()
-      const nextForSchedule =
-        schedule.kind === "none"
-          ? undefined
-          : schedule.kind === "event"
-            ? null
-            : schedule.scheduleType === "interval"
-              ? now + schedule.seconds * 1_000
-              : computeCronNext(schedule.expression, schedule.timezone, now)
-      if (nextForSchedule instanceof InvalidInputError) return yield* nextForSchedule
       const result = yield* db
         .transaction(
           (tx) =>
             Effect.gen(function* () {
               const current = yield* tx.select().from(LoopTable).where(eq(LoopTable.id, input.id)).get()
               if (!current) return { type: "not-found" } as const
+              const linkedRoom = current.factory_room_id
+                ? yield* tx.select().from(TeamRoomTable).where(eq(TeamRoomTable.id, current.factory_room_id)).get()
+                : yield* tx
+                    .select({ room: TeamRoomTable })
+                    .from(TeamDutyTable)
+                    .innerJoin(TeamTeammateTable, eq(TeamTeammateTable.id, TeamDutyTable.teammate_id))
+                    .innerJoin(TeamRoomTable, eq(TeamRoomTable.id, TeamTeammateTable.room_id))
+                    .where(eq(TeamDutyTable.loop_id, current.id))
+                    .get()
+                    .pipe(Effect.map((row) => row?.room))
+              if (linkedRoom?.archived) return { type: "archived" } as const
               if (current.expires_at <= now) return { type: "state" } as const
+              const nextForSchedule =
+                schedule.kind === "none"
+                  ? undefined
+                  : schedule.kind === "event"
+                    ? null
+                    : schedule.scheduleType === "interval"
+                      ? Math.max(current.starts_at, now + schedule.seconds * 1_000)
+                      : computeCronNext(schedule.expression, schedule.timezone, Math.max(now, current.starts_at - 1))
+              const next =
+                current.status === "active" &&
+                schedule.kind === "none" &&
+                input.timezone !== undefined &&
+                input.timezone !== current.timezone &&
+                current.schedule_type === "cron" &&
+                current.cron_expression
+                  ? computeCronNext(current.cron_expression, input.timezone, Math.max(now, current.starts_at - 1))
+                  : nextForSchedule
+              if (next instanceof InvalidInputError) return { type: "invalid", message: next.message } as const
               const nextSkill = input.resetSkill ? undefined : (input.skill ?? current.skill ?? undefined)
               if (!(input.prompt ?? current.prompt).trim() && !nextSkill && !(input.workflow ?? current.workflow))
                 return { type: "task" } as const
@@ -438,8 +567,7 @@ const layer = Layer.effect(
                   skill: input.resetSkill ? null : input.skill,
                   workflow: input.workflow,
                   expires_at: input.expiresAt,
-                  next_run_at:
-                    current.status === "active" && schedule.kind !== "none" ? nextForSchedule : undefined,
+                  next_run_at: current.status === "active" ? next : undefined,
                   time_updated: now,
                 })
                 .where(eq(LoopTable.id, input.id))
@@ -449,9 +577,12 @@ const layer = Layer.effect(
             }),
           { behavior: "immediate" },
         )
-        .pipe(Effect.orDie)
+        .pipe(Effect.orDie, Effect.ensuring(stateChanged))
       if (result.type === "not-found") return yield* new NotFoundError({ id: input.id })
+      if (result.type === "archived")
+        return yield* new InvalidStateError({ id: input.id, message: "Linked team room is archived" })
       if (result.type === "state") return yield* new InvalidStateError({ id: input.id, message: "Loop has expired" })
+      if (result.type === "invalid") return yield* new InvalidInputError({ message: result.message })
       if (result.type === "task")
         return yield* new InvalidInputError({ message: "A custom prompt or skill is required" })
       if (result.type === "expiry") return yield* new InvalidInputError({ message: "Expiry must be in the future" })
@@ -463,13 +594,35 @@ const layer = Layer.effect(
     const pause = Effect.fn("Loop.pause")(function* (id: ID) {
       const current = yield* get(id)
       if (current.status !== "active") return yield* new InvalidStateError({ id, message: "Loop is not active" })
+      const now = Date.now()
       const row = yield* db
-        .update(LoopTable)
-        .set({ status: "paused", next_run_at: null, time_updated: Date.now() })
-        .where(and(eq(LoopTable.id, id), eq(LoopTable.status, "active")))
-        .returning()
-        .get()
-        .pipe(Effect.orDie)
+        .transaction((tx) =>
+          Effect.gen(function* () {
+            const paused = yield* tx
+              .update(LoopTable)
+              .set({ status: "paused", next_run_at: null, time_updated: now })
+              .where(and(eq(LoopTable.id, id), eq(LoopTable.status, "active")))
+              .returning()
+              .get()
+            // A paused automation stops entirely: in-flight runs are cancelled so
+            // the owning scheduler interrupts their Sessions rather than letting
+            // them drain turns for hours after the Loop was switched off.
+            if (paused)
+              yield* tx
+                .update(LoopRunTable)
+                .set({
+                  status: "cancelled",
+                  lease_owner: null,
+                  lease_expires_at: null,
+                  time_updated: now,
+                  time_completed: now,
+                })
+                .where(and(eq(LoopRunTable.loop_id, id), inArray(LoopRunTable.status, ["claimed", "running"])))
+                .run()
+            return paused
+          }),
+        )
+        .pipe(Effect.orDie, Effect.ensuring(stateChanged))
       if (!row) return yield* new InvalidStateError({ id, message: "Loop changed concurrently" })
       return toInfo(row)
     })
@@ -482,6 +635,17 @@ const layer = Layer.effect(
             Effect.gen(function* () {
               const current = yield* tx.select().from(LoopTable).where(eq(LoopTable.id, id)).get()
               if (!current) return { type: "not-found" } as const
+              const linkedRoom = current.factory_room_id
+                ? yield* tx.select().from(TeamRoomTable).where(eq(TeamRoomTable.id, current.factory_room_id)).get()
+                : yield* tx
+                    .select({ room: TeamRoomTable })
+                    .from(TeamDutyTable)
+                    .innerJoin(TeamTeammateTable, eq(TeamTeammateTable.id, TeamDutyTable.teammate_id))
+                    .innerJoin(TeamRoomTable, eq(TeamRoomTable.id, TeamTeammateTable.room_id))
+                    .where(eq(TeamDutyTable.loop_id, current.id))
+                    .get()
+                    .pipe(Effect.map((row) => row?.room))
+              if (linkedRoom?.archived) return { type: "archived" } as const
               if (current.status !== "paused") return { type: "state", message: "Loop is not paused" } as const
               if (current.expires_at <= now) return { type: "state", message: "Loop has expired" } as const
               if (
@@ -492,12 +656,19 @@ const layer = Layer.effect(
                 ))
               )
                 return { type: "limit" } as const
-              if (current.trigger_type === "file-change" || current.trigger_type === "session-end")
-                return { type: "event", row: current } as const
+              if (current.trigger_type === "file-change" || current.trigger_type === "session-end") {
+                const row = yield* tx
+                  .update(LoopTable)
+                  .set({ status: "active", next_run_at: null, time_updated: now })
+                  .where(eq(LoopTable.id, id))
+                  .returning()
+                  .get()
+                return { type: "resumed", row } as const
+              }
               const next =
                 current.schedule_type === "cron" && current.cron_expression
-                  ? computeCronNext(current.cron_expression, current.timezone, now)
-                  : now + current.interval_seconds * 1_000
+                  ? computeCronNext(current.cron_expression, current.timezone, Math.max(now, current.starts_at - 1))
+                  : Math.max(current.starts_at, now + current.interval_seconds * 1_000)
               if (next instanceof InvalidInputError) return { type: "invalid", message: next.message } as const
               const row = yield* tx
                 .update(LoopTable)
@@ -509,21 +680,12 @@ const layer = Layer.effect(
             }),
           { behavior: "immediate" },
         )
-        .pipe(Effect.orDie)
-      if (result.type === "event") {
-        const activated = yield* db
-          .update(LoopTable)
-          .set({ status: "active", next_run_at: null, time_updated: now })
-          .where(eq(LoopTable.id, id))
-          .returning()
-          .get()
-          .pipe(Effect.orDie)
-        if (!activated) return yield* new InvalidStateError({ id, message: "Loop changed concurrently" })
-        return toInfo(activated)
-      }
+        .pipe(Effect.orDie, Effect.ensuring(stateChanged))
       if (result.type === "invalid")
         return yield* new InvalidInputError({ message: result.message })
       if (result.type === "not-found") return yield* new NotFoundError({ id })
+      if (result.type === "archived")
+        return yield* new InvalidStateError({ id, message: "Linked team room is archived" })
       if (result.type === "state") return yield* new InvalidStateError({ id, message: result.message })
       if (result.type === "limit") return yield* new ActiveLimitError({ limit: MAX_ACTIVE })
       return toInfo(result.row!)
@@ -541,7 +703,7 @@ const layer = Layer.effect(
             }),
           { behavior: "immediate" },
         )
-        .pipe(Effect.orDie)
+        .pipe(Effect.orDie, Effect.ensuring(stateChanged))
       if (result.active)
         return yield* new InvalidStateError({ id, message: "Cancel the active run before deleting this Loop" })
       return result.removed
@@ -561,6 +723,17 @@ const layer = Layer.effect(
             Effect.gen(function* () {
               const loop = yield* tx.select().from(LoopTable).where(eq(LoopTable.id, input.id)).get()
               if (!loop) return { type: "not-found" } as const
+              const linkedRoom = loop.factory_room_id
+                ? yield* tx.select().from(TeamRoomTable).where(eq(TeamRoomTable.id, loop.factory_room_id)).get()
+                : yield* tx
+                    .select({ room: TeamRoomTable })
+                    .from(TeamDutyTable)
+                    .innerJoin(TeamTeammateTable, eq(TeamTeammateTable.id, TeamDutyTable.teammate_id))
+                    .innerJoin(TeamRoomTable, eq(TeamRoomTable.id, TeamTeammateTable.room_id))
+                    .where(eq(TeamDutyTable.loop_id, loop.id))
+                    .get()
+                    .pipe(Effect.map((row) => row?.room))
+              if (linkedRoom?.archived) return { type: "archived" } as const
               if (loop.expires_at <= now) return { type: "expired" } as const
               const active = yield* activeRun(tx, input.id, now)
               const latest = yield* tx
@@ -590,9 +763,11 @@ const layer = Layer.effect(
             }),
           { behavior: "immediate" },
         )
-        .pipe(Effect.orDie)
+        .pipe(Effect.orDie, Effect.ensuring(wake))
       if (result.type === "not-found") return yield* new NotFoundError({ id: input.id })
       if (result.type === "expired") return yield* new InvalidStateError({ id: input.id, message: "Loop has expired" })
+      if (result.type === "archived")
+        return yield* new InvalidStateError({ id: input.id, message: "Linked team room is archived" })
       return toRun(result.row)
     })
 
@@ -616,6 +791,18 @@ const layer = Layer.effect(
               if (!loop) return { type: "not-found" } as const
               if (loop.expires_at <= now) return { type: "expired" } as const
               if (loop.status !== "active") return { type: "inactive" } as const
+              const linkedRoom = loop.factory_room_id
+                ? yield* tx.select().from(TeamRoomTable).where(eq(TeamRoomTable.id, loop.factory_room_id)).get()
+                : yield* tx
+                    .select({ room: TeamRoomTable })
+                    .from(TeamDutyTable)
+                    .innerJoin(TeamTeammateTable, eq(TeamTeammateTable.id, TeamDutyTable.teammate_id))
+                    .innerJoin(TeamRoomTable, eq(TeamRoomTable.id, TeamTeammateTable.room_id))
+                    .where(eq(TeamDutyTable.loop_id, loop.id))
+                    .get()
+                    .pipe(Effect.map((row) => row?.room))
+              if (linkedRoom?.archived) return { type: "archived" } as const
+              if (loop.starts_at > now) return { type: "not-started" } as const
               if ((loop.trigger_type ?? "scheduled") !== input.trigger) return { type: "mismatch" } as const
               if (input.trigger === "session-end" && !matchesSessionEndFilter(loop.trigger_config, input.payload))
                 return { type: "filtered" } as const
@@ -648,10 +835,14 @@ const layer = Layer.effect(
             }),
           { behavior: "immediate" },
         )
-        .pipe(Effect.orDie)
+        .pipe(Effect.orDie, Effect.ensuring(wake))
       if (result.type === "not-found") return yield* new NotFoundError({ id: input.id })
       if (result.type === "expired" || result.type === "inactive")
         return yield* new InvalidStateError({ id: input.id, message: "Loop is not active" })
+      if (result.type === "archived")
+        return yield* new InvalidStateError({ id: input.id, message: "Linked team room is archived" })
+      if (result.type === "not-started")
+        return yield* new InvalidStateError({ id: input.id, message: "Loop has not started" })
       if (result.type === "mismatch")
         return yield* new InvalidInputError({ message: `Loop does not listen for ${input.trigger} events` })
       if (result.type === "filtered")
@@ -691,25 +882,26 @@ const layer = Layer.effect(
                 .where(and(eq(LoopTable.status, "active"), lte(LoopTable.expires_at, now)))
                 .run()
               const recoverable = yield* tx
-                .select({ id: LoopRunTable.id })
+                .select({ id: LoopRunTable.id, loopID: LoopRunTable.loop_id })
                 .from(LoopRunTable)
                 .where(and(eq(LoopRunTable.status, "claimed"), lte(LoopRunTable.lease_expires_at, now)))
                 .orderBy(asc(LoopRunTable.time_created), asc(LoopRunTable.id))
-                .limit(limit)
                 .all()
-              const recovered = recoverable.length
-                ? yield* tx
-                    .update(LoopRunTable)
-                    .set({ lease_owner: input.owner, lease_expires_at: now + leaseMs, time_updated: now })
-                    .where(
-                      inArray(
-                        LoopRunTable.id,
-                        recoverable.map((row) => row.id),
-                      ),
-                    )
-                    .returning()
-                    .all()
-                : []
+              const recovered: (typeof LoopRunTable.$inferSelect)[] = []
+              for (const candidate of recoverable) {
+                if (recovered.length >= limit) break
+                // Renew serially inside the admission transaction: an earlier
+                // recovery or a fresh claim can already own this Loop. Keep
+                // blocked work and its checkpoint intact for a later scan.
+                if (yield* activeRun(tx, candidate.loopID, now)) continue
+                const row = yield* tx
+                  .update(LoopRunTable)
+                  .set({ lease_owner: input.owner, lease_expires_at: now + leaseMs, time_updated: now })
+                  .where(eq(LoopRunTable.id, candidate.id))
+                  .returning()
+                  .get()
+                if (row) recovered.push(row)
+              }
               const pendingManual = yield* tx
                 .select({ id: LoopRunTable.id })
                 .from(LoopRunTable)
@@ -789,7 +981,8 @@ const layer = Layer.effect(
             }),
           { behavior: "immediate" },
         )
-        .pipe(Effect.orDie)
+        .pipe(Effect.orDie, Effect.ensuring(Effect.sync(invalidate)))
+      // The bulk expiry update and the per-loop update can both expire loops without reporting a count.
       return rows.filter((row): row is NonNullable<typeof row> => row !== undefined).map(toRun)
     })
 
@@ -806,7 +999,7 @@ const layer = Layer.effect(
         .where(and(eq(LoopRunTable.id, input.id), inArray(LoopRunTable.status, ["claimed", "running"])))
         .returning()
         .get()
-        .pipe(Effect.orDie)
+        .pipe(Effect.orDie, Effect.ensuring(wake))
       if (!row) return yield* new InvalidStateError({ id: input.id, message: "Run changed concurrently" })
       return toRun(row)
     })
@@ -819,7 +1012,7 @@ const layer = Layer.effect(
         .where(and(eq(LoopRunTable.session_id, sessionID), inArray(LoopRunTable.status, ["claimed", "running"])))
         .returning({ id: LoopRunTable.id })
         .all()
-        .pipe(Effect.orDie)
+        .pipe(Effect.orDie, Effect.ensuring(wake))
       return rows.length > 0
     })
 
@@ -875,22 +1068,71 @@ const layer = Layer.effect(
     }) {
       const now = Date.now()
       const row = yield* db
-        .update(LoopRunTable)
-        .set({ status: "running", time_started: now, time_updated: now })
-        .where(
-          and(
-            eq(LoopRunTable.id, input.id),
-            eq(LoopRunTable.status, "claimed"),
-            eq(LoopRunTable.session_id, input.sessionID),
-            eq(LoopRunTable.lease_owner, input.owner),
-            gt(LoopRunTable.lease_expires_at, now),
-            input.currentStep === undefined ? undefined : eq(LoopRunTable.current_step, input.currentStep),
-          ),
+        .transaction(
+          (tx) =>
+            Effect.gen(function* () {
+              const current = yield* tx
+                .select()
+                .from(LoopRunTable)
+                .where(
+                  and(
+                    eq(LoopRunTable.id, input.id),
+                    eq(LoopRunTable.status, "claimed"),
+                    eq(LoopRunTable.session_id, input.sessionID),
+                    eq(LoopRunTable.lease_owner, input.owner),
+                    gt(LoopRunTable.lease_expires_at, now),
+                    input.currentStep === undefined ? undefined : eq(LoopRunTable.current_step, input.currentStep),
+                  ),
+                )
+                .get()
+              if (!current) return
+              // Completed step boundaries remain claimed, but the workflow has already started.
+              if (current.time_started === null) {
+                const duty =
+                  (yield* tx
+                    .select({ teammateID: TeamDutyRunTable.teammate_id })
+                    .from(TeamDutyRunTable)
+                    .where(eq(TeamDutyRunTable.run_id, input.id))
+                    .get()) ??
+                  (yield* tx
+                    .select({ teammateID: TeamDutyTable.teammate_id })
+                    .from(TeamDutyTable)
+                    .where(eq(TeamDutyTable.loop_id, current.loop_id))
+                    .get())
+                const teammate = duty
+                  ? yield* tx
+                      .select({ status: TeamTeammateTable.status })
+                      .from(TeamTeammateTable)
+                      .where(eq(TeamTeammateTable.id, duty.teammateID))
+                      .get()
+                  : undefined
+                if (teammate?.status === "paused")
+                  return yield* tx
+                    .update(LoopRunTable)
+                    .set({
+                      status: "cancelled",
+                      lease_owner: null,
+                      lease_expires_at: null,
+                      time_updated: now,
+                      time_completed: now,
+                    })
+                    .where(eq(LoopRunTable.id, input.id))
+                    .returning()
+                    .get()
+              }
+              return yield* tx
+                .update(LoopRunTable)
+                .set({ status: "running", time_started: now, time_updated: now })
+                .where(eq(LoopRunTable.id, input.id))
+                .returning()
+                .get()
+            }),
+          { behavior: "immediate" },
         )
-        .returning()
-        .get()
         .pipe(Effect.orDie)
-      if (row) return toRun(row)
+      if (row?.status === "running") return toRun(row)
+      if (row?.status === "cancelled")
+        return yield* new InvalidStateError({ id: input.id, message: "Teammate is paused" })
       yield* getRun(input.id)
       return yield* new InvalidStateError({ id: input.id, message: "Run is not claimable by this owner" })
     })
@@ -986,15 +1228,75 @@ const layer = Layer.effect(
         )
         .returning()
         .get()
-        .pipe(Effect.orDie)
+        .pipe(Effect.orDie, Effect.ensuring(wake))
       if (row) return toRun(row)
       yield* getRun(input.id)
       return yield* new InvalidStateError({ id: input.id, message: "Run is not finishable by this owner" })
     })
 
+    // Mirrors the predicates in claimDue: an active loop's next_run_at (due) and expires_at (expired), a
+    // running or claimed run's lease (stale or recoverable), and a claimed manual run (picked up at once).
+    const nextWakeAt = Effect.fn("Loop.nextWakeAt")(function* (now: number) {
+      const loops = yield* db
+        .select({ next: min(LoopTable.next_run_at), expires: min(LoopTable.expires_at) })
+        .from(LoopTable)
+        .where(eq(LoopTable.status, "active"))
+        .get()
+        .pipe(Effect.orDie)
+      const active = alias(LoopRunTable, "active_run")
+      const lease = yield* db
+        .select({ at: min(LoopRunTable.lease_expires_at) })
+        .from(LoopRunTable)
+        .where(
+          and(
+            inArray(LoopRunTable.status, ["running", "claimed"]),
+            // A blocked expired claim cannot be recovered until its sibling
+            // releases ownership. That sibling's lease still supplies a wake.
+            or(
+              eq(LoopRunTable.status, "running"),
+              gt(LoopRunTable.lease_expires_at, now),
+              notExists(
+                db
+                  .select({ id: active.id })
+                  .from(active)
+                  .where(
+                    and(
+                      eq(active.loop_id, LoopRunTable.loop_id),
+                      inArray(active.status, ["claimed", "running"]),
+                      or(isNull(active.lease_expires_at), gt(active.lease_expires_at, now)),
+                    ),
+                  ),
+              ),
+            ),
+          ),
+        )
+        .get()
+        .pipe(Effect.orDie)
+      const manual = yield* db
+        .select({ id: LoopRunTable.id })
+        .from(LoopRunTable)
+        .where(
+          and(
+            eq(LoopRunTable.status, "claimed"),
+            eq(LoopRunTable.lease_owner, "manual"),
+            gt(LoopRunTable.lease_expires_at, now),
+          ),
+        )
+        .limit(1)
+        .get()
+        .pipe(Effect.orDie)
+      const times = [loops?.next, loops?.expires, lease?.at, manual ? now : undefined].filter(
+        (time): time is number => time !== null && time !== undefined,
+      )
+      return times.length ? Math.min(...times) : undefined
+    })
+
+    const awaitChange = () => Effect.sync(() => Deferred.await(changed))
+
     return Service.of({
       create,
       list,
+      listFileChange,
       get,
       edit,
       pause,
@@ -1007,6 +1309,8 @@ const layer = Layer.effect(
       listRuns,
       getRun: findRun,
       claimDue,
+      nextWakeAt,
+      awaitChange,
       recordRunSession,
       startRun,
       completeRunStep,
@@ -1024,7 +1328,12 @@ function validateInterval(seconds: number | undefined) {
 }
 
 type ValidatedSchedule =
-  | { readonly kind: "scheduled"; readonly scheduleType: "interval"; readonly seconds: number; readonly timezone: string }
+  | {
+      readonly kind: "scheduled"
+      readonly scheduleType: "interval"
+      readonly seconds: number
+      readonly timezone: string
+    }
   | {
       readonly kind: "scheduled"
       readonly scheduleType: "cron"
@@ -1066,9 +1375,7 @@ function validateScheduleInput(input: CreateInput): ValidatedSchedule | InvalidI
   return { kind: "scheduled", scheduleType: "interval", seconds: input.intervalSeconds as number, timezone }
 }
 
-type ValidatedEditSchedule =
-  | ValidatedSchedule
-  | { readonly kind: "none" }
+type ValidatedEditSchedule = ValidatedSchedule | { readonly kind: "none" }
 
 function validateScheduleEdit(input: EditInput): ValidatedEditSchedule | InvalidInputError {
   const hasInterval = input.intervalSeconds !== undefined
@@ -1182,10 +1489,7 @@ function validateGlobPattern(pattern: string) {
   return
 }
 
-function matchesSessionEndFilter(
-  config: unknown,
-  payload: Readonly<Record<string, unknown>> | undefined,
-): boolean {
+function matchesSessionEndFilter(config: unknown, payload: Readonly<Record<string, unknown>> | undefined): boolean {
   if (config === null || config === undefined) return true
   const parsed = config as SessionEndConfig
   if (parsed.type !== undefined && parsed.type !== "session-end") return true
@@ -1205,7 +1509,11 @@ function matchesSessionEndFilter(
 export function evaluateWhen(
   when: string | undefined,
   context: {
-    readonly trigger: { readonly type: Trigger; readonly scheduledAt: number; readonly payload: Readonly<Record<string, unknown>> }
+    readonly trigger: {
+      readonly type: Trigger
+      readonly scheduledAt: number
+      readonly payload: Readonly<Record<string, unknown>>
+    }
     readonly steps: StepOutputs
   },
 ) {
@@ -1230,7 +1538,12 @@ function splitGlob(value: string) {
   return value.split("/").filter((segment) => segment.length > 0)
 }
 
-function matchGlobSegments(pattern: ReadonlyArray<string>, path: ReadonlyArray<string>, pi: number, si: number): boolean {
+function matchGlobSegments(
+  pattern: ReadonlyArray<string>,
+  path: ReadonlyArray<string>,
+  pi: number,
+  si: number,
+): boolean {
   if (pi >= pattern.length) return si >= path.length
   if (pattern[pi] === "**") {
     if (pi + 1 >= pattern.length) return true
@@ -1341,7 +1654,10 @@ export function parseCronExpression(expression: string): ParsedCron | InvalidInp
     dayOfWeek.values.has(7) && !dayOfWeek.values.has(0)
       ? { values: new Set([...dayOfWeek.values].map((value) => (value === 7 ? 0 : value))), restricted: true }
       : dayOfWeek.values.has(7)
-        ? { values: new Set([...dayOfWeek.values].map((value) => (value === 7 ? 0 : value))), restricted: dayOfWeek.restricted }
+        ? {
+            values: new Set([...dayOfWeek.values].map((value) => (value === 7 ? 0 : value))),
+            restricted: dayOfWeek.restricted,
+          }
         : dayOfWeek
   return { minute, hour, dayOfMonth, month, dayOfWeek: normalizedDow }
 }
@@ -1452,11 +1768,7 @@ function nextCronOccurrence(parsed: ParsedCron, timezone: string, afterExclusive
   return new InvalidInputError({ message: "Cron schedule has no occurrence within the next thirteen months" })
 }
 
-function wallClockAfter(
-  formatter: Intl.DateTimeFormat,
-  timezone: string,
-  afterExclusiveMs: number,
-) {
+function wallClockAfter(formatter: Intl.DateTimeFormat, timezone: string, afterExclusiveMs: number) {
   const offset = tzOffsetMs(formatter, timezone, afterExclusiveMs)
   const wallNow = afterExclusiveMs + offset
   return Math.floor(wallNow / 60_000) * 60_000 + 60_000
@@ -1496,7 +1808,13 @@ function wallParts(wallClockUtc: number) {
 
 function matchesCronParts(
   parsed: ParsedCron,
-  parts: { readonly minute: number; readonly hour: number; readonly day: number; readonly month: number; readonly weekday: number },
+  parts: {
+    readonly minute: number
+    readonly hour: number
+    readonly day: number
+    readonly month: number
+    readonly weekday: number
+  },
 ) {
   if (!parsed.minute.values.has(parts.minute)) return false
   if (!parsed.hour.values.has(parts.hour)) return false
@@ -1595,6 +1913,7 @@ function runValues(
     execution_model: loop.model,
     execution_skill: loop.skill,
     execution_workflow: loop.workflow,
+    execution_factory_room_id: loop.factory_room_id,
     time_created: now,
     time_updated: now,
     time_completed: status === "skipped" ? now : undefined,
@@ -1616,6 +1935,7 @@ function toInfo(row: typeof LoopTable.$inferSelect): Info {
     ...(row.model ? { model: row.model } : {}),
     ...(row.skill ? { skill: row.skill } : {}),
     ...(row.workflow ? { workflow: row.workflow } : {}),
+    ...(row.factory_room_id ? { factoryRoomID: row.factory_room_id } : {}),
     status: row.status,
     schedule,
     ...(eventTrigger ? { eventTrigger } : {}),
@@ -1654,6 +1974,7 @@ function toRun(row: typeof LoopRunTable.$inferSelect): Run {
             ...(row.execution_model ? { model: row.execution_model } : {}),
             ...(row.execution_skill ? { skill: row.execution_skill } : {}),
             ...(row.execution_workflow ? { workflow: row.execution_workflow } : {}),
+            ...(row.execution_factory_room_id ? { factoryRoomID: row.execution_factory_room_id } : {}),
           },
         }
       : {}),
@@ -1702,12 +2023,7 @@ function validateWorkflow(workflow: Workflow) {
   }
 }
 
-function validateBinding(
-  binding: ReadonlyArray<string>,
-  workflow: Workflow,
-  index: number,
-  stepID: string,
-) {
+function validateBinding(binding: ReadonlyArray<string>, workflow: Workflow, index: number, stepID: string) {
   if (binding[0] === "trigger") {
     const direct = binding.length === 2 && (binding[1] === "type" || binding[1] === "scheduledAt")
     const payload =

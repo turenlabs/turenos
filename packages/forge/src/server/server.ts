@@ -1,14 +1,14 @@
 import "./init-projectors"
 
-import { NodeHttpServer } from "@effect/platform-node"
+import { BunHttpServer } from "@effect/platform-bun"
 import { AppNodeBuilder } from "@turenlabs/core/effect/app-node-builder"
 import { memoMap as sharedMemoMap } from "@turenlabs/core/effect/memo-map"
 import { Cause, ConfigProvider, Context, Effect, Exit, Layer, Scope } from "effect"
 import { MCP } from "@/mcp"
 import { HttpRouter, HttpServer } from "effect/unstable/http"
 import { OpenApi } from "effect/unstable/httpapi"
-import { createServer } from "node:http"
 import { performance } from "node:perf_hooks"
+import { chmod } from "node:fs/promises"
 import { MDNS } from "./mdns"
 import { HttpApiApp } from "./routes/instance/httpapi/server"
 import { disposeMiddleware } from "./routes/instance/httpapi/lifecycle"
@@ -17,10 +17,16 @@ import { PublicApi } from "./routes/instance/httpapi/public"
 import type { CorsOptions } from "@turenlabs/server/cors"
 import { startScheduler } from "@turenlabs/server/intel/scheduler"
 import { lazy } from "@/util/lazy"
+import { Heap } from "@/cli/heap"
 import { Flag } from "@turenlabs/core/flag/flag"
 import { isLoopbackHostname } from "./shared/local-request"
 import { ServerAuth } from "./auth"
 import { SecretVault } from "@turenlabs/core/secret-vault"
+import { ServerOwnership } from "./ownership"
+import { ServerDescriptor } from "./descriptor"
+import { ServerOwner } from "@turenlabs/core/database/server-owner"
+import { Database } from "@turenlabs/core/database/database"
+import type { Source } from "@/cli/secret-vault-key"
 import { SecurityProxyStore } from "@turenlabs/core/security-proxy"
 import { SecurityProxyRuntime } from "@turenlabs/core/security-proxy-runtime"
 import type { SecurityProxy } from "@turenlabs/schema/security-proxy"
@@ -29,6 +35,7 @@ import type { SecurityProxy } from "@turenlabs/schema/security-proxy"
 globalThis.AI_SDK_LOG_WARNINGS = false
 
 export type Listener = {
+  socketPath?: string
   hostname: string
   port: number
   url: URL
@@ -42,6 +49,7 @@ type ServerApp = {
 }
 
 type ListenOptions = CorsOptions & {
+  socketPath?: string
   port: number
   hostname: string
   /** Basic auth password. Defaults to FORGE_SERVER_PASSWORD, which listen moves from process.env into Flag. */
@@ -56,25 +64,20 @@ type ListenOptions = CorsOptions & {
     keyID: string
     key: Uint8Array
   }
+  keySource?: Source
   securityProxy?: (command: SecurityProxy.Command) => Promise<SecurityProxy.Result>
 }
 type ListenerState = {
   scope: Scope.Scope
   memoMap: Layer.MemoMap
   server: Context.Service.Shape<typeof HttpServer.HttpServer>
-  http: ListenerServer
   websockets: WebSocketTracker.Interface
   securityProxy: SecurityProxyStore.Interface
+  database: Database.Interface
 }
 type EffectListener = Omit<Listener, "stop"> & {
   stop: (close?: boolean) => Effect.Effect<void>
 }
-
-interface ListenerServer {
-  readonly closeAll: Effect.Effect<void>
-}
-
-class ListenerServerService extends Context.Service<ListenerServerService, ListenerServer>()("@forge/ListenerServer") {}
 
 export const Default = lazy(() => {
   const handler = HttpApiApp.webHandler().handler
@@ -98,22 +101,41 @@ export async function listen(opts: ListenOptions): Promise<Listener> {
   const password = ServerAuth.claimPassword(opts.password)
   const username = opts.username ?? process.env.FORGE_SERVER_USERNAME ?? Flag.FORGE_SERVER_USERNAME
   Flag.FORGE_SERVER_USERNAME = username
+  // The desktop sidecar reaches listen() without passing the CLI middleware that
+  // starts the heap watchdog, so it has to start here.
+  Heap.start({ announce: true })
   // Binding a non-loopback interface exposes every privileged API on the LAN, so a
   // password is mandatory there unless the caller explicitly opts into insecure mode.
-  if (!password && !opts.insecure && !isLoopbackHostname(opts.hostname)) {
+  if (!opts.socketPath && !password && !opts.insecure && !isLoopbackHostname(opts.hostname)) {
     throw new Error(
       `Refusing to listen on ${opts.hostname} without FORGE_SERVER_PASSWORD. ` +
         "Set FORGE_SERVER_PASSWORD, bind a loopback hostname, or pass --insecure to override.",
     )
   }
-  if (opts.credentialVault) SecretVault.configure(opts.credentialVault)
-  const listener = await Effect.runPromise(listenEffect({ ...opts, password, username }))
-  return {
-    hostname: listener.hostname,
-    port: listener.port,
-    url: listener.url,
-    stop: (close?: boolean) => runListenerStop(listener.stop(close)),
-    securityProxy: listener.securityProxy,
+  const releaseOwner = await ServerOwnership.acquire({ ...opts, password })
+  try {
+    const facts: ServerDescriptor.ListenerFacts = {
+      keySource: opts.keySource ?? (opts.credentialVault ? "desktop" : "env"),
+      listener: "",
+    }
+    const listener = await Effect.runPromise(listenEffect({ ...opts, password, username }, facts))
+    return {
+      socketPath: listener.socketPath,
+      hostname: listener.hostname,
+      port: listener.port,
+      url: listener.url,
+      stop: async (close?: boolean) => {
+        try {
+          await runListenerStop(listener.stop(close))
+        } finally {
+          releaseOwner()
+        }
+      },
+      securityProxy: listener.securityProxy,
+    }
+  } catch (error) {
+    releaseOwner()
+    throw error
   }
 }
 
@@ -123,44 +145,69 @@ export async function runListenerStop(effect: Effect.Effect<void, unknown>) {
   throw Cause.squash(exit.cause)
 }
 
-const listenEffect: (opts: ListenOptions) => Effect.Effect<EffectListener, unknown> = Effect.fn("Server.listen")(
-  function* (opts: ListenOptions) {
-    const state = yield* startWithPortFallback(opts)
-    // Intel feeds have no layer node, so the listener owns the 6h poll tick
-    // (stopped with the listener scope). Skipped under the test runner so
-    // server tests stay hermetic: no real feed traffic, no shared-state writes.
-    const intelScheduler = process.env.NODE_ENV === "test" ? undefined : startScheduler()
-    if (intelScheduler) {
-      yield* Scope.addFinalizer(
-        state.scope,
-        Effect.sync(() => intelScheduler.stop()),
-      )
-    }
-    const address = yield* tcpAddress(state)
-    const listenerUrl = makeURL(opts.hostname, address.port)
-    const unpublishMdns = yield* setupMdns(opts, address.port, state.scope)
-    url = listenerUrl
+const listenEffect = Effect.fn("Server.listen")(function* (opts: ListenOptions, facts: ServerDescriptor.ListenerFacts) {
+  const state = yield* startWithPortFallback(opts, facts)
+  // Intel feeds have no layer node, so the listener owns the 6h poll tick
+  // (stopped with the listener scope). Skipped under the test runner so
+  // server tests stay hermetic: no real feed traffic, no shared-state writes.
+  const intelScheduler = process.env.NODE_ENV === "test" ? undefined : startScheduler()
+  if (intelScheduler) {
+    yield* Scope.addFinalizer(
+      state.scope,
+      Effect.sync(() => intelScheduler.stop()),
+    )
+  }
+  const port = opts.socketPath ? 0 : (yield* tcpAddress(state)).port
+  const listenerUrl = opts.socketPath ? new URL("http://localhost") : makeURL(opts.hostname, port)
+  const unpublishMdns = opts.socketPath ? Effect.void : yield* setupMdns(opts, port, state.scope)
+  url = listenerUrl
+  facts.listener = opts.socketPath ? `unix:${opts.socketPath}` : listenerUrl.toString()
+  if (ServerOwner.mode() === "persistent" && !(yield* ServerDescriptor.read(state.database, facts))) {
+    yield* Scope.close(state.scope, Exit.void).pipe(Effect.ignore)
+    if (url === listenerUrl) url = undefined
+    return yield* Effect.die(new Error("persistent server started without an owner record"))
+  }
 
-    return {
-      hostname: opts.hostname,
-      port: address.port,
-      url: listenerUrl,
-      stop: yield* makeStop(state, unpublishMdns, listenerUrl),
-      securityProxy: (command: SecurityProxy.StoreCommand) => Effect.runPromise(state.securityProxy.execute(command)),
-    }
-  },
-)
+  return {
+    hostname: opts.hostname,
+    socketPath: opts.socketPath,
+    port,
+    url: listenerUrl,
+    stop: yield* makeStop(state, unpublishMdns, listenerUrl),
+    securityProxy: (command: SecurityProxy.StoreCommand) => Effect.runPromise(state.securityProxy.execute(command)),
+  }
+})
 
-function listenerLayer(opts: ListenOptions, port: number) {
+function listenerLayer(opts: ListenOptions, port: number, facts: ServerDescriptor.ListenerFacts) {
   const secretVault = opts.credentialVault ? SecretVault.layer(opts.credentialVault) : SecretVault.runtime
-    return HttpRouter.serve(HttpApiApp.createRoutes(opts, undefined, secretVault, opts.securityProxy ? { execute: (command) => Effect.tryPromise({ try: () => opts.securityProxy!(command), catch: (error) => new SecurityProxyRuntime.Error(error instanceof Error ? error.message : String(error)) }) } : undefined), {
-    middleware: disposeMiddleware,
-    disableLogger: true,
-    disableListenLog: true,
-  }).pipe(
+  return HttpRouter.serve(
+    HttpApiApp.createRoutes(
+      opts,
+      undefined,
+      secretVault,
+      opts.securityProxy
+        ? {
+            execute: (command) =>
+              Effect.tryPromise({
+                try: () => opts.securityProxy!(command),
+                catch: (error) =>
+                  new SecurityProxyRuntime.Error(error instanceof Error ? error.message : String(error)),
+              }),
+          }
+        : undefined,
+      facts,
+      { password: opts.password, username: opts.username },
+    ),
+    {
+      middleware: disposeMiddleware,
+      disableLogger: true,
+      disableListenLog: true,
+    },
+  ).pipe(
     Layer.provideMerge(AppNodeBuilder.build(WebSocketTracker.node)),
+    Layer.provideMerge(AppNodeBuilder.build(Database.node)),
     Layer.provideMerge(AppNodeBuilder.build(SecurityProxyStore.node, [[SecretVault.node, secretVault]])),
-    Layer.provideMerge(serverLayer({ port, hostname: opts.hostname })),
+    Layer.provideMerge(serverLayer({ port, hostname: opts.hostname, socketPath: opts.socketPath })),
     // Install a fresh `ConfigProvider` per listener so `Config.string(...)`
     // reads reflect the current `process.env`. Effect's default
     // `ConfigProvider` snapshots `process.env` on first read and caches the
@@ -182,11 +229,24 @@ function listenerEnv(opts: ListenOptions) {
   }
 }
 
-function startWithPortFallback(opts: ListenOptions) {
-  if (opts.port !== 0) return startListener(opts, opts.port)
+function startWithPortFallback(opts: ListenOptions, facts: ServerDescriptor.ListenerFacts) {
+  if (opts.socketPath) return startListener(opts, 0, facts)
+  if (opts.port !== 0) return startListener(opts, opts.port, facts)
   // Match the legacy listener port-resolution behavior: explicit `0` prefers
   // 4096 first, then any free port.
-  return startListener(opts, 4096).pipe(Effect.catch(() => startListener(opts, 0)))
+  return startListener(opts, 4096, facts).pipe(
+    Effect.catchCause((cause) => {
+      if (Cause.hasFails(cause) && !Cause.hasDies(cause) && !Cause.hasInterrupts(cause)) {
+        return startListener(opts, 0, facts)
+      }
+      const reason = cause.reasons.length === 1 ? cause.reasons[0] : undefined
+      const defect = reason && Cause.isDieReason(reason) ? reason.defect : undefined
+      if (defect instanceof Error && "code" in defect && defect.code === "EADDRINUSE") {
+        return startListener(opts, 0, facts)
+      }
+      return Effect.failCause(cause)
+    }),
+  )
 }
 
 /**
@@ -216,12 +276,13 @@ function startWithPortFallback(opts: ListenOptions) {
  * expensive for MCP, which spawns a child process per configured server, so
  * `checkSingleMcp` reports it rather than letting it double silently.
  */
-function startListener(opts: ListenOptions, port: number) {
+function startListener(opts: ListenOptions, port: number, facts: ServerDescriptor.ListenerFacts) {
   const scope = Scope.makeUnsafe()
   const memoMap = Layer.makeMemoMapUnsafe()
   const startedAt = performance.now()
-  return Layer.buildWithMemoMap(listenerLayer(opts, port), memoMap, scope).pipe(
+  return Layer.buildWithMemoMap(listenerLayer(opts, port, facts), memoMap, scope).pipe(
     Effect.provide(HttpApiApp.context),
+    Effect.tap(() => (opts.socketPath ? Effect.tryPromise(() => chmod(opts.socketPath!, 0o660)) : Effect.void)),
     Effect.tap(() => startupTrace("listener-layer-ready", startedAt)),
     Effect.tap(() => checkSingleMcp(memoMap)),
     Effect.onError(() => Scope.close(scope, Exit.void).pipe(Effect.ignore)),
@@ -230,9 +291,9 @@ function startListener(opts: ListenOptions, port: number) {
         scope,
         memoMap,
         server: Context.get(ctx, HttpServer.HttpServer),
-        http: Context.get(ctx, ListenerServerService),
         websockets: Context.get(ctx, WebSocketTracker.Service),
         securityProxy: Context.get(ctx, SecurityProxyStore.Service),
+        database: Context.get(ctx, Database.Service),
       }),
     ),
   )
@@ -345,7 +406,7 @@ function makeStop(state: ListenerState, unpublishMdns: Effect.Effect<void>, list
 }
 
 function forceClose(state: ListenerState) {
-  return Effect.all([state.http.closeAll, state.websockets.closeAll], { concurrency: "unbounded", discard: true })
+  return state.websockets.closeAll
 }
 
 function startupTrace(stage: string, startedAt: number) {
@@ -353,31 +414,9 @@ function startupTrace(stage: string, startedAt: number) {
   return Effect.logInfo("server startup stage", { stage, elapsedMs: performance.now() - startedAt })
 }
 
-function serverLayer(opts: { port: number; hostname: string }) {
-  const server = createServer()
-  const serverRef = { closeStarted: false, forceStop: false }
-  const close = server.close.bind(server)
-  // Keep shutdown owned by NodeHttpServer, but honor listener.stop(true) by
-  // force-closing active HTTP sockets when its finalizer calls server.close().
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- Node's overloads don't preserve a monkey-patched method assignment.
-  server.close = ((callback?: Parameters<typeof server.close>[0]) => {
-    serverRef.closeStarted = true
-    const result = close(callback)
-    if (serverRef.forceStop) server.closeAllConnections()
-    return result
-  }) as typeof server.close
-
-  return Layer.mergeAll(
-    NodeHttpServer.layer(() => server, { port: opts.port, host: opts.hostname, gracefulShutdownTimeout: "1 second" }),
-    Layer.succeed(ListenerServerService)(
-      ListenerServerService.of({
-        closeAll: Effect.sync(() => {
-          serverRef.forceStop = true
-          if (serverRef.closeStarted) server.closeAllConnections()
-        }),
-      }),
-    ),
-  )
+function serverLayer(opts: { port: number; hostname: string; socketPath?: string }) {
+  if (opts.socketPath) return BunHttpServer.layer({ unix: opts.socketPath, gracefulShutdownTimeout: "1 second" })
+  return BunHttpServer.layer({ port: opts.port, hostname: opts.hostname, gracefulShutdownTimeout: "1 second" })
 }
 
 export * as Server from "./server"

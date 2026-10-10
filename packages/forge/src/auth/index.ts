@@ -7,6 +7,9 @@ import { NonNegativeInt } from "@turenlabs/core/schema"
 import { Global } from "@turenlabs/core/global"
 import { FSUtil } from "@turenlabs/core/fs-util"
 import { SecretVault } from "@turenlabs/core/secret-vault"
+import { Database } from "@turenlabs/core/database/database"
+import { ServerOwner } from "@turenlabs/core/database/server-owner"
+import { VaultVerification } from "@turenlabs/core/database/vault-verification"
 
 export const OAUTH_DUMMY_KEY = "opencode-oauth-dummy-key"
 
@@ -63,6 +66,15 @@ const layer = Layer.effect(
     const fsys = yield* FSUtil.Service
     const storage = yield* Storage.Service
     const vault = yield* SecretVault.Service
+    const database = yield* Database.Service
+    const db = Database.primary(database.db)
+    yield* ServerOwner.validate(db, { ...ServerOwner.environmentContext(), keyID: vault.keyID })
+    // `forge serve` already scanned every sealed store while opening the database; its sentinel then
+    // proves this vault holds the same key bytes without decrypting everything a second time.
+    const verified =
+      database.verifiedKeyID === vault.keyID &&
+      (yield* VaultVerification.sentinelValid(db, database.databaseUUID, vault))
+    if (!verified) yield* VaultVerification.verify(db, database.databaseUUID, vault)
     yield* claimVault(storage, vault)
 
     const legacy = { pending: yield* importLegacy(storage, fsys, vault) }
@@ -117,7 +129,7 @@ const layer = Layer.effect(
 export const node = LayerNode.make({
   service: Service,
   layer: layer,
-  deps: [FSUtil.node, Storage.node, SecretVault.node],
+  deps: [Database.node, FSUtil.node, Storage.node, SecretVault.node],
 })
 
 type AuthData = Record<string, Info>

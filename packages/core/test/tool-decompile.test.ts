@@ -1,5 +1,6 @@
 import { describe, expect } from "bun:test"
 import fs from "node:fs/promises"
+import { Worker } from "node:worker_threads"
 import { Effect, Fiber, Layer, Option } from "effect"
 import { AppNodeBuilder } from "@turenlabs/core/effect/app-node-builder"
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
@@ -29,6 +30,22 @@ const permission = Layer.succeed(
   }),
 )
 const it = testEffect(Layer.empty)
+
+const add = {
+  bytes: Uint8Array.from(Buffer.from("554889e5897dfc8975f88b45fc0345f85dc3", "hex")),
+  architecture: "x86_64",
+  endianness: "little",
+  baseAddress: 0x1000,
+  address: 0x1000,
+} satisfies DecompilerRuntime.Input
+
+// Worker thread IDs are process-wide and increase by one per thread, so the difference between two
+// probes counts the threads started in between, including the probe itself.
+function nextThreadID() {
+  const probe = new Worker("", { eval: true })
+  void probe.terminate()
+  return probe.threadId
+}
 
 describe("DecompileTool", () => {
   it.live("decompiles x86-64 bytes through the bundled WebAssembly runtime", () =>
@@ -136,5 +153,35 @@ describe("DecompileTool", () => {
       yield* Fiber.interrupt(running)
       expect(yield* Fiber.join(queued)).toContain("return param_1 + param_2")
     }).pipe(Effect.provide(AppNodeBuilder.build(DecompilerRuntime.node))),
+  )
+
+  it.live("starts a fresh worker after a failed request", () =>
+    Effect.gen(function* () {
+      const decompiler = yield* DecompilerRuntime.Service
+      const before = nextThreadID()
+      // The worker cannot encode a request without an address, so it reports a failure.
+      const failure = yield* decompiler.decompile(Object.assign({}, add, { address: undefined })).pipe(Effect.flip)
+      expect(failure).toBeInstanceOf(Error)
+      expect(yield* decompiler.decompile(add)).toContain("return param_1 + param_2")
+      // Two probes plus the replacement worker; a worker another test starts meanwhile only adds to it.
+      expect(nextThreadID() - before).toBeGreaterThanOrEqual(3)
+    }).pipe(Effect.provide(AppNodeBuilder.build(DecompilerRuntime.node))),
+  )
+
+  // Relies on the checked-in module growing its heap on every call; revisit once that leak is fixed.
+  it.live(
+    "starts a fresh worker once the wasm heap passes its limit",
+    () =>
+      Effect.gen(function* () {
+        const decompiler = yield* DecompilerRuntime.Service
+        const before = nextThreadID()
+        for (let request = 1; request <= 40; request++) {
+          expect(yield* decompiler.decompile(add)).toContain("return param_1 + param_2")
+          // One thread per probe plus the first worker; anything more is a replacement worker.
+          if (nextThreadID() - before > request + 1) return
+        }
+        expect.unreachable("the decompiler worker was never replaced")
+      }).pipe(Effect.provide(AppNodeBuilder.build(DecompilerRuntime.node))),
+    30_000,
   )
 })

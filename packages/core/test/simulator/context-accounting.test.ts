@@ -212,5 +212,8 @@ describe("context accounting end to end", () => {
         )
       })
     }),
+    // Twelve 44KB results total about 130k tokens. The window is sized so that stays under the 40% target
+    // (200k), which is what this scenario is about: crossing it would compact, not hold an epoch steady.
+    { modelContextLimit: { context: 500_000 } },
   )
 })

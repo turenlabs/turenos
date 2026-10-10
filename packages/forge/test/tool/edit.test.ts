@@ -272,6 +272,18 @@ describe("tool.edit", () => {
       }),
     )
 
+    it.instance("replaceAll writes `$` substitution patterns in newString literally", () =>
+      Effect.gen(function* () {
+        const test = yield* TestInstance
+        const filepath = path.join(test.directory, "Makefile")
+        yield* put(filepath, "echo PID\necho PID\n")
+
+        yield* run({ filePath: filepath, oldString: "echo PID", newString: "echo $$ and $&", replaceAll: true })
+
+        expect(yield* load(filepath)).toBe("echo $$ and $&\necho $$ and $&\n")
+      }),
+    )
+
     it.instance("emits change event for existing files", () =>
       Effect.gen(function* () {
         const test = yield* TestInstance

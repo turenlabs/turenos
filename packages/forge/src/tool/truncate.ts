@@ -1,5 +1,4 @@
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
-import { NodePath } from "@effect/platform-node"
 import { Cause, Duration, Effect, Layer, Option, Schedule, Context } from "effect"
 import path from "path"
 import type { Agent } from "../agent/agent"
@@ -9,6 +8,8 @@ import { Config } from "@/config/config"
 import { Identifier } from "../id/id"
 import { ToolID } from "./schema"
 import { TRUNCATION_DIR } from "./truncation-dir"
+import { ToolOutput } from "./secret-output"
+import { SecretOutput } from "@turenlabs/core/secret-output"
 
 const RETENTION = Duration.days(7)
 
@@ -33,6 +34,8 @@ function hasTaskTool(agent?: Agent.Info) {
 export interface Interface {
   readonly cleanup: () => Effect.Effect<void>
   readonly write: (text: string) => Effect.Effect<string>
+  /** A protector for output appended to a saved file as it streams; one snapshot per stream. */
+  readonly stream: () => Effect.Effect<ToolOutput.Stream>
   /**
    * Returns output unchanged when it fits within the limits, otherwise writes the full text
    * to the truncation directory and returns a preview plus a hint to inspect the saved file.
@@ -50,6 +53,7 @@ const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
     const fs = yield* FSUtil.Service
+    const secretOutput = yield* SecretOutput.Service
 
     const cleanup = Effect.fn("Truncate.cleanup")(function* () {
       const cutoff = Identifier.timestamp(
@@ -65,11 +69,20 @@ const layer = Layer.effect(
       }
     })
 
-    const write = Effect.fn("Truncate.write")(function* (text: string) {
+    // Callers pass text that is already protected.
+    const persist = Effect.fnUntraced(function* (text: string) {
       const file = path.join(TRUNCATION_DIR, ToolID.ascending())
       yield* fs.ensureDir(TRUNCATION_DIR).pipe(Effect.orDie)
       yield* fs.writeFileString(file, text).pipe(Effect.orDie)
       return file
+    })
+
+    const write = Effect.fn("Truncate.write")(function* (text: string) {
+      return yield* persist(ToolOutput.text(text, yield* ToolOutput.snapshot(secretOutput.snapshot())))
+    })
+
+    const stream = Effect.fn("Truncate.stream")(function* () {
+      return ToolOutput.stream(yield* ToolOutput.snapshot(secretOutput.snapshot()))
     })
 
     const limits = Effect.fn("Truncate.limits")(function* () {
@@ -83,6 +96,7 @@ const layer = Layer.effect(
     })
 
     const output = Effect.fn("Truncate.output")(function* (text: string, options: Options = {}, agent?: Agent.Info) {
+      text = ToolOutput.text(text, yield* ToolOutput.snapshot(secretOutput.snapshot()))
       const resolved = yield* limits()
       const maxLines = options.maxLines ?? resolved.maxLines
       const maxBytes = options.maxBytes ?? resolved.maxBytes
@@ -124,7 +138,7 @@ const layer = Layer.effect(
       const removed = hitBytes ? totalBytes - bytes : lines.length - out.length
       const unit = hitBytes ? "bytes" : "lines"
       const preview = out.join("\n")
-      const file = yield* write(text)
+      const file = yield* persist(text)
 
       const hint = hasTaskTool(agent)
         ? `The tool call succeeded but the output was truncated. Full output saved to: ${file}\nUse the Task tool to have explore agent process this file with Grep and Read (with offset/limit). Do NOT read the full file yourself - delegate to save context.`
@@ -147,10 +161,10 @@ const layer = Layer.effect(
       Effect.forkScoped,
     )
 
-    return Service.of({ cleanup, write, output, limits })
+    return Service.of({ cleanup, write, stream, output, limits })
   }),
 )
 
-export const node = LayerNode.make({ service: Service, layer: layer, deps: [FSUtil.node] })
+export const node = LayerNode.make({ service: Service, layer: layer, deps: [FSUtil.node, SecretOutput.node] })
 
 export * as Truncate from "./truncate"

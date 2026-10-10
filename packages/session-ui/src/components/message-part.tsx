@@ -84,6 +84,8 @@ import { binarySnapshot } from "./binary-snapshot"
 import { BinaryViewer } from "./binary-viewer"
 import { writeClipboard } from "./clipboard"
 
+import { InlineVisualizationTool } from "./inline-visualization-tool"
+
 export { groupParts, sameGroups, type PartGroup, type PartRef } from "./message-part-group"
 
 export { partDefaultOpen } from "./part-default-open"
@@ -1847,6 +1849,21 @@ PART_MAPPING["reasoning"] = function ReasoningPartDisplay(props) {
     </Show>
   )
 }
+
+ToolRegistry.register({
+  name: "visualize",
+  render: InlineVisualizationTool,
+})
+
+ToolRegistry.register({
+  name: "safehtml",
+  render: InlineVisualizationTool,
+})
+
+ToolRegistry.register({
+  name: "animate",
+  render: InlineVisualizationTool,
+})
 
 for (const name of ["hexview", "disassemble"]) {
   ToolRegistry.register({

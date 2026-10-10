@@ -1,4 +1,4 @@
-import { For, Show } from "solid-js"
+import { For, Show, type JSX } from "solid-js"
 import { Icon } from "@turenlabs/ui/icon"
 import type { Todo } from "@turenlabs/sdk/v2"
 import type { SessionLiveView } from "@/session-live-view"
@@ -22,6 +22,7 @@ export function SessionLiveDock(props: {
   onViewChange: (view: SessionLiveView) => void
   agents?: () => { active: number; failed?: number }
   todos?: () => Todo[]
+  children?: JSX.Element
 }) {
   const count = (value: SessionLiveView) => {
     if (value === "subagents") {
@@ -67,6 +68,7 @@ export function SessionLiveDock(props: {
           </button>
         )}
       </For>
+      {props.children}
     </nav>
   )
 }

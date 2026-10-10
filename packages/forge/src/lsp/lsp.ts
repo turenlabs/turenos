@@ -94,6 +94,18 @@ const kinds = [
   SymbolKind.Enum,
 ]
 
+const firstWorkspaceSymbols = (result: ReadonlyArray<Symbol>) => {
+  const selected: Symbol[] = []
+  for (const symbol of result) {
+    if (!kinds.includes(symbol.kind)) continue
+    selected.push(symbol)
+    if (selected.length === 10) break
+  }
+  return selected
+}
+
+export const __test = { firstWorkspaceSymbols }
+
 const filterExperimentalServers = (servers: Record<string, LSPServer.Info>, flags: RuntimeFlags.Info) => {
   if (flags.experimentalLspTy) {
     if (servers["pyright"]) {
@@ -488,7 +500,7 @@ const layer = Layer.effect(
       const results = yield* runAll((client) =>
         client.connection
           .sendRequest<Symbol[]>("workspace/symbol", { query })
-          .then((result) => result.filter((x) => kinds.includes(x.kind)).slice(0, 10))
+          .then(firstWorkspaceSymbols)
           .catch(() => [] as Symbol[]),
       )
       return results.flat()

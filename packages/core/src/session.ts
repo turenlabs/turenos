@@ -45,6 +45,7 @@ import { KeyedMutex } from "./effect/keyed-mutex"
 import { SessionCommand } from "./session/command"
 import { SessionCompaction } from "./session/compaction"
 import { SessionShell } from "./session/shell"
+import { ShellJob } from "./shell-job"
 import { LoopRunTable } from "./loop/sql"
 import { QuestionV2 } from "./question"
 import { SessionCreation } from "./session/creation"
@@ -393,6 +394,7 @@ const layer = Layer.effect(
     const goals = yield* SessionGoal.Service
     const adoption = yield* SessionTranscriptAdoption.Service
     const shellRegistry = yield* SessionShell.Registry
+    const shellJobs = yield* ShellJob.Service
     const operations = yield* SessionOperation.Service
     const goalAdmissions = KeyedMutex.makeUnsafe<"admission">()
     const commandAdmissions = KeyedMutex.makeUnsafe<SessionMessage.ID>()
@@ -721,13 +723,24 @@ const layer = Layer.effect(
       return SessionRecovery.Scheduled.make({ status: "scheduled" })
     })
 
+    // Interrupting a drain detaches a tool's still-running job, so jobs are cancelled before and
+    // after it; notices admitted before the interrupt are then dropped. Only a running drain gets
+    // here, which keeps an idle interrupt a no-op.
+    const interruptRunning = (sessionID: SessionSchema.ID, interrupt: Effect.Effect<void>) =>
+      Effect.gen(function* () {
+        yield* shellJobs.cancelSession(sessionID)
+        yield* interrupt
+        yield* shellJobs.cancelSession(sessionID)
+        yield* SessionInput.cancelPendingBySource(primary, sessionID, "shell_job")
+      })
+
     const interruptSessions = (sessions: ReadonlyArray<SessionSchema.ID>) =>
       Effect.gen(function* () {
         const active = yield* execution.active
         yield* Effect.forEach(
           sessions.filter((sessionID) => active.has(sessionID)),
           (childSessionID) =>
-            execution.interrupt(childSessionID).pipe(
+            interruptRunning(childSessionID, execution.interrupt(childSessionID)).pipe(
               Effect.timeoutOrElse({
                 duration: "5 seconds",
                 orElse: () => Effect.fail(new InterruptionTimeoutError({ sessionID: childSessionID })),
@@ -759,7 +772,7 @@ const layer = Layer.effect(
               yield* restore(shell.interrupt(sessionID))
             }
             const active = yield* execution.active
-            if (active.has(sessionID)) yield* restore(execution.interrupt(sessionID))
+            if (active.has(sessionID)) yield* restore(interruptRunning(sessionID, execution.interrupt(sessionID)))
             // A spawn already inside its uninterruptible admission may have been waiting for the
             // first task-cancellation lease. Once the parent fiber has stopped, sweep once more so
             // that child cannot escape the root cascade.
@@ -1443,6 +1456,7 @@ export const node = makeGlobalNode({
     SessionStore.node,
     SessionGoal.node,
     SessionShell.registryNode,
+    ShellJob.node,
     SessionTranscriptAdoption.node,
     LocationServiceMap.node,
     SessionProjector.node,

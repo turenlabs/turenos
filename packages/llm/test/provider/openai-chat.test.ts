@@ -239,6 +239,31 @@ describe("OpenAI Chat route", () => {
     }),
   )
 
+  it.effect("sends prompt_cache_key only when the model opts in and the request carries one", () =>
+    Effect.gen(function* () {
+      const options = { openai: { promptCacheKey: "session-key" } }
+      const prepare = (compatibility: Model.Input["compatibility"], providerOptions: typeof options | undefined) =>
+        LLMClient.prepare<OpenAIChat.OpenAIChatBody>(
+          LLM.request({
+            model: Model.update(model, { compatibility }),
+            prompt: "cache",
+            providerOptions,
+          }),
+        )
+
+      expect((yield* prepare({ promptCacheKey: true }, options)).body.prompt_cache_key).toBe("session-key")
+      // Not opted in: an OpenAI-compatible server that does not know the field may reject the request.
+      expect(yield* prepare(undefined, options)).toSatisfy((prepared) => !("prompt_cache_key" in prepared.body))
+      expect(yield* prepare({ promptCacheKey: false }, options)).toSatisfy(
+        (prepared) => !("prompt_cache_key" in prepared.body),
+      )
+      // Opted in but nothing to send.
+      expect(yield* prepare({ promptCacheKey: true }, undefined)).toSatisfy(
+        (prepared) => !("prompt_cache_key" in prepared.body),
+      )
+    }),
+  )
+
   it.effect("adds native query params to the Chat Completions URL", () =>
     LLMClient.generate(
       LLM.updateRequest(request, {

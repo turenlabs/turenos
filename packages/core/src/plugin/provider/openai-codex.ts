@@ -8,6 +8,7 @@ export const ACCOUNT_HEADER = "ChatGPT-Account-Id"
 const allowedModels = new Set([
   "gpt-6-astra",
   "gpt-6-sol",
+  "gpt-6.1-sol",
   "gpt-6-luna",
   "gpt-5.6",
   "gpt-5.6-sol",
@@ -73,6 +74,38 @@ export const authorizationHeaders = (access: string, accountID?: string) => ({
   authorization: `Bearer ${access}`,
   ...(accountID ? { [ACCOUNT_HEADER]: accountID } : {}),
 })
+
+/** Same value the OAuth flow and the v1 plugin already send. */
+export const ORIGINATOR = "opencode"
+
+/** `LLMRequest.metadata` key carrying the ordinal of the Session's current context window. */
+export const CONTEXT_WINDOW_METADATA_KEY = "forge.contextWindow"
+
+/**
+ * Headers the ChatGPT backend uses to keep one conversation on one cache. The Codex CLI treats
+ * `session-id` as the cache affinity key and sends the same value as `prompt_cache_key`, so both come
+ * from the request's prompt cache key. Requests without one (title generation, compaction) carry no
+ * affinity headers and behave as before.
+ *
+ * Deliberately not sent: `x-codex-installation-id` (a stable per-install identifier), turn metadata,
+ * routing hints and the subagent marker (analytics and attribution, not cache affinity).
+ * `x-codex-turn-state` is the other affinity header; it is learned from a response header and is
+ * not implemented here yet.
+ */
+export const affinityHeaders = (request: { readonly providerOptions?: unknown; readonly metadata?: unknown }) => {
+  const openai = isRecord(request.providerOptions) ? request.providerOptions.openai : undefined
+  const sessionID = isRecord(openai) ? openai.promptCacheKey : undefined
+  if (typeof sessionID !== "string" || sessionID.length === 0) return {}
+  const window = isRecord(request.metadata) ? request.metadata[CONTEXT_WINDOW_METADATA_KEY] : undefined
+  return {
+    originator: ORIGINATOR,
+    "session-id": sessionID,
+    "thread-id": sessionID,
+    "x-client-request-id": sessionID,
+    // The window ordinal advances at each compaction, as in the Codex CLI.
+    "x-codex-window-id": `${sessionID}:${typeof window === "number" ? window : 0}`,
+  }
+}
 
 export const projectRequest = (input: {
   readonly request: Parameters<typeof fetch>[0]

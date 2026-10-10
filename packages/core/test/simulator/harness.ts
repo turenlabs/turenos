@@ -82,6 +82,7 @@ import { SessionGoal } from "@turenlabs/core/session/goal"
 import type { SessionInput } from "@turenlabs/core/session/input"
 import { SessionEvent } from "@turenlabs/core/session/event"
 import { SessionMessage } from "@turenlabs/core/session/message"
+import { SessionOperation } from "@turenlabs/core/session/operation"
 import { Prompt } from "@turenlabs/core/session/prompt"
 import { SessionProjector } from "@turenlabs/core/session/projector"
 import * as SessionRunnerLLM from "@turenlabs/core/session/runner/llm"
@@ -99,6 +100,7 @@ import { GoalTool } from "@turenlabs/core/tool/goal"
 import { QuestionTool } from "@turenlabs/core/tool/question"
 import { ToolRegistry } from "@turenlabs/core/tool/registry"
 import { SubagentTool } from "@turenlabs/core/tool/subagent"
+import { TeamBoardTool } from "@turenlabs/core/tool/team-board"
 import { Tool } from "@turenlabs/core/tool/tool"
 import { and, eq, isNull } from "drizzle-orm"
 import { DateTime, Deferred, Duration, Effect, Layer, LayerMap, Schema, Scope, Stream } from "effect"
@@ -530,6 +532,7 @@ const it = testEffect(
       GoalTool.node,
       QuestionTool.node,
       SubagentTool.node,
+      TeamBoardTool.node,
       SessionRunnerModel.node,
       SystemContextRegistry.node,
       SkillGuidance.node,
@@ -538,6 +541,7 @@ const it = testEffect(
       Snapshot.node,
       SessionRunnerLLM.node,
       SessionExecution.node,
+      SessionOperation.node,
       SessionV2.node,
     ]),
     [

@@ -2,7 +2,7 @@ export * as FileSystemSearch from "./search"
 
 import { makeLocationNode } from "../effect/app-node"
 import path from "path"
-import { Context, Effect, Layer, Scope } from "effect"
+import { Context, Effect, Fiber, Layer, Scope } from "effect"
 import { Fff } from "#fff"
 import fuzzysort from "fuzzysort"
 import { FileSystem } from "../filesystem"
@@ -123,36 +123,54 @@ export const ripgrepLayer = Layer.effect(
   }),
 )
 
+const SCAN_WAIT_MS = 10_000
+
 export const fffLayer = Layer.effect(
   Service,
   Effect.gen(function* () {
     const location = yield* Location.Service
-    const result = yield* Effect.try({
-      try: () =>
-        Fff.create({
-          basePath: location.directory,
-          aiMode: true,
-          disableMmapCache: true,
-          disableContentIndexing: true,
-        }),
-      catch: (cause) => cause,
-    }).pipe(
-      Effect.catch((error) => Effect.logWarning("failed to initialize fff", { error }).pipe(Effect.as(undefined))),
+    // A finder scans and watches the whole tree on native threads, which costs tens of MB per
+    // directory and over 100 MB for a large repo. Every open directory builds Location services,
+    // most are never searched, so the finder is created on the first search instead.
+    const created: { picker?: Fff.Picker } = {}
+    yield* Effect.addFinalizer(() => Effect.sync(() => created.picker?.destroy()).pipe(Effect.ignore))
+    const scope = yield* Scope.Scope
+    // The build runs in its own fiber in the Location scope, started by the first search. Stopping a
+    // turn interrupts the search that triggered it; a build run inside that search would hand
+    // `Effect.cached` an interruption as the result of every later search in the Location.
+    const started = yield* Effect.cached(
+      Effect.gen(function* () {
+        const result = yield* Effect.try({
+          try: () =>
+            Fff.create({
+              basePath: location.directory,
+              aiMode: true,
+              disableMmapCache: true,
+              disableContentIndexing: true,
+            }),
+          catch: (cause) => cause,
+        }).pipe(
+          Effect.catch((error) => Effect.logWarning("failed to initialize fff", { error }).pipe(Effect.as(undefined))),
+        )
+        if (!result?.ok) {
+          if (result) yield* Effect.logWarning("failed to initialize fff", { error: result.error })
+          return undefined
+        }
+        created.picker = result.value
+        // Searches return nothing until the first scan finishes (about half a second for a
+        // 150k-file repo), and an empty grep or glob reads as "no matches" to an agent.
+        yield* Effect.promise(() => result.value.waitForScan(SCAN_WAIT_MS))
+        return result.value
+      }).pipe(Effect.forkIn(scope), Effect.uninterruptible),
     )
-    if (!result?.ok) {
-      if (result) yield* Effect.logWarning("failed to initialize fff", { error: result.error })
-      return Service.of({
-        find: () => Effect.succeed([]),
-        glob: () => Effect.succeed([]),
-        grep: () => Effect.succeed([]),
-      })
-    }
-    yield* Effect.addFinalizer(() => Effect.sync(() => result.value.destroy()).pipe(Effect.ignore))
+    const picker = started.pipe(Effect.flatMap((fiber) => Fiber.join(fiber)))
+    const withPicker = <A>(empty: A, run: (picker: Fff.Picker) => A) =>
+      picker.pipe(Effect.flatMap((value) => (value ? Effect.sync(() => run(value)) : Effect.succeed(empty))))
     return Service.of({
       glob: (input) =>
-        Effect.sync(() => {
+        withPicker([], (picker) => {
           const prefix = input.path?.replaceAll("\\", "/").replace(/\/$/, "")
-          const found = result.value.glob(prefix ? `${prefix}/${input.pattern}` : input.pattern, {
+          const found = picker.glob(prefix ? `${prefix}/${input.pattern}` : input.pattern, {
             pageIndex: 0,
             pageSize: input.limit,
           })
@@ -165,9 +183,9 @@ export const fffLayer = Layer.effect(
           )
         }),
       grep: (input) =>
-        Effect.sync(() => {
+        withPicker([], (picker) => {
           const prefix = input.path?.replaceAll("\\", "/").replace(/\/$/, "")
-          const found = result.value.grep(
+          const found = picker.grep(
             [prefix ? `${prefix}/**` : undefined, input.include, input.pattern]
               .filter((value) => value !== undefined)
               .join(" "),
@@ -193,11 +211,11 @@ export const fffLayer = Layer.effect(
           })
         }),
       find: (input) =>
-        Effect.sync(() => {
+        withPicker([], (picker) => {
           const options = { pageIndex: 0, pageSize: input.limit ?? 50 }
           const items = (() => {
             if (input.type === "file") {
-              const found = result.value.fileSearch(input.query.trim(), options)
+              const found = picker.fileSearch(input.query.trim(), options)
               if (!found.ok) throw found.error
               return found.value.items.map((item, index) => ({
                 path: item.relativePath,
@@ -206,7 +224,7 @@ export const fffLayer = Layer.effect(
               }))
             }
             if (input.type === "directory") {
-              const found = result.value.directorySearch(input.query.trim(), options)
+              const found = picker.directorySearch(input.query.trim(), options)
               if (!found.ok) throw found.error
               return found.value.items.map((item, index) => ({
                 path: item.relativePath,
@@ -214,7 +232,7 @@ export const fffLayer = Layer.effect(
                 score: found.value.scores[index]?.total ?? 0,
               }))
             }
-            const found = result.value.mixedSearch(input.query.trim(), options)
+            const found = picker.mixedSearch(input.query.trim(), options)
             if (!found.ok) throw found.error
             return found.value.items.map((item, index) => ({
               path: item.item.relativePath,
@@ -236,7 +254,14 @@ export const fffLayer = Layer.effect(
   }),
 )
 
-const layer = Layer.unwrap(Effect.sync(() => (Flag.FORGE_DISABLE_FFF || !Fff.available() ? ripgrepLayer : fffLayer)))
+// fff runs its own native watcher and git status scan, which the Forge watcher flag does not reach.
+const layer = Layer.unwrap(
+  Effect.gen(function* () {
+    // An unparsable flag value keeps the default finder instead of failing every search.
+    const watcherDisabled = yield* Flag.FORGE_EXPERIMENTAL_DISABLE_FILEWATCHER.pipe(Effect.orElseSucceed(() => false))
+    return Flag.FORGE_DISABLE_FFF || watcherDisabled || !Fff.available() ? ripgrepLayer : fffLayer
+  }),
+)
 
 export const locationLayer = layer
 

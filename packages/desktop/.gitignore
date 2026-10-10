@@ -25,6 +25,8 @@ dist-ssr
 out/
 
 resources/forge-cli*
+resources/bun
+resources/bun.exe
 resources/vigil
 resources/icons
 resources/*.metainfo.xml

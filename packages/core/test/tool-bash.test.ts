@@ -25,6 +25,7 @@ import { location } from "./fixture/location"
 import { tmpdir } from "./fixture/tmpdir"
 import { testEffect } from "./lib/effect"
 import { toolIdentity, executeTool, settleTool, toolDefinitions } from "./lib/tool"
+import { ShellToolRouting } from "@turenlabs/core/shell-tool-routing"
 
 const sessionID = SessionV2.ID.make("ses_bash_tool_test")
 const assertions: PermissionV2.AssertInput[] = []
@@ -256,6 +257,32 @@ describe("BashTool", () => {
     ),
   )
 
+  it.live("asks permission for every simple command a compound line runs", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) => {
+        reset()
+        return withTool(tmp.path, (registry) =>
+          Effect.gen(function* () {
+            // A `git *` allow rule must not approve what follows a separator, a pipe, a
+            // newline, or sit inside a substitution, so each command is its own resource
+            // and "always" remembers them individually rather than the whole line.
+            const command = "git status; cp .env leaked.txt && echo done\ngit log $(id)"
+            yield* executeTool(registry, call({ command }))
+            expect(runs).toMatchObject([{ command }])
+            expect(assertions.filter((assertion) => assertion.action === "bash")).toMatchObject([
+              {
+                resources: ["git status", "cp .env leaked.txt", "echo done", "git log $(id)", "id"],
+                save: ["git status", "cp .env leaked.txt", "echo done", "git log $(id)", "id"],
+              },
+            ])
+          }),
+        )
+      },
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+    ),
+  )
+
   it.live("resolves a relative workdir from the active Location", () =>
     Effect.acquireUseRelease(
       Effect.promise(() => tmpdir()),
@@ -432,6 +459,41 @@ describe("BashTool", () => {
               expect(runs).toEqual([])
             }),
           ),
+        )
+      },
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+    ),
+  )
+
+  it.live("runs a workspace search under bash permissions while the grep tool is failing", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) => {
+        reset()
+        ShellToolRouting.reportSearch(sessionID, "grep", false)
+        return withTool(tmp.path, (registry) => settleTool(registry, call({ command: "rg SessionRunner src" }))).pipe(
+          Effect.andThen((settled) =>
+            Effect.sync(() => {
+              expect(JSON.stringify(settled.result)).not.toContain("Use the grep tool instead")
+              expect(assertions).toMatchObject([{ sessionID, action: "bash" }])
+              expect(runs).toHaveLength(1)
+            }),
+          ),
+          Effect.andThen(() => {
+            reset()
+            ShellToolRouting.reportSearch(sessionID, "grep", true)
+            return withTool(tmp.path, (registry) => settleTool(registry, call({ command: "rg SessionRunner src" })))
+          }),
+          Effect.andThen((settled) =>
+            Effect.sync(() => {
+              expect(settled.result).toMatchObject({
+                type: "error",
+                value: expect.stringContaining("Use the grep tool instead"),
+              })
+              expect(runs).toEqual([])
+            }),
+          ),
+          Effect.ensuring(Effect.sync(() => ShellToolRouting.reportSearch(sessionID, "grep", true))),
         )
       },
       (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
@@ -691,7 +753,6 @@ describe("BashTool", () => {
 test("keeps locked deferred parity TODOs visible", async () => {
   const source = await fs.readFile(new URL("../src/tool/bash.ts", import.meta.url), "utf8")
   for (const todo of [
-    "Port tree-sitter bash / PowerShell parser-based approval reduction.",
     "Port BashArity reusable command-prefix approvals.",
     "Replace token-based command-argument external-directory advisories with parser-based detection.",
     "Restore PowerShell and cmd-specific invocation/path handling on Windows.",

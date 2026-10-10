@@ -6,10 +6,12 @@ import { LayerNode } from "@turenlabs/core/effect/layer-node"
 import { Location } from "@turenlabs/core/location"
 import { FSUtil } from "@turenlabs/core/fs-util"
 import { Global } from "@turenlabs/core/global"
+import { SessionContextManagement } from "@turenlabs/core/session/context-management"
 import { AbsolutePath } from "@turenlabs/core/schema"
 import { SystemContext } from "@turenlabs/core/system-context"
 import { SystemContextBuiltIns } from "@turenlabs/core/system-context/builtins"
 import { SystemContextRegistry } from "@turenlabs/core/system-context/registry"
+import { VisualizationGuidance } from "@turenlabs/core/tool/visualization-guidance"
 import { location } from "../fixture/location"
 import { testEffect } from "../lib/effect"
 
@@ -63,6 +65,16 @@ describe("SystemContextBuiltIns", () => {
 
       expect(initialized.baseline).toBe(
         [
+          VisualizationGuidance.SYSTEM,
+          "",
+          "Use ASD-STE100 Simplified Technical English as the writing guide for all agent-authored English prose, including progress updates, explanations, final answers, and prose written to files.",
+          "Use short sentences with one main idea. Use active voice and direct instructions. Keep procedural sentences to 20 words or fewer and descriptive sentences to 25 words or fewer.",
+          "Use simple words with one clear meaning. Use the same technical name for the same thing. Avoid idioms, figurative language, jargon, and unnecessary words.",
+          "Give each instruction as a separate step. State conditions before actions. Make the actor, action, and object clear.",
+          "Preserve code, commands, paths, identifiers, API names, exact quotations, and raw tool output. Keep necessary technical terms and explain unfamiliar terms in simple words.",
+          "For other languages or explicitly requested wording, preserve the requested language or wording and use clear, direct prose where possible.",
+          "Before sending a response or writing prose to a file, silently check it against this guidance and revise unclear or long sentences. Do not describe this check in the response.",
+          "This is STE-guided writing, not verified ASD-STE100 compliance. Do not claim compliance without a check against the standard's rules and approved vocabulary.",
           "Keep every reply as short as the task allows. Lead with the answer or outcome, remove repetition, and omit background the user does not need.",
           "Prefer short paragraphs and compact lists. Use a Markdown table instead of long prose or a long list when several items share comparable fields, but do not use a table for simple information.",
           "Put the most important information first and keep optional detail clearly secondary. Assume the user is scanning, not reading an essay.",
@@ -88,6 +100,8 @@ describe("SystemContextBuiltIns", () => {
           "Write memory only for stable information likely to matter in a later session; do not store secrets, routine progress, transient state, or facts already maintained in source-controlled documentation.",
           "Permanently forget memory only when the user explicitly requests it.",
           "",
+          SessionContextManagement.GUIDANCE,
+          "",
           "Todo workflow:",
           "- When the `todowrite` tool is available, use it for non-trivial work that has multiple concrete steps.",
           "- Create the list before substantive work, keep exactly one active item `in_progress`, and update it after meaningful progress and before the final response.",
@@ -111,6 +125,27 @@ describe("SystemContextBuiltIns", () => {
           "- The work state is durable but session-scoped. Use durable project memory separately for stable cross-session lessons.",
         ].join("\n"),
       )
+    }),
+  )
+
+  it.effect("adds visualization delivery and style guidance to an existing session once", () =>
+    Effect.gen(function* () {
+      const registry = yield* SystemContextRegistry.Service
+      const context = yield* registry.load()
+      const initialized = yield* SystemContext.initialize(context)
+      const previous = Object.fromEntries(
+        Object.entries(initialized.snapshot).filter(([key]) => key !== "core/visualization-guidance"),
+      )
+      const refreshed = yield* SystemContext.reconcile(context, previous)
+      expect(refreshed).toMatchObject({ _tag: "Updated", text: VisualizationGuidance.SYSTEM })
+      if (refreshed._tag !== "Updated") return
+      expect(refreshed.text).toContain("render the updated visualization in the current reply")
+      expect(refreshed.text).toContain("Never require the user to scroll back")
+      expect(refreshed.text).toContain("Avoid gradient backgrounds, oversized hero headings")
+      expect(refreshed.text).toContain("use visualize for HTML or data charts and animate for bounded motion")
+      expect(refreshed.text).toContain("use linear timing and faithful durations")
+      expect(refreshed.text).not.toContain("safehtml")
+      expect(yield* SystemContext.reconcile(context, refreshed.snapshot)).toEqual({ _tag: "Unchanged" })
     }),
   )
 
@@ -148,6 +183,16 @@ describe("SystemContextBuiltIns", () => {
 
       expect((yield* SystemContext.initialize(yield* context.load())).baseline).toBe(
         [
+          VisualizationGuidance.SYSTEM,
+          "",
+          "Use ASD-STE100 Simplified Technical English as the writing guide for all agent-authored English prose, including progress updates, explanations, final answers, and prose written to files.",
+          "Use short sentences with one main idea. Use active voice and direct instructions. Keep procedural sentences to 20 words or fewer and descriptive sentences to 25 words or fewer.",
+          "Use simple words with one clear meaning. Use the same technical name for the same thing. Avoid idioms, figurative language, jargon, and unnecessary words.",
+          "Give each instruction as a separate step. State conditions before actions. Make the actor, action, and object clear.",
+          "Preserve code, commands, paths, identifiers, API names, exact quotations, and raw tool output. Keep necessary technical terms and explain unfamiliar terms in simple words.",
+          "For other languages or explicitly requested wording, preserve the requested language or wording and use clear, direct prose where possible.",
+          "Before sending a response or writing prose to a file, silently check it against this guidance and revise unclear or long sentences. Do not describe this check in the response.",
+          "This is STE-guided writing, not verified ASD-STE100 compliance. Do not claim compliance without a check against the standard's rules and approved vocabulary.",
           "Keep every reply as short as the task allows. Lead with the answer or outcome, remove repetition, and omit background the user does not need.",
           "Prefer short paragraphs and compact lists. Use a Markdown table instead of long prose or a long list when several items share comparable fields, but do not use a table for simple information.",
           "Put the most important information first and keep optional detail clearly secondary. Assume the user is scanning, not reading an essay.",
@@ -172,6 +217,8 @@ describe("SystemContextBuiltIns", () => {
           "Search memory when prior decisions, constraints, preferences, or diagnosed failures may affect the task.",
           "Write memory only for stable information likely to matter in a later session; do not store secrets, routine progress, transient state, or facts already maintained in source-controlled documentation.",
           "Permanently forget memory only when the user explicitly requests it.",
+          "",
+          SessionContextManagement.GUIDANCE,
           "",
           "Todo workflow:",
           "- When the `todowrite` tool is available, use it for non-trivial work that has multiple concrete steps.",

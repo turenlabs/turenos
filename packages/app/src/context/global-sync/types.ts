@@ -6,7 +6,6 @@ import type {
   Message,
   Part,
   Path,
-  PermissionRequest,
   QuestionRequest,
   Session,
   SessionStatus,
@@ -17,6 +16,7 @@ import type {
 import { NormalizedProviderListResponse } from "@turenlabs/session-ui/context"
 import type { Accessor } from "solid-js"
 import type { SetStoreFunction, Store } from "solid-js/store"
+import type { SessionPermissionRequest } from "@/context/permission-request"
 
 export type ProjectMeta = {
   name?: string
@@ -53,7 +53,7 @@ export type State = {
     [sessionID: string]: Todo[]
   }
   permission: {
-    [sessionID: string]: PermissionRequest[]
+    [sessionID: string]: SessionPermissionRequest[]
   }
   question: {
     [sessionID: string]: QuestionRequest[]

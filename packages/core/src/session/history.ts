@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, ne, or } from "drizzle-orm"
+import { and, asc, desc, eq, gt, ne, or, sql } from "drizzle-orm"
 import { Effect, Schema } from "effect"
 import { Database } from "../database/database"
 import { MessageDecodeError } from "./error"
@@ -9,6 +9,7 @@ import { SessionContextEpochTable, SessionMessageTable } from "./sql"
 type DatabaseService = Database.Interface["db"]
 
 const decode = Schema.decodeUnknownEffect(SessionMessage.Message)
+
 
 export const latestCompaction = Effect.fnUntraced(function* (db: DatabaseService, sessionID: SessionSchema.ID) {
   const row = yield* db
@@ -57,7 +58,13 @@ const messageRows = Effect.fnUntraced(function* (
   baselineSeq?: number,
 ) {
   const rows = yield* db
-    .select()
+    .select({
+      id: SessionMessageTable.id,
+      session_id: SessionMessageTable.session_id,
+      type: SessionMessageTable.type,
+      seq: SessionMessageTable.seq,
+      data: sql<string>`${SessionMessageTable.data}`,
+    })
     .from(SessionMessageTable)
     .where(
       and(
@@ -89,8 +96,19 @@ const messageRows = Effect.fnUntraced(function* (
   return checkpoint ? [checkpoint, ...rows.filter((row) => row.id !== compaction.id)] : rows
 })
 
-const decodeMessageRow = (row: typeof SessionMessageTable.$inferSelect) =>
-  decode({ ...row.data, id: row.id, type: row.type }).pipe(
+type MessageRow = {
+  id: SessionMessage.ID
+  session_id: string
+  type: SessionMessage.Type
+  seq: number
+  data: string
+}
+
+// Not cached. A cache of decoded rows (the previous design) held the raw text and the decoded copy of the
+// newest 8,192 rows, about 330 MB of strings and 650,000 objects, to skip 10 to 45 ms of parse and decode per
+// turn on real sessions, next to a database read that it did not skip.
+const decodeMessageRow = (row: MessageRow) =>
+  decode({ ...JSON.parse(row.data), id: row.id, type: row.type }).pipe(
     Effect.mapError(
       () =>
         new MessageDecodeError({

@@ -111,6 +111,17 @@ describe("managed MCP integrations", () => {
     })
   })
 
+  test("requires write opt-in for 1Password environment changes and mounts", () => {
+    for (const tool of ["authenticate", "list_environments", "list_variables", "list_local_env_files"]) {
+      expect(McpIntegration.allowsTool("onepassword", tool)).toBe(true)
+    }
+    for (const tool of ["create_environment", "rename_environment", "append_variables", "create_local_env_file"]) {
+      expect(McpIntegration.allowsTool("onepassword", tool)).toBe(false)
+      expect(McpIntegration.allowsTool("onepassword", tool, { writeTools: "enabled" })).toBe(true)
+    }
+    expect(McpIntegration.allowsTool("onepassword", "read_secret", { writeTools: "enabled" })).toBe(false)
+  })
+
   test("leaves generic non-catalog MCP configuration untouched", async () => {
     const entry = { type: "remote" as const, url: "https://mcp.example.test", oauth: false as const }
     expect(await Effect.runPromise(McpIntegration.runtimeEntry("custom-server", entry))).toEqual(entry)
@@ -140,12 +151,17 @@ describe("managed MCP integrations", () => {
     expect(aggregate.text).toContain("test://two (image/png, 6 MB) exceeds the attachment budget")
 
     const counted = SessionTools.formatMcpResourceContent("fixture", "test://root", {
-      contents: Array.from({ length: 33 }, (_, index) => ({
-        uri: `test://${index}`,
-        mimeType: "image/png",
-        blob: "AAAA",
-      })),
+      contents: [
+        null,
+        "invalid",
+        ...Array.from({ length: 33 }, (_, index) => ({
+          uri: `test://${index}`,
+          mimeType: "image/png",
+          blob: "AAAA",
+        })),
+      ],
     })
+    expect(counted.contents).toBe(33)
     expect(counted.attachments).toHaveLength(32)
     expect(counted.text).toContain("test://32 (image/png, 3 B) exceeds the attachment budget")
   })
@@ -185,16 +201,34 @@ describe("managed MCP integrations", () => {
     expect(probes).toBe(0)
   })
 
-  test("requires a root-owned non-writable executable from a vendor installation root", () => {
+  test("requires a vendor signature on macOS and root ownership on Linux", () => {
     expect(
       McpIntegration.trustedOnePasswordExecutable({
         platform: "darwin",
         path: "/Applications/1Password.app/Contents/MacOS/1password-mcp",
-        uid: 0,
+        uid: 501,
         mode: 0o100755,
         file: true,
+        vendorSigned: true,
       }),
     ).toBe(true)
+    for (const input of [
+      { vendorSigned: false },
+      { vendorSigned: undefined },
+      { path: "/tmp/1password-mcp" },
+      { mode: 0o100777 },
+      { file: false },
+    ]) {
+      expect(McpIntegration.trustedOnePasswordExecutable({
+        platform: "darwin",
+        path: "/Applications/1Password.app/Contents/MacOS/1password-mcp",
+        uid: 501,
+        mode: 0o100755,
+        file: true,
+        vendorSigned: true,
+        ...input,
+      })).toBe(false)
+    }
     expect(
       McpIntegration.trustedOnePasswordExecutable({
         platform: "linux",
@@ -222,6 +256,10 @@ describe("managed MCP integrations", () => {
         file: true,
       }),
     ).toBe(false)
+  })
+
+  test("does not verify signatures for arbitrary executable paths", async () => {
+    expect(await McpIntegration.verifyOnePasswordSignature("/tmp/1password-mcp")).toBe(false)
   })
 
   test("adopts only an exact official preset", () => {
@@ -698,6 +736,14 @@ describe("managed MCP integrations", () => {
       expect(McpIntegration.allowsTool("datadog-security", tool, { writeTools: "enabled" })).toBe(true)
     }
     expect(McpIntegration.allowsTool("notion", "notion-update-page")).toBe(false)
+  })
+
+  test("treats GitHub secret scanning as a write tool because it uploads content", () => {
+    expect(McpIntegration.contribution("github-security").item.tools.write).toEqual(["run_secret_scanning"])
+    expect(McpIntegration.allowsTool("github-security", "list_secret_scanning_alerts")).toBe(true)
+    expect(McpIntegration.allowsTool("github-security", "run_secret_scanning")).toBe(false)
+    expect(McpIntegration.allowsTool("github-security", "run_secret_scanning", { writeTools: "enabled" })).toBe(true)
+    expect(ExtensionCatalog.writeToolActions).toContain("github-security_run_secret_scanning")
   })
 
   test("tells the agent whether write tools are available and how the user enables them", () => {

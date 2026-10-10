@@ -1,8 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test"
 import net from "node:net"
+import { lstat, realpath, symlink, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { pathToFileURL } from "node:url"
 import { Flag } from "@turenlabs/core/flag/flag"
+import { Database } from "@turenlabs/core/database/database"
+import { ServerOwner } from "@turenlabs/core/database/server-owner"
+import { SecretVault } from "@turenlabs/core/secret-vault"
 import { Effect } from "effect"
 import { Server } from "../../src/server/server"
 import { ServerAuth } from "../../src/server/auth"
@@ -172,6 +176,59 @@ async function openPtySocket(listener: Awaited<ReturnType<typeof startListener>>
 }
 
 describe("HttpApi Server.listen", () => {
+  testPty("starts an authenticated Unix socket and removes it on stop", async () => {
+    await using tmp = await tmpdir({ config: { formatter: false, lsp: false } })
+    const socketPath = path.join(await realpath(tmp.path), "listener.sock")
+    const listener = await Server.listen({
+      hostname: "127.0.0.1",
+      port: 0,
+      socketPath,
+      username: auth.username,
+      password: auth.password,
+    })
+    try {
+      expect(listener.socketPath).toBe(socketPath)
+      expect(listener.port).toBe(0)
+      expect(listener.url.toString()).toBe("http://localhost/")
+      expect((await lstat(socketPath)).isSocket()).toBe(true)
+      expect((await lstat(socketPath)).mode & 0o777).toBe(0o660)
+      expect((await fetch(new URL(GlobalPaths.health, listener.url), { unix: socketPath })).status).toBe(401)
+      expect(
+        (
+          await fetch(new URL(GlobalPaths.health, listener.url), {
+            unix: socketPath,
+            headers: { authorization: authorization() },
+          })
+        ).status,
+      ).toBe(200)
+    } finally {
+      await stop(listener, "Unix listener stop")
+    }
+    await expect(lstat(socketPath)).rejects.toMatchObject({ code: "ENOENT" })
+    const restarted = await Server.listen({ hostname: "127.0.0.1", port: 0, socketPath, password: auth.password })
+    await stop(restarted, "restarted Unix listener stop")
+  })
+
+  testPty("does not replace an existing socket target or follow a symlink parent", async () => {
+    await using tmp = await tmpdir()
+    const parent = await realpath(tmp.path)
+    const socketPath = path.join(parent, "occupied.sock")
+    await writeFile(socketPath, "keep")
+    await expect(
+      Server.listen({ hostname: "127.0.0.1", port: 0, socketPath, password: auth.password }),
+    ).rejects.toThrow("socket path already exists")
+    expect(await Bun.file(socketPath).text()).toBe("keep")
+    await symlink(parent, path.join(parent, "linked"))
+    await expect(
+      Server.listen({
+        hostname: "127.0.0.1",
+        port: 0,
+        socketPath: path.join(parent, "linked", "server.sock"),
+        password: auth.password,
+      }),
+    ).rejects.toThrow("without symlinks")
+  })
+
   test("owns private proxy storage without exposing an HTTP proxy API", async () => {
     await using tmp = await tmpdir({ config: { formatter: false, lsp: false } })
     // Separate listener scopes intentionally do not share an in-memory database.
@@ -212,6 +269,95 @@ describe("HttpApi Server.listen", () => {
     await expect(Server.runListenerStop(Effect.fail(failure))).rejects.toBe(failure)
     await expect(Server.runListenerStop(Effect.die(failure).pipe(Effect.ignore))).rejects.toBe(failure)
   })
+
+  test("uses listener-provided auth without exporting its password to the environment", async () => {
+    Flag.FORGE_SERVER_PASSWORD = undefined
+    delete process.env.FORGE_SERVER_PASSWORD
+    delete process.env.FORGE_SERVER_USERNAME
+    const listener = await Server.listen({
+      hostname: "127.0.0.1",
+      port: 0,
+      username: "operator",
+      password: "protected-file-password",
+    })
+    try {
+      expect(process.env.FORGE_SERVER_PASSWORD).toBeUndefined()
+      const endpoint = new URL(GlobalPaths.health, listener.url)
+      expect((await fetch(endpoint)).status).toBe(401)
+      expect(
+        (
+          await fetch(endpoint, {
+            headers: { authorization: `Basic ${btoa("operator:protected-file-password")}` },
+          })
+        ).status,
+      ).toBe(200)
+    } finally {
+      await stop(listener, "listener-configured auth stop")
+    }
+  })
+
+  test("keeps listener credentials and descriptors isolated when the older listener stops first", async () => {
+    await using tmp = await tmpdir({ config: { formatter: false, lsp: false } })
+    const filename = path.join(tmp.path, "listeners.db")
+    Flag.FORGE_DB = filename
+    Flag.FORGE_SERVER_PASSWORD = undefined
+    Flag.FORGE_SERVER_USERNAME = undefined
+    delete process.env.FORGE_SERVER_PASSWORD
+    delete process.env.FORGE_SERVER_USERNAME
+    await Effect.gen(function* () {
+      const vault = yield* SecretVault.Service
+      const database = yield* Database.Service
+      yield* ServerOwner.claim(Database.primary(database.db), { mode: "quick-connect", keyID: vault.keyID })
+    }).pipe(
+      Effect.provide(SecretVault.runtime),
+      Effect.provide(Database.layerFromPath(filename)),
+      Effect.scoped,
+      Effect.runPromise,
+    )
+    const first = await Server.listen({
+      hostname: "127.0.0.1",
+      port: 0,
+      keySource: "systemd-credentials",
+      username: "first",
+      password: "first-secret",
+    })
+    let second: Server.Listener | undefined
+    try {
+      second = await Server.listen({
+        hostname: "127.0.0.1",
+        port: 0,
+        keySource: "env",
+        username: "second",
+        password: "second-secret",
+      })
+      const request = (listener: Server.Listener, endpoint: string, username: string, password: string) =>
+        fetch(new URL(endpoint, listener.url), {
+          headers: { authorization: `Basic ${btoa(`${username}:${password}`)}` },
+        })
+      const firstDescriptor = await request(first, GlobalPaths.server, "first", "first-secret")
+      const secondDescriptor = await request(second, GlobalPaths.server, "second", "second-secret")
+      expect(firstDescriptor.status).toBe(200)
+      expect(secondDescriptor.status).toBe(200)
+      expect(await firstDescriptor.json()).toMatchObject({
+        listener: first.url.toString(),
+        keySource: "systemd-credentials",
+      })
+      expect(await secondDescriptor.json()).toMatchObject({ listener: second.url.toString(), keySource: "env" })
+      expect((await request(first, GlobalPaths.health, "second", "second-secret")).status).toBe(401)
+      expect((await request(second, GlobalPaths.health, "first", "first-secret")).status).toBe(401)
+      expect(process.env.FORGE_SERVER_PASSWORD).toBeUndefined()
+
+      await stop(first, "first listener stop")
+      expect((await request(second, GlobalPaths.health, "second", "second-secret")).status).toBe(200)
+      expect((await request(second, GlobalPaths.health, "first", "first-secret")).status).toBe(401)
+      const stillSecond = await request(second, GlobalPaths.server, "second", "second-secret")
+      expect(await stillSecond.json()).toMatchObject({ listener: second.url.toString(), keySource: "env" })
+    } finally {
+      await stop(first, "first listener cleanup").catch(() => undefined)
+      if (second) await stop(second, "second listener cleanup")
+    }
+    expect(process.env.FORGE_SERVER_PASSWORD).toBeUndefined()
+  }, 30_000)
 
   testPty("serves HTTP routes and upgrades PTY websocket through Server.listen", async () => {
     await using tmp = await tmpdir({ config: { formatter: false, lsp: false } })

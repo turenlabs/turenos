@@ -37,7 +37,7 @@ const testStateLayer = Layer.effectDiscard(
 )
 
 const servedRoutes: Layer.Layer<never, EffectConfig.ConfigError, HttpServer.HttpServer> = HttpRouter.serve(
-  HttpApiApp.routes,
+  HttpApiApp.createRoutes({ cors: ["https://pty.example"] }),
   { disableListenLog: true, disableLogger: true },
 )
 
@@ -98,6 +98,36 @@ describe("v2 pty HttpApi", () => {
     const missing = await request(`/api/pty/${body.data.id}`, tmp.path)
     expect(missing.status).toBe(404)
     expect(await missing.json()).toMatchObject({ _tag: "PtyNotFoundError", ptyID: body.data.id })
+  })
+
+  // Session, file and PTY routes must share one Location map. When the file and PTY handlers
+  // provided their own, every directory the app opened got two full Location service graphs,
+  // doubling their memory, watchers and threads.
+  testPty("builds one set of Location services per directory across route groups", async () => {
+    await using tmp = await tmpdir({ git: true, config: { formatter: false, lsp: false } })
+    await using marker = await tmpdir({ config: { formatter: false, lsp: false } })
+    const log = path.join(process.env["XDG_DATA_HOME"]!, "forge", "log", "forge.log")
+    const lines = async () => (await Bun.file(log).text().catch(() => "")).split("\n")
+
+    const session = await request("/api/session", tmp.path, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ location: { directory: tmp.path } }),
+    })
+    expect(session.status).toBe(200)
+    const sessionID = ((await session.json()) as { data: { id: string } }).data.id
+    expect((await request(`/api/session/${sessionID}/context`, tmp.path)).status).toBe(200)
+    expect((await request("/file?path=.", tmp.path)).status).toBe(200)
+    expect((await request("/api/pty", tmp.path)).status).toBe(200)
+
+    // The file logger writes in batches. Opening another directory logs after every boot above,
+    // so once its line is on disk, so is every boot line.
+    expect((await request("/path", marker.path)).status).toBe(200)
+    const deadline = Date.now() + 10_000
+    while (Date.now() < deadline && !(await lines()).some((line) => line.includes("creating instance") && line.includes(marker.path)))
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    const boots = (await lines()).filter((line) => line.includes("booting location services") && line.includes(tmp.path))
+    expect(boots).toHaveLength(1)
   })
 
   testPty("rejects connect tokens without the CSRF header and connects with a valid ticket", async () => {
@@ -183,11 +213,30 @@ describe("v2 pty HttpApi", () => {
         expect(yield* takeUntil("ping-v2")).toContain("ping-v2")
         yield* write(new Socket.CloseEvent(1000, "done")).pipe(Effect.catch(() => Effect.void))
 
+        const nextToken = yield* HttpClientRequest.post(`/api/pty/${info.id}/connect-token`).pipe(
+          directoryHeader(dir),
+          HttpClientRequest.setHeader("x-forge-ticket", "1"),
+          HttpClientRequest.setHeader("origin", "https://pty.example"),
+          HttpClient.execute,
+        )
+        expect(nextToken.status).toBe(200)
+        const nextTicket = yield* Schema.decodeUnknownEffect(Location.response(PtyTicket.ConnectToken))(
+          yield* nextToken.json,
+        )
         const removed = yield* HttpClientRequest.delete(`/api/pty/${info.id}`).pipe(
           directoryHeader(dir),
           HttpClient.execute,
         )
         expect(removed.status).toBe(204)
+
+        // The configured origin must reach both token issuance and pre-Location
+        // validation. Only a valid ticket can observe that the PTY was removed.
+        const connect = HttpClientRequest.get(`/api/pty/${info.id}/connect?ticket=${nextTicket.data.ticket}`).pipe(
+          directoryHeader(dir),
+          HttpClientRequest.setHeader("origin", "https://pty.example"),
+        )
+        expect((yield* HttpClient.execute(connect)).status).toBe(404)
+        expect((yield* HttpClient.execute(connect)).status).toBe(403)
       }),
   )
 })

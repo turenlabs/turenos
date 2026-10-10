@@ -211,12 +211,25 @@ async function writeZip(output: string, entries: Entry[]) {
 
 function initConsoleTransport() {
   const write = log.transports.console.writeFn.bind(log.transports.console)
+  const disable = (err: unknown) => {
+    if (!isBrokenPipe(err)) return false
+    log.transports.console.level = false
+    return true
+  }
+  // A launched app's stdio can outlive the caller that forwarded it (e.g. `open`
+  // from a shell that exits), leaving stdout/stderr as dead pipes. Writes then
+  // fail asynchronously as an 'error' event on the socket — outside writeFn's
+  // try/catch — and EventEmitter rethrows it as an uncaughtException.
+  for (const stream of [process.stdout, process.stderr]) {
+    stream?.on("error", (err) => {
+      if (!disable(err)) throw err
+    })
+  }
   log.transports.console.writeFn = (options) => {
     try {
       write(options)
     } catch (err) {
-      if (!isBrokenPipe(err)) throw err
-      log.transports.console.level = false
+      if (!disable(err)) throw err
     }
   }
 }

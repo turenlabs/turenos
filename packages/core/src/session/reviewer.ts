@@ -6,7 +6,7 @@ import { EventV2 } from "../event"
 import { makeGlobalNode } from "../effect/app-node"
 import { SessionCreation } from "./creation"
 import { SessionV1 } from "../v1/session"
-import { Cause, Context, DateTime, Duration, Effect, Exit, Layer, Option, RcMap, Schema, Semaphore } from "effect"
+import { Cause, Context, DateTime, Duration, Effect, Fiber, Layer, Option, RcMap, Schema, Semaphore } from "effect"
 import { createHash } from "node:crypto"
 import { SessionHarness } from "./harness"
 import { SessionMessage } from "./message"
@@ -21,11 +21,14 @@ import path from "node:path"
 
 const REVIEWER_AGENT = AgentV2.ID.make("harness-reviewer")
 const REVIEWER_TITLE = "Automatic Harness reviewer"
-const INITIAL_DELAY = Duration.seconds(15)
-const REVIEW_INTERVAL = Duration.minutes(3)
-const REVIEW_MAX_IDLE = Duration.hours(48)
-const REVIEW_CONTEXT_MESSAGES = 24
-const REVIEW_CONTEXT_CHARS = 32_000
+// A review runs once when a Session has been quiet this long, not on a timer. A terminal status can
+// be a pause between steps, so the debounce is what decides that the work actually ended.
+const REVIEW_DEBOUNCE = Duration.minutes(3)
+// The reviewer reads a bounded tail of the parent: the last user prompt plus one clipped line per
+// recent message, so a review prompt stays small however long the Session grows.
+const REVIEW_CONTEXT_MESSAGES = 12
+const REVIEW_LINE_CHARS = 300
+const REVIEW_PROMPT_CHARS = 2_000
 // One review must not hold a permit indefinitely; a stuck provider turn would otherwise stall
 // reviewing for every other session with nothing surfaced to the user. The reviewer agent gathers
 // evidence with grep/glob/read, so a thorough review is many provider turns: five minutes abandoned
@@ -34,10 +37,10 @@ const REVIEW_TIMEOUT = Duration.minutes(15)
 // Bounded parallelism rather than one global permit. Fully serial review meant a new session waited
 // behind every other session's turn, which measured at ~40 minutes before its first review ran.
 // Sized for a heavy user running 5-10 sessions at once, so no session queues behind another; the
-// digest skip and failure backoff are what bound total spend, not this number.
+// digest skip and the single failure retry are what bound total spend, not this number.
 const REVIEW_CONCURRENCY = 10
-// A failed review is usually a provider-level condition (rate limit, quota) that the next attempt
-// three minutes later will hit again, so back that session off instead of re-queueing it promptly.
+// A failed review is usually a provider-level condition (rate limit, quota) that an immediate
+// attempt would hit again, so the single retry waits this long.
 const FAILURE_BACKOFF = Duration.minutes(20)
 // Each review appends a self-contained prompt to the reviewer child, so its context grows without
 // bound. The prompt needs no history at all, so retire the child and start a fresh one instead.
@@ -46,6 +49,12 @@ const REVIEWS_PER_REVIEWER = 8
 const SYNTHETIC_PREFIXES = ["ses_handoff_", "ses_loop_"]
 const MAX_AUTOMATIC_CHANGES = 4
 const MAX_AUTOMATIC_CONTENT_CHARS = 100_000
+interface ReviewOptions {
+  readonly archived?: boolean
+  readonly retry?: boolean
+  // Set on every queued attempt: false once activity or a config change has superseded the attempt.
+  readonly valid?: () => boolean
+}
 
 export interface Interface {
   readonly refresh: () => Effect.Effect<void>
@@ -71,15 +80,45 @@ const layer = Layer.effect(
     const withReviewPermit = reviewPermit.withPermit
     const configTransition = Semaphore.makeUnsafe(1)
     const withConfigTransition = configTransition.withPermit
-    const active = new Set<SessionSchema.ID>()
+    // Debounce and retry timers that have not fired yet. An entry is removed when its timer fires, so
+    // new activity never interrupts a review that is already running.
+    const pending = new Map<SessionSchema.ID, Fiber.Fiber<void>>()
+    // One review per parent at a time: the reviewer child is cached per parent, and a second prompt
+    // would join the first one's drain. A boundary that arrives mid-review is coalesced into one
+    // follow-up that runs when the current review finishes.
+    const running = new Set<SessionSchema.ID>()
+    const followUp = new Map<SessionSchema.ID, boolean>()
     const reviewerSessions = new Map<SessionSchema.ID, SessionSchema.ID>()
     const reviewerUses = new Map<SessionSchema.ID, number>()
     const lastReviewed = new Map<SessionSchema.ID, string>()
     const scope = yield* Effect.scope
     let enabledGeneration = 0
-    const invalidateConfigTransition = Effect.sync(() => {
+    // Bumped on every boundary for a Session, so a review that finishes after newer activity can tell
+    // its result is stale.
+    const activityEpoch = new Map<SessionSchema.ID, number>()
+    const cancel = Effect.fn("SessionReviewer.cancel")(function* (sessionID: SessionSchema.ID) {
+      activityEpoch.set(sessionID, (activityEpoch.get(sessionID) ?? 0) + 1)
+      // A coalesced follow-up belongs to boundaries that fresh activity has superseded.
+      followUp.delete(sessionID)
+      const fiber = pending.get(sessionID)
+      if (!fiber) return
+      pending.delete(sessionID)
+      yield* Fiber.interrupt(fiber)
+    })
+    // Captures the current activity and config generation, so an attempt that waits for a permit can
+    // tell afterwards that newer activity or a config change superseded it.
+    const validity = (sessionID: SessionSchema.ID) => {
+      const activity = activityEpoch.get(sessionID)
+      const generation = enabledGeneration
+      return () => activity === activityEpoch.get(sessionID) && generation === enabledGeneration
+    }
+    const invalidateConfigTransition = Effect.gen(function* () {
       enabledGeneration += 1
       lastReviewed.clear()
+      followUp.clear()
+      const fibers = [...pending.values()]
+      pending.clear()
+      yield* Fiber.interruptAll(fibers)
     })
 
     const readGlobalEnabled = Effect.fn("SessionReviewer.readGlobalEnabled")(function* () {
@@ -154,18 +193,19 @@ const layer = Layer.effect(
       return reviewer
     })
 
-    const reviewOnce = Effect.fn("SessionReviewer.review")(function* (parent: SessionSchema.Info) {
+    const reviewOnce = Effect.fn("SessionReviewer.review")(function* (parent: SessionSchema.Info, retry: boolean) {
       const state = yield* harness.get(parent.id)
       const context = yield* sessions.context(parent.id)
       const prompt = reviewerPrompt(parent, state, context)
       // The prompt is the entire input to a review, so an unchanged prompt can only produce the
-      // answer already given. Without this an idle session is re-reviewed every interval forever.
+      // answer already given. The one retry after a failure skips this check, since the failed
+      // attempt already recorded the digest.
       const digest = createHash("sha256").update(prompt).digest("hex")
       const generation = enabledGeneration
-      if (lastReviewed.get(parent.id) === `${generation}:${digest}`) return
-      // Recorded before the model call, not after it. Recording on success only meant a review that
-      // timed out or failed re-ran byte-identical input every cycle forever. A session that is
-      // actually being worked on changes its prompt, so it is still reviewed on the next pass.
+      if (!retry && lastReviewed.get(parent.id) === `${generation}:${digest}`) return
+      // Recorded before the model call, not after it, so a review that timed out or failed does not
+      // re-run byte-identical input on the next session end. A session that was worked on changes
+      // its prompt, so it is still reviewed.
       lastReviewed.set(parent.id, `${generation}:${digest}`)
 
       const reviewer = yield* findReviewer(parent)
@@ -242,16 +282,24 @@ const layer = Layer.effect(
         }),
       )
     })
-    const review = (sessionID: SessionSchema.ID) =>
+    const review = (sessionID: SessionSchema.ID, options: ReviewOptions) =>
       withReviewPermit(
         Effect.gen(function* () {
+          // An attempt can wait behind the concurrency limit, where fresh activity cannot cancel it.
+          if (options.valid && !options.valid()) return "done" as const
           const parent = yield* sessions
             .get(sessionID)
             .pipe(Effect.catchTag("Session.NotFoundError", () => Effect.succeed(undefined)))
-          if (!parent || !isReviewable(parent) || !isRecentlyActive(parent)) return "stop" as const
-          if (!(yield* selfModificationEnabled(parent))) return "stop" as const
-          yield* reviewOnce(parent)
-          return "continue" as const
+          if (!parent || !isReviewRoot(parent)) return "done" as const
+          if (parent.time.archived !== undefined && !options.archived) return "done" as const
+          if (!globallyEnabled || !(yield* selfModificationEnabled(parent))) return "done" as const
+          // The debounce can fire in the middle of a long tool call that emits no events, so confirm
+          // the Session is really idle. The next terminal event re-arms the review.
+          const active = yield* sessions.active
+          const queued = yield* sessions.pendingInputs(sessionID)
+          if (active.has(sessionID) || queued.length > 0) return "done" as const
+          yield* reviewOnce(parent, options.retry === true)
+          return "done" as const
         }).pipe(
           Effect.timeoutOrElse({
             duration: REVIEW_TIMEOUT,
@@ -279,8 +327,7 @@ const layer = Layer.effect(
           }),
         ),
       ).pipe(
-        // A failed review is transient (provider error, version conflict). Only ineligibility stops
-        // the cadence, otherwise one bad turn would silently end reviewing for the session's life.
+        // A failed review is transient (provider error, version conflict), so it earns one retry.
         Effect.catchCause((cause) =>
           Effect.logWarning("Automatic Harness review failed", { cause }).pipe(
             Effect.andThen(
@@ -299,50 +346,85 @@ const layer = Layer.effect(
         ),
       )
 
-    const start = Effect.fn("SessionReviewer.start")(function* (session: SessionSchema.Info, force = false) {
-      if (!globallyEnabled || !isReviewable(session) || (!force && !isRecentlyActive(session))) return
-      const release = Effect.sync(() => active.delete(session.id))
-      yield* Effect.uninterruptibleMask((restore) =>
-        Effect.gen(function* () {
-          const claimed = yield* Effect.sync(() => {
-            if (active.has(session.id)) return false
-            active.add(session.id)
-            return true
-          })
-          if (!claimed) return
-          const enabled = yield* restore(selfModificationEnabled(session)).pipe(
-            Effect.onExit((exit) => (Exit.isFailure(exit) ? release : Effect.void)),
-          )
-          if (!enabled) {
-            yield* release
-            return
-          }
-          yield* Effect.gen(function* () {
-            yield* Effect.sleep(INITIAL_DELAY)
-            const loop = (): Effect.Effect<void> =>
-              Effect.gen(function* () {
-                const outcome = yield* review(session.id)
-                if (outcome === "stop") return
-                yield* Effect.sleep(outcome === "backoff" ? FAILURE_BACKOFF : REVIEW_INTERVAL)
-                yield* loop()
-              })
-            yield* loop()
-          }).pipe(Effect.ensuring(release), Effect.forkIn(scope, { startImmediately: true }))
-        }),
-      )
-    })
+    const reviewAtEnd = (sessionID: SessionSchema.ID, options: ReviewOptions): Effect.Effect<void> =>
+      Effect.gen(function* () {
+        if (options.valid && !options.valid()) return
+        if (running.has(sessionID)) {
+          followUp.set(sessionID, options.archived === true || followUp.get(sessionID) === true)
+          return
+        }
+        running.add(sessionID)
+        const activity = activityEpoch.get(sessionID)
+        const generation = enabledGeneration
+        const valid = validity(sessionID)
+        const outcome = yield* review(sessionID, options).pipe(
+          Effect.ensuring(Effect.sync(() => running.delete(sessionID))),
+        )
+        const queued = followUp.get(sessionID)
+        if (queued !== undefined) {
+          followUp.delete(sessionID)
+          yield* reviewAtEnd(sessionID, { archived: queued })
+          return
+        }
+        // A review that failed after fresh activity or a config change belongs to input that is no
+        // longer current; the boundary that superseded it schedules its own review.
+        if (outcome !== "backoff" || options.retry) return
+        if (activity !== activityEpoch.get(sessionID) || generation !== enabledGeneration) return
+        // The retry waits out the backoff in `pending`, so fresh activity or a config change cancels it.
+        const retry = Effect.sleep(FAILURE_BACKOFF).pipe(
+          Effect.andThen(Effect.sync(() => pending.delete(sessionID))),
+          Effect.andThen(reviewAtEnd(sessionID, { ...options, retry: true, valid })),
+          Effect.forkIn(scope, { startImmediately: true }),
+        )
+        pending.set(sessionID, yield* retry)
+      })
+
+    const settled = new Set<string>([
+      SessionEvent.Step.Ended.type,
+      SessionEvent.Step.Failed.type,
+      SessionEvent.Shell.Ended.type,
+      SessionEvent.Compaction.Ended.type,
+      SessionEvent.Compaction.Failed.type,
+    ])
+    const working = new Set<string>([
+      SessionEvent.Step.Started.type,
+      SessionEvent.Shell.Started.type,
+      SessionEvent.Compaction.Started.type,
+      SessionEvent.PromptAdmitted.type,
+      SessionEvent.Retried.type,
+    ])
+    // Listeners also see every streamed delta, so this must stay a cheap type check that allocates
+    // nothing for events it ignores. Session lookup and eligibility wait until the timer fires.
     const unsubscribe = yield* events.listen((event) => {
-      const sessionID =
-        event.type === SessionV1.Event.Created.type
-          ? (event.data as typeof SessionV1.Event.Created.data.Type).sessionID
-          : event.type === SessionEvent.PromptAdmitted.type
-            ? (event.data as typeof SessionEvent.PromptAdmitted.data.Type).sessionID
-            : undefined
-      if (sessionID === undefined) return Effect.void
-      return sessions.get(SessionSchema.ID.make(sessionID)).pipe(
-        Effect.flatMap((session) => start(session, true)),
-        Effect.catchTag("Session.NotFoundError", () => Effect.void),
-        Effect.forkIn(scope, { startImmediately: true }),
+      if (!globallyEnabled) return Effect.void
+      if (event.type === SessionV1.Event.Updated.type) {
+        const data = event.data as typeof SessionV1.Event.Updated.data.Type
+        if (data.info.time.archived === undefined || data.info.parentID !== undefined) return Effect.void
+        const sessionID = SessionSchema.ID.make(data.sessionID)
+        return cancel(sessionID).pipe(
+          Effect.andThen(
+            Effect.suspend(() => reviewAtEnd(sessionID, { archived: true, valid: validity(sessionID) })).pipe(
+              Effect.forkIn(scope, { startImmediately: true }),
+            ),
+          ),
+          Effect.asVoid,
+        )
+      }
+      const isSettled = settled.has(event.type)
+      if (!isSettled && !working.has(event.type)) return Effect.void
+      const sessionID = SessionSchema.ID.make((event.data as { readonly sessionID: string }).sessionID)
+      if (!isSettled) return cancel(sessionID)
+      return cancel(sessionID).pipe(
+        Effect.andThen(Effect.sync(() => validity(sessionID))),
+        Effect.flatMap((valid) =>
+          Effect.sleep(REVIEW_DEBOUNCE).pipe(
+            Effect.andThen(Effect.sync(() => pending.delete(sessionID))),
+            Effect.andThen(reviewAtEnd(sessionID, { valid })),
+            Effect.asVoid,
+            Effect.forkIn(scope, { startImmediately: true }),
+            Effect.flatMap((fiber) => Effect.sync(() => pending.set(sessionID, fiber))),
+          ),
+        ),
         Effect.asVoid,
       )
     })
@@ -365,12 +447,6 @@ const layer = Layer.effect(
         adopted.set(session.parentID, session)
       }
       for (const [parentID, reviewer] of adopted) reviewerSessions.set(parentID, reviewer.id)
-      // Explicit lambda: Effect.forEach passes the array index as the second argument, which would
-      // land in `start`'s `force` parameter and force-start every session after the first.
-      yield* Effect.forEach(known.filter(isReviewable), (session) => start(session), {
-        concurrency: 4,
-        discard: true,
-      })
     })
     yield* scan()
 
@@ -442,17 +518,12 @@ export function harnessSelfModificationGloballyEnabled(entries: readonly Config.
   )
 }
 
-function isReviewable(session: SessionSchema.Info) {
+function isReviewRoot(session: SessionSchema.Info) {
   return (
     session.parentID === undefined &&
-    session.time.archived === undefined &&
     session.title !== REVIEWER_TITLE &&
     !SYNTHETIC_PREFIXES.some((prefix) => session.id.startsWith(prefix))
   )
-}
-
-function isRecentlyActive(session: SessionSchema.Info) {
-  return Date.now() - DateTime.toEpochMillis(session.time.updated) <= Duration.toMillis(REVIEW_MAX_IDLE)
 }
 
 function reviewerPrompt(
@@ -473,12 +544,15 @@ function reviewerPrompt(
         guidance: snapshot.guidance ?? [],
       })
     : "null"
-  const transcript = context
-    .slice(-REVIEW_CONTEXT_MESSAGES)
-    .map(messageText)
-    .filter(Boolean)
-    .join("\n\n")
-    .slice(-REVIEW_CONTEXT_CHARS)
+  const lastPrompt = context.findLast((message) => message.type === "user")
+  const transcript = [
+    ...(lastPrompt ? [`Last user prompt: ${lastPrompt.text.slice(0, REVIEW_PROMPT_CHARS)}`] : []),
+    ...context
+      .slice(-REVIEW_CONTEXT_MESSAGES)
+      .map(messageText)
+      .filter(Boolean)
+      .map((line) => line.slice(0, REVIEW_LINE_CHARS)),
+  ].join("\n")
   const requests = state.reviewerRequests
     .slice(-8)
     .map((request) => `- ${request.request}`)

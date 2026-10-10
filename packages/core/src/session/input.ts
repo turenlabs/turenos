@@ -128,6 +128,27 @@ export const cancelPending = Effect.fn("SessionInput.cancelPending")(function* (
   return cancelled !== undefined
 })
 
+/** Cancels every unpromoted input the session admitted from one machine source. */
+export const cancelPendingBySource = Effect.fn("SessionInput.cancelPendingBySource")(function* (
+  db: DatabaseService,
+  sessionID: SessionSchema.ID,
+  source: Source,
+) {
+  yield* db
+    .update(SessionInputTable)
+    .set({ time_cancelled: Date.now() })
+    .where(
+      and(
+        eq(SessionInputTable.session_id, sessionID),
+        eq(SessionInputTable.source, source),
+        isNull(SessionInputTable.promoted_seq),
+        isNull(SessionInputTable.time_cancelled),
+      ),
+    )
+    .run()
+    .pipe(Effect.orDie)
+})
+
 export const steerPending = Effect.fn("SessionInput.steerPending")(function* (
   db: DatabaseService,
   input: { readonly sessionID: SessionSchema.ID; readonly id: SessionMessage.ID },

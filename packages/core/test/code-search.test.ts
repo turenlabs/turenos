@@ -43,6 +43,7 @@ let listener: EventV2.Subscriber | undefined
 
 const extensions = Layer.mock(ExtensionRuntime.Service, {
   enabled: () => Effect.succeed(activation.enabled),
+  manifests: () => Effect.succeed([]),
 })
 
 const events = Layer.mock(EventV2.Service, {
@@ -64,6 +65,7 @@ const withSearch = <A, E, R>(
   load: (options: PotionLoadOptions) => Promise<PotionRuntime>,
   body: (registry: ToolRegistry.Interface) => Effect.Effect<A, E, R>,
   filesystem = AppNodeBuilder.build(FSUtil.node),
+  ripgrep?: Layer.Layer<Ripgrep.Service>,
 ) =>
   Effect.gen(function* () {
     return yield* body(yield* ToolRegistry.Service)
@@ -90,6 +92,7 @@ const withSearch = <A, E, R>(
           [ExtensionRuntime.node, extensions],
           [CodeSearch.node, CodeSearch.nodeWith(load)],
           [FSUtil.node, filesystem],
+          ...(ripgrep ? [[Ripgrep.node, ripgrep] as const] : []),
         ],
       ),
     ),
@@ -182,7 +185,43 @@ const seededSearch = <A, E, R>(body: (directory: string, registry: ToolRegistry.
     (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
   )
 
+// The real ripgrep, except that the first `remaining` workspace walks fail.
+const failingWalks = (state: { remaining: number }) =>
+  Layer.effect(
+    Ripgrep.Service,
+    Effect.map(Ripgrep.Service, (real) =>
+      Ripgrep.Service.of({
+        ...real,
+        find: (input) =>
+          state.remaining-- > 0 ? Effect.fail(new Ripgrep.Error({ message: "walk failed" })) : real.find(input),
+      }),
+    ),
+  ).pipe(Layer.provide(LayerNode.compile(Ripgrep.node)))
+
 describe("code_search", () => {
+  it.live("reports a failed workspace walk and retries it instead of caching an empty index", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) =>
+        withSearch(
+          tmp.path,
+          offline,
+          (registry) =>
+            Effect.gen(function* () {
+              yield* Effect.promise(() => seed(tmp.path))
+              const failed = yield* settleTool(registry, call({ queries: ["SessionRunCoordinator"] }))
+              expect(failed.result.type).toBe("error")
+              expect(JSON.stringify(failed.result.value)).toContain("walk failed")
+              const hits = yield* search(registry, { queries: ["SessionRunCoordinator"] })
+              expect(hits[0]?.path).toBe("src/core/coordinator.ts")
+            }),
+          AppNodeBuilder.build(FSUtil.node),
+          failingWalks({ remaining: 1 }),
+        ),
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+    ),
+  )
+
   it.live("ranks the defining file first for an identifier query", () =>
     Effect.acquireUseRelease(
       Effect.promise(() => tmpdir()),
@@ -411,6 +450,10 @@ describe("code_search", () => {
               expect(updatedHits.some((hit) => hit.path === "src/util/hash.ts")).toBe(false)
               expect(embedded.length).toBeGreaterThan(count)
               expect((yield* search(registry, { queries: ["fresh needle"] }))[0]?.path).toBe("src/util/hash.ts")
+              const staleCount = embedded.length
+              yield* Effect.sleep("2.1 seconds")
+              yield* search(registry, { queries: ["verify"] })
+              expect(embedded.length).toBeGreaterThan(staleCount)
             }),
         )
       },

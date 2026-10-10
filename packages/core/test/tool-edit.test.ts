@@ -373,6 +373,39 @@ describe("EditTool", () => {
     ),
   )
 
+  // `$$`, `$&`, `` $` `` and `$'` are String.replace substitution patterns; a shell PID or a
+  // Makefile's escaped dollar must reach the file as typed.
+  it.live("writes a newString containing `$` substitution patterns literally", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) => {
+        reset()
+        const target = path.join(tmp.path, "Makefile")
+        const newString = "echo $$ and $& and $' and $`"
+        return Effect.promise(() => fs.writeFile(target, "echo PID\necho PID\n")).pipe(
+          Effect.andThen(
+            withTool(tmp.path, (registry) =>
+              executeTool(registry, call({ path: "Makefile", oldString: "echo PID", newString, replaceAll: true })),
+            ),
+          ),
+          Effect.andThen(() => Effect.promise(() => fs.readFile(target, "utf8"))),
+          Effect.tap((content) => Effect.sync(() => expect(content).toBe(`${newString}\n${newString}\n`))),
+          Effect.andThen(
+            withTool(tmp.path, (registry) =>
+              executeTool(
+                registry,
+                call({ path: "Makefile", oldString: `${newString}\necho`, newString: "echo $$\necho" }),
+              ),
+            ),
+          ),
+          Effect.andThen(() => Effect.promise(() => fs.readFile(target, "utf8"))),
+          Effect.tap((content) => Effect.sync(() => expect(content).toBe(`echo $$\n${newString}\n`))),
+        )
+      },
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+    ),
+  )
+
   it.live("preserves BOM and CRLF line endings", () =>
     Effect.acquireUseRelease(
       Effect.promise(() => tmpdir()),

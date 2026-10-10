@@ -90,6 +90,10 @@ export function orchestratorLimit(activeLimit: number) {
 }
 
 const EXTERNAL_CHANGE_POLL_MS = 250
+// With nothing queued, the promotion poll doubles from the base interval up to
+// this cap. Another process admitting a queued task is therefore noticed within
+// this many milliseconds in the worst case; local admissions signal immediately.
+const IDLE_PROMOTION_POLL_MAX_MS = 5_000
 export const DURABLE_EVENT_TYPES = new Set([
   EventV2.versionedType(SessionEvent.Task.Updated.type, 1),
   EventV2.versionedType(SessionEvent.Task.OperationUpdated.type, 1),
@@ -439,11 +443,17 @@ const layer = Layer.effect(
       Effect.orDie,
       Effect.map((row) => row?.data_version ?? 0),
     )
-    const awaitExternalChange = (version: number): Effect.Effect<void> =>
-      Effect.sleep(`${EXTERNAL_CHANGE_POLL_MS} millis`).pipe(
+    const awaitExternalChange = (
+      version: number,
+      intervalMs = EXTERNAL_CHANGE_POLL_MS,
+      maxIntervalMs = EXTERNAL_CHANGE_POLL_MS,
+    ): Effect.Effect<void> =>
+      Effect.sleep(`${intervalMs} millis`).pipe(
         Effect.andThen(dataVersion),
         Effect.flatMap((current) =>
-          current === version ? Effect.suspend(() => awaitExternalChange(version)) : Effect.void,
+          current === version
+            ? Effect.suspend(() => awaitExternalChange(version, Math.min(intervalMs * 2, maxIntervalMs), maxIntervalMs))
+            : Effect.void,
         ),
       )
 
@@ -2191,7 +2201,16 @@ const layer = Layer.effect(
               ),
             { discard: true },
           )
-          yield* Effect.race(Deferred.await(localChange), awaitExternalChange(version))
+          // Roots may be queued behind a slot another process frees, so only an
+          // empty queue backs off. Every pass restarts at the base interval.
+          yield* Effect.race(
+            Deferred.await(localChange),
+            awaitExternalChange(
+              version,
+              EXTERNAL_CHANGE_POLL_MS,
+              queuedRoots.length === 0 ? IDLE_PROMOTION_POLL_MAX_MS : EXTERNAL_CHANGE_POLL_MS,
+            ),
+          )
         }).pipe(
           Effect.catchCause((cause) =>
             Cause.hasInterruptsOnly(cause)

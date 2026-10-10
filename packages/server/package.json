@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
   "name": "@turenlabs/server",
-  "version": "1.0.32",
+  "version": "1.0.44",
   "private": true,
   "type": "module",
   "license": "MIT",
@@ -10,7 +10,7 @@
   },
   "scripts": {
     "test": "bun test",
-    "typecheck": "tsgo --noEmit"
+    "typecheck": "tsgo --noEmit --checkers 1"
   },
   "dependencies": {
     "@turenlabs/core": "workspace:*",

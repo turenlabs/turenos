@@ -109,10 +109,19 @@ const layer = Layer.effectDiscard(
                 const message =
                   error instanceof ReadToolFileSystem.BinaryFileError ||
                   error instanceof ReadToolFileSystem.MediaIngestLimitError ||
+                  error instanceof ReadToolFileSystem.MalformedUtf8Error ||
+                  error instanceof ReadToolFileSystem.OffsetOutOfRangeError ||
+                  error instanceof ReadToolFileSystem.PathKindError ||
                   error instanceof Image.DecodeError ||
                   error instanceof Image.SizeError
                     ? error.message
-                    : `Unable to read ${input.path}`
+                    : error instanceof PermissionV2.BlockedError
+                      ? `Permission denied: read ${input.path}`
+                      : error instanceof PermissionV2.CorrectedError
+                        ? error.feedback
+                        : error instanceof LocationMutation.PathError
+                          ? `Invalid read path ${input.path}: ${error.reason}`
+                          : `Unable to read ${input.path}: ${error.message}`
                 return new ToolFailure({ message })
               }),
             )

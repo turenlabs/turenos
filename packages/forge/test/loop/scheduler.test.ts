@@ -1,11 +1,16 @@
 import { describe, expect, test } from "bun:test"
-import { DateTime } from "effect"
+import { DateTime, Deferred, Effect, Fiber } from "effect"
+import { TestClock } from "effect/testing"
 import { Loop } from "@turenlabs/core/loop"
 import { ModelV2 } from "@turenlabs/core/model"
 import { ProviderV2 } from "@turenlabs/core/provider"
 import { SessionMessage } from "@turenlabs/core/session/message"
 import { RelativePath } from "@turenlabs/core/schema"
-import { extractStepOutput, renderWorkflowStep, toLoopRelativePath } from "../../src/loop/scheduler"
+import { extractStepOutput, pollDue, renderWorkflowStep, toLoopRelativePath } from "../../src/loop/scheduler"
+import { Database } from "@turenlabs/core/database/database"
+import { AppNodeBuilder } from "@turenlabs/core/effect/app-node-builder"
+import { LayerNode } from "@turenlabs/core/effect/layer-node"
+import { awaitWithTimeout, it, testEffect } from "../lib/effect"
 
 const created = DateTime.makeUnsafe(0)
 const completed = DateTime.makeUnsafe(1)
@@ -271,4 +276,200 @@ describe("LoopScheduler event trigger scoping", () => {
     expect(Loop.FILE_CHANGE_DEBOUNCE_DEFAULT_MS).toBeLessThanOrEqual(Loop.FILE_CHANGE_DEBOUNCE_MAX_MS)
     expect(Loop.FILE_CHANGE_DEBOUNCE_MAX_MS).toBe(60_000)
   })
+})
+
+describe("LoopScheduler wake", () => {
+  // A stand-in for the Loop surface the poll loop reads: the earliest due time, and a change token that the
+  // test signals the way the Loop service does after a local write.
+  const harness = (initial: number | undefined, claims = 1) => {
+    const state = {
+      next: initial,
+      claims,
+      reads: 0,
+      scans: 0,
+      failures: 0,
+      wake: Deferred.makeUnsafe<void>(),
+    }
+    const loops = {
+      nextWakeAt: () =>
+        Effect.sync(() => {
+          state.reads++
+          return state.next
+        }),
+      awaitChange: () => Effect.sync(() => Deferred.await(state.wake)),
+    }
+    const scan = Effect.suspend(() => {
+      state.scans++
+      if (state.failures > 0) {
+        state.failures--
+        return Effect.die("scan failed")
+      }
+      if (state.claims > 0) state.next = undefined
+      return Effect.succeed(state.claims)
+    })
+    const signal = Effect.suspend(() => {
+      const previous = state.wake
+      state.wake = Deferred.makeUnsafe<void>()
+      return Deferred.succeed(previous, undefined)
+    })
+    return { state, loops, scan, signal }
+  }
+
+  // Lets the forked poll loop run until it parks on its sleep.
+  const settle = TestClock.adjust(0)
+
+  it.effect("scans once at startup and then does not claim while nothing is scheduled", () =>
+    Effect.gen(function* () {
+      const poll = harness(undefined)
+      const fiber = yield* Effect.forkChild(pollDue(poll.loops, poll.scan))
+      yield* settle
+      expect(poll.state.scans).toBe(1)
+
+      yield* TestClock.adjust("59 seconds")
+      expect(poll.state.scans).toBe(1)
+      expect(poll.state.reads).toBe(1)
+
+      // The idle cap re-reads, which is how another process's writes are noticed, but still does not claim.
+      yield* TestClock.adjust("1 second")
+      expect(poll.state.reads).toBe(2)
+      expect(poll.state.scans).toBe(1)
+      yield* Fiber.interrupt(fiber)
+    }),
+  )
+
+  it.effect("claims at the due time and not before", () =>
+    Effect.gen(function* () {
+      const poll = harness(20_000, 0)
+      const fiber = yield* Effect.forkChild(pollDue(poll.loops, poll.scan))
+      yield* settle
+      expect(poll.state.scans).toBe(1)
+
+      yield* TestClock.adjust("19 seconds")
+      expect(poll.state.scans).toBe(1)
+      yield* TestClock.adjust("1 second")
+      expect(poll.state.scans).toBe(2)
+      expect(poll.state.reads).toBe(2)
+      yield* Fiber.interrupt(fiber)
+    }),
+  )
+
+  it.effect("wakes for a local change without waiting for the idle cap", () =>
+    Effect.gen(function* () {
+      const poll = harness(undefined)
+      const fiber = yield* Effect.forkChild(pollDue(poll.loops, poll.scan))
+      yield* settle
+      expect(poll.state.scans).toBe(1)
+
+      poll.state.next = 0
+      yield* poll.signal
+      yield* settle
+      expect(poll.state.scans).toBe(2)
+      yield* Fiber.interrupt(fiber)
+    }),
+  )
+
+  it.effect("does not lose a change that lands between the token and the read", () =>
+    Effect.gen(function* () {
+      const poll = harness(undefined)
+      // The write completes inside the read, after the token was captured.
+      const racing = {
+        awaitChange: poll.loops.awaitChange,
+        nextWakeAt: () =>
+          poll.loops.nextWakeAt().pipe(Effect.tap(() => (poll.state.reads === 1 ? poll.signal : Effect.void))),
+      }
+      const fiber = yield* Effect.forkChild(pollDue(racing, poll.scan))
+      yield* settle
+      // The first read was signalled mid-read, so the pass re-reads without any time passing.
+      expect(poll.state.reads).toBe(2)
+      yield* Fiber.interrupt(fiber)
+    }),
+  )
+
+  it.effect("waits at least 250 ms after a predicted-due scan that claimed nothing", () =>
+    Effect.gen(function* () {
+      const poll = harness(0, 0)
+      const fiber = yield* Effect.forkChild(pollDue(poll.loops, poll.scan))
+      yield* settle
+      // Startup scan, then one predicted-due scan that claimed nothing.
+      expect(poll.state.scans).toBe(2)
+
+      yield* TestClock.adjust("249 millis")
+      expect(poll.state.scans).toBe(2)
+      yield* TestClock.adjust("1 millis")
+      expect(poll.state.scans).toBe(3)
+      yield* Fiber.interrupt(fiber)
+    }),
+  )
+
+  it.effect("keeps claiming without sleeping while claims come back", () =>
+    Effect.gen(function* () {
+      const poll = harness(0)
+      let remaining = 3
+      const scan = Effect.suspend(() => {
+        poll.state.scans++
+        remaining--
+        poll.state.next = remaining > 0 ? 0 : undefined
+        return Effect.succeed(32)
+      })
+      const fiber = yield* Effect.forkChild(pollDue(poll.loops, scan))
+      yield* settle
+      expect(poll.state.scans).toBe(3)
+      yield* Fiber.interrupt(fiber)
+    }),
+  )
+
+  it.effect("retries after a failed scan following a one second pause", () =>
+    Effect.gen(function* () {
+      const poll = harness(undefined)
+      poll.state.failures = 1
+      const fiber = yield* Effect.forkChild(pollDue(poll.loops, poll.scan))
+      yield* settle
+      expect(poll.state.scans).toBe(1)
+      expect(poll.state.reads).toBe(0)
+
+      yield* TestClock.adjust("999 millis")
+      expect(poll.state.reads).toBe(0)
+      yield* TestClock.adjust("1 millis")
+      expect(poll.state.reads).toBe(1)
+      yield* Fiber.interrupt(fiber)
+    }),
+  )
+})
+
+describe("LoopScheduler wake with the Loop service", () => {
+  const live = testEffect(AppNodeBuilder.build(LayerNode.group([Database.node, Loop.node])))
+
+  live.live("claims a loop created while the scheduler is idle without waiting for the idle cap", () =>
+    Effect.gen(function* () {
+      const loops = yield* Loop.Service
+      const claimed = yield* Deferred.make<ReadonlyArray<string>>()
+      const started = yield* Deferred.make<void>()
+      const scan = loops.claimDue({ owner: "test" }).pipe(
+        Effect.orDie,
+        Effect.tap(() => Deferred.succeed(started, undefined)),
+        Effect.tap((runs) =>
+          runs.length
+            ? Deferred.succeed(
+                claimed,
+                runs.map((run) => run.loopID),
+              )
+            : Effect.void,
+        ),
+        Effect.map((runs) => runs.length),
+      )
+      const fiber = yield* Effect.forkChild(pollDue(loops, scan))
+      yield* awaitWithTimeout(Deferred.await(started), "startup scan did not run")
+      yield* loops.create({
+        id: "lop_idle_wake",
+        name: "idle wake",
+        prompt: "prompt",
+        location: { directory: "/work/idle-wake" },
+        intervalSeconds: Loop.MIN_INTERVAL_SECONDS,
+      })
+      expect(yield* awaitWithTimeout(Deferred.await(claimed), "loop was not claimed after create")).toEqual([
+        "lop_idle_wake",
+      ])
+      yield* Fiber.interrupt(fiber)
+    }),
+  )
 })

@@ -76,20 +76,30 @@ const reviewedSkillDigests = new Set([
   "8eb66198359530817494f97f5b552d6d29d16fd0c470510ec96bb694a7f3fbda",
   // turenlabs/detection-engineering-review
   "a5cc17171c5a7cb8de62e84d6ac903ad1bcda2ab43b38a451d52474dc6bcac3b",
+  // turenlabs/github-actions-security-review
+  "d9b409c7ea8a6b61805de989dd8e111eb8cbaee94aa5a8fd005afda728d60f4d",
   // turenlabs/iac-config-review
   "9a2b0ee0b3b04c486022045245f005335526f962759c1c2981dc494004535bb0",
   // turenlabs/mcp-security-review
   "10faa037347373b3a73f4988cd6b885835e079ac41478c69d6811e1fbed37ee9",
+  // turenlabs/agentic-prompt-injection-review
+  "09255af23e4eed0e5d9b200897a6c99fecea29e6018ec43a7fc8f8a302af7920",
+  // turenlabs/oauth-security-review
+  "d307991659dbc428c58e045c57ed516b457b9a40f93c8574bdaa2fe27cf8b964",
   // turenlabs/incident-evidence-triage
   "24d2c42d7b2d26c48960842ead85f7be515b6a357b34369a4af999c1a8f8de26",
   // turenlabs/incident-responder
   "7fa4e7460fc1eef51b1260dd7a5c00bc1702e67e057da00bba6ad10d08ea96e5",
   // turenlabs/secure-code-review
   "550415b8d5cf9256cef61a930c9439f88952ed14a9b73cd462390cd72d5fc3ce",
+  // turenlabs/slsa-provenance-review
+  "2db6cd93ec6dab38e005e622f1ebb13c172b10e569f58cd3d45aee795a9fd8e6",
   // turenlabs/software-architecture-reviewer
   "17f0fc432154a9631087010bd58c30152ecd4f4cbbf9ae3ca821d02b3cb343aa",
   // turenlabs/technical-security-blog
   "aab1c54a3c1909c00d4cfcb69e9d2a5cfec1c763abcfab384db3aed8e34f1831",
+  // turenlabs/tenant-isolation-review
+  "7448474a095ca9bb9c7c47346a4e3fb43e25192357966e0fd58cdfc4223eec16",
   // turenlabs/test-strategy
   "9ef7b51f553db3f1b86cef791e07f6122ea9f5babc6350e08343a8ceff8bb161",
   // turenlabs/threat-hunter
@@ -257,7 +267,9 @@ async function runtimeComplete(config: Config, verifyNative = true) {
       return match ? [[match[2], match[1]] as const] : []
     }),
   )
-  const files = verifyNative ? [config.binary, config.library, config.model, config.metadata] : [config.model, config.metadata]
+  const files = verifyNative
+    ? [config.binary, config.library, config.model, config.metadata]
+    : [config.model, config.metadata]
   for (const filename of files) {
     const digest = expected.get(path.basename(filename))
     if (!digest || (await sha256File(filename)) !== digest) return false

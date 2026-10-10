@@ -110,12 +110,12 @@ test("finds the exact WASM assets referenced by the desktop bundle", async () =>
 
   const assets = await referencedWasmAssets(directory)
   expect(assets).toEqual([
-    path.join("chunks", "tree-sitter-bash-live.wasm"),
-    path.join("chunks", "tree-sitter-live.wasm"),
-    path.join("chunks", "tree-sitter-powershell-live.wasm"),
+    "chunks/tree-sitter-bash-live.wasm",
+    "chunks/tree-sitter-live.wasm",
+    "chunks/tree-sitter-powershell-live.wasm",
   ])
   expect(missingTreeSitterAssets(assets)).toEqual([])
-  expect(missingTreeSitterAssets([path.join("chunks", "tree-sitter-stale.wasm")])).toEqual(["Bash", "PowerShell"])
+  expect(missingTreeSitterAssets(["chunks/tree-sitter-stale.wasm"])).toEqual(["Bash", "PowerShell"])
   await rm(directory, { recursive: true })
 })
 
@@ -171,14 +171,21 @@ for (const channel of channels) {
     expect(config.files).toContain("!out/main/chunks/binary-tools/**/*")
     expect(config.files).toContain("!out/main/chunks/static-analysis/**/*")
     expect(config.files).toContain("!out/main/chunks/forensic-tools/**/*")
+    expect(config.files).toContain("!out/main/server/**/*")
+    expect(config.files).toContain("!resources/bun*")
     expect(config.asarUnpack).toBeUndefined()
     expect(config.publish).toEqual([
       { provider: "github", owner: "turenlabs", repo: "turenos", channel: `latest-${process.arch}` },
     ])
     expect(config.extraResources).toContainEqual({
+      from: "out/main/server/",
+      to: "server/",
+      filter: ["**/*", "!static-unpack/*-source.tar.gz"],
+    })
+    expect(config.extraResources).toContainEqual({
       from: "resources/",
       to: ".",
-      filter: ["forge-cli*", "vigil/**"],
+      filter: ["forge-cli*", "bun*", "vigil/**"],
     })
     expect(config.extraResources).toContainEqual(noticeResource)
     expect(config.extraResources).toContainEqual(thinkingOrbsLicenseResource)
@@ -200,6 +207,10 @@ for (const channel of channels) {
     expect(config.extraResources).toContainEqual(staticAnalysisWorkerResource)
     expect(config.extraResources).toContainEqual(staticAnalysisAssetsResource)
     expect(config.extraResources).toContainEqual(forensicToolsResource)
+    expect(config.extraResources).toContainEqual({
+      from: "out/main/chunks/jwt-audit/",
+      to: "jwt-audit/",
+    })
   })
 }
 
@@ -258,4 +269,11 @@ test("keeps a hidden prod launcher for old Linux pins", async () => {
   expect(desktop).toContain("Icon=com.turenlabs.forge")
   expect(desktop).toContain("StartupWMClass=com.turenlabs.forge")
   expect(desktop).toContain("NoDisplay=true")
+})
+
+test("keeps source maps out of the asar but still ships third-party wasm maps as resources", async () => {
+  const { default: config }: { default: Configuration } = await import("./electron-builder.config.ts?sourcemaps")
+  expect(config.files).toContain("!out/**/*.map")
+  expect(config.files).toContain("!out/main/chunks/binary-tools/**/*")
+  expect(config.extraResources).toContainEqual(expect.objectContaining({ from: "out/main/chunks/binary-tools/" }))
 })

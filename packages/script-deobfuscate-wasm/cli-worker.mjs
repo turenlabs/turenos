@@ -1,3 +1,4 @@
+// @generated from tools/script-deobfuscate/script/cli-worker.mjs. Do not edit.
 import { readFile } from "node:fs/promises"
 import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"

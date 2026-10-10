@@ -1,12 +1,38 @@
 import assert from "node:assert/strict"
 import { spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
-import { mkdtemp, rm, rmdir, writeFile } from "node:fs/promises"
+import { mkdtemp, readFile, rm, rmdir, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 
 assert.ok(process.argv[2], "usage: node test/cli.mjs <packaged-module-directory>")
-const cli = path.join(path.resolve(process.argv[2]), "cli.mjs")
+const packageRoot = path.resolve(process.argv[2])
+const cli = path.join(packageRoot, "cli.mjs")
+for (const name of ["cli.mjs", "cli-worker.mjs"]) {
+  const copy = await readFile(path.join(packageRoot, name), "utf8")
+  assert.ok(
+    copy
+      .split("\n")
+      .slice(0, 5)
+      .some((line) => line.includes("@generated")),
+    "packaged CLI must identify its generated source",
+  )
+  assert.equal(
+    copy.replace(/^\/\/ @generated.*\n/m, ""),
+    await readFile(new URL(`../script/${name}`, import.meta.url), "utf8"),
+  )
+}
+for (const name of ["NOTICE", "LICENSE-OXC"]) {
+  assert.deepEqual(
+    await readFile(path.join(packageRoot, `${name}.txt`)),
+    await readFile(new URL(`../${name}`, import.meta.url)),
+  )
+}
+const inventory = JSON.parse(await readFile(path.join(packageRoot, "THIRD_PARTY_LICENSES.json"), "utf8"))
+assert.ok(
+  inventory.every((item) => item.files.every((file) => file.endsWith(".txt"))),
+  "packaged legal texts must use prose filenames",
+)
 const temporary = await mkdtemp(path.join(os.tmpdir(), "script-deobfuscate-cli-"))
 const call = (args, input) =>
   spawnSync(process.execPath, [cli, ...args], {

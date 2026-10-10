@@ -17,7 +17,7 @@ import {
   loadProvidersQuery,
 } from "./global-sync/bootstrap"
 import { createChildStoreManager } from "./global-sync/child-store"
-import { applyDirectoryEvent, applyGlobalEvent } from "./global-sync/event-reducer"
+import { applyDirectoryEvent, applyGlobalEvent, eventNeedsResync } from "./global-sync/event-reducer"
 import { estimateRootSessionTotal, loadRootSessionsWithFallback } from "./global-sync/session-load"
 import { trimSessions } from "./global-sync/session-trim"
 import type { ProjectMeta } from "./global-sync/types"
@@ -398,7 +398,7 @@ export function createServerSyncContextInner(serverSDK: ServerSDK) {
     if (event.type === "session.created" || event.type === "session.updated" || event.type === "session.deleted") {
       homeSessions.apply(event)
     }
-    homeSessions.refresh(event.type)
+    homeSessions.refresh(event)
 
     if (directory === "global") {
       // A config write already invalidated the server's per-instance state, so
@@ -422,7 +422,7 @@ export function createServerSyncContextInner(serverSDK: ServerSDK) {
         },
         setGlobalProject: setProjects,
       })
-      if (event.type === "server.connected" || event.type === "global.disposed") {
+      if (eventNeedsResync(event)) {
         if (recent) return
         for (const directory of Object.keys(children.children)) {
           if (!children.active(directory)) continue

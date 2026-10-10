@@ -15,6 +15,7 @@ import { SessionStore } from "@turenlabs/core/session/store"
 import { eq } from "drizzle-orm"
 import { SessionEvent } from "@turenlabs/core/session/event"
 import { SessionMessage } from "@turenlabs/core/session/message"
+import { SessionHistory } from "@turenlabs/core/session/history"
 import { SessionInput } from "@turenlabs/core/session/input"
 import { ModelV2 } from "@turenlabs/core/model"
 import { ProviderV2 } from "@turenlabs/core/provider"
@@ -341,6 +342,47 @@ describe("SessionV2 human transcript", () => {
           .prompt({ sessionID: created.id, id: boardID, prompt: { text: "Quiet coordination" }, resume: false })
           .pipe(Effect.flip))._tag,
       ).toBe("Session.PromptConflictError")
+    }),
+  )
+})
+
+describe("SessionHistory decode cache", () => {
+  it.effect("loads the same history each time and shows an in-place update on the next load", () =>
+    Effect.gen(function* () {
+      const session = yield* SessionV2.Service
+      const events = yield* EventV2.Service
+      const database = yield* Database.Service
+      const created = yield* session.create({ location })
+      for (let turn = 0; turn < 3; turn++) {
+        yield* session.prompt({ sessionID: created.id, prompt: { text: `turn ${turn}` }, resume: false })
+      }
+      yield* SessionInput.promoteSteers(database.db, events, created.id, Number.MAX_SAFE_INTEGER)
+
+      const first = yield* SessionHistory.entries(database.db, created.id)
+      expect(first).toHaveLength(3)
+
+      const second = yield* SessionHistory.entries(database.db, created.id)
+      expect(second).toEqual(first)
+
+      const target = first[0]?.message
+      expect(target?.type).toBe("user")
+      if (target === undefined) return yield* Effect.die("expected a user message")
+      const row = yield* database.db
+        .select({ data: SessionMessageTable.data })
+        .from(SessionMessageTable)
+        .where(eq(SessionMessageTable.id, target.id))
+        .get()
+      if (row === undefined) return yield* Effect.die("expected a message row")
+      if (!("text" in row.data)) return yield* Effect.die("expected a user message row")
+      yield* database.db
+        .update(SessionMessageTable)
+        .set({ data: { ...row.data, text: "turn 0 edited" } as typeof row.data })
+        .where(eq(SessionMessageTable.id, target.id))
+        .run()
+
+      const third = yield* SessionHistory.entries(database.db, created.id)
+      const edited = third[0]?.message
+      expect(edited?.type === "user" && edited.text).toBe("turn 0 edited")
     }),
   )
 })

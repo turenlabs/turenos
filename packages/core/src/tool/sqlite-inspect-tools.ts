@@ -38,10 +38,7 @@ const layer = Layer.effectDiscard(
     const permission = yield* PermissionV2.Service
     const runtime = yield* SqliteInspectRuntime.Service
 
-    const run = Effect.fn("SqliteInspectTools.run")(function* (
-      request: SqliteInspectRuntime.Request,
-      path: string,
-    ) {
+    const run = Effect.fn("SqliteInspectTools.run")(function* (request: SqliteInspectRuntime.Request, path: string) {
       return yield* runtime
         .run(request)
         .pipe(
@@ -52,12 +49,30 @@ const layer = Layer.effectDiscard(
     })
 
     const fail = (message: string) =>
-      Effect.mapError((error: unknown) =>
-        error instanceof ToolFailure ? error : new ToolFailure({ message }),
-      )
+      Effect.mapError((error: unknown) => (error instanceof ToolFailure ? error : new ToolFailure({ message })))
 
     yield* tools
       .register({
+        sqlite_wal_inspect: Tool.make({
+          deferred: true,
+          description:
+            "Inspect one SQLite WAL file: header, cumulative checksum and salt validation, valid frame prefix, commit markers, last commit boundary, uncommitted tail, and partial or invalid frames. Read-only; never replays pages or reads sidecars. Checksums do not authenticate data or establish database association or checkpoint status.",
+          input: Schema.Struct({
+            path: Schema.NonEmptyString.annotate({ description: "SQLite WAL file to inspect, not the main database." }),
+            maxItems,
+          }),
+          output: Schema.Struct({ path: Schema.String, report: Schema.String }),
+          toModelOutput: ({ output }) => [{ type: "text", text: output.report }],
+          execute: (input, context) =>
+            Effect.gen(function* () {
+              const file = yield* read(input.path, "sqlite_wal_inspect", context, mutation, fs, permission)
+              const report = yield* run(
+                { op: "sqlite_wal_inspect", bytes: file.bytes, options: { maxItems: input.maxItems } },
+                input.path,
+              )
+              return { path: file.resource, report: JSON.stringify({ path: file.resource, ...report }, null, 2) }
+            }).pipe(fail(`Unable to inspect WAL ${input.path}`)),
+        }),
         sqlite_inspect: Tool.make({
           deferred: true,
           description:
@@ -126,10 +141,7 @@ const layer = Layer.effectDiscard(
           input: Schema.Struct({
             path: Schema.NonEmptyString.annotate({ description: "SQLite database file to read rows from." }),
             table: tableName("Table whose root b-tree to decode."),
-            maxRows: boundedInt(
-              MAX_ROWS,
-              `Maximum rows decoded. Defaults to 64; hard maximum ${MAX_ROWS}.`,
-            ),
+            maxRows: boundedInt(MAX_ROWS, `Maximum rows decoded. Defaults to 64; hard maximum ${MAX_ROWS}.`),
             blobPreviewBytes: boundedInt(
               MAX_BLOB_PREVIEW,
               `Hex preview bytes per blob value. Defaults to 32; hard maximum ${MAX_BLOB_PREVIEW}.`,

@@ -154,7 +154,7 @@ const layer = Layer.effect(
     type Tx = Parameters<Parameters<typeof primary.transaction>[0]>[0]
     const events = yield* EventV2.Service
     const sessions = yield* SessionStore.Service
-    const locks = KeyedMutex.makeUnsafe<ID>()
+    const locks = KeyedMutex.makeUnsafe<string>()
     // Process-local set of sessions parked in `wait` per room — drives the
     // "parked" member state and lets wait_agents detect an all-parked deadlock.
     const waiters = new Map<ID, Set<SessionSchema.ID>>()
@@ -387,7 +387,7 @@ const layer = Layer.effect(
           return updated
         }
         return existing
-      }).pipe(locks.withLock(Contract.ID.make(`root_${rootSessionID}`)))
+      }).pipe(locks.withLock(`root_${rootSessionID}`))
     })
 
     const parked = Effect.fn("SwarmRoom.parked")(function* (roomID: ID) {

@@ -123,6 +123,7 @@ import { createSessionLineage, nextSessionActivation, SESSION_ACTIVATION_MAX_AGE
 import { createSessionGoalController } from "./session/goal/session-goal-controller"
 import { SessionGoalDock } from "./session/goal/session-goal-dock"
 import { sessionPromptOutbox, sessionPromptPending, sessionPromptStartup } from "./session/goal/session-prompt-state"
+import { orderPendingInputs } from "./session/composer/session-pending-inputs"
 import { promptAdmissionFor } from "@/components/prompt-input/prompt-admission"
 import { responseData } from "@/pages/loops/api"
 import { createSessionHarnessController } from "./session/harness/session-harness-controller"
@@ -143,6 +144,7 @@ import {
   type SessionLiveView,
   type SessionTimelineItem,
 } from "./session/session-live-prototype"
+import { SessionLiveMetrics } from "./session/session-live-metrics"
 import { sessionTranscriptVisible } from "./session/session-live-status"
 import SecurityProxyPage from "./security-proxy"
 
@@ -2018,14 +2020,20 @@ export default function Page() {
   })
 
   const [followupBusy, setFollowupBusy] = createStore<Record<string, boolean | undefined>>({})
-  const queuedInputs = createMemo(() => {
+  // Prompts admitted into a running turn but not yet promoted. The timeline leaves them
+  // out until the runner promotes them, so the composer's "Up next" tray owns them.
+  const pendingInputs = createMemo(() => {
     const id = params.id
     if (!id) return []
-    return (sync().data.message[id] ?? []).filter(
-      (message) => message.role === "user" && sessionPromptPending.delivery(message.id) === "queue",
+    const scope = sdk().scope
+    return orderPendingInputs(
+      (sync().data.message[id] ?? []).flatMap((message) => {
+        const delivery = message.role === "user" ? sessionPromptPending.delivery(message.id) : undefined
+        if (!delivery) return []
+        return [{ id: message.id, text: line(message.id), delivery, sending: admission.sending(scope, id, message.id) }]
+      }),
     )
   })
-  const followupItems = createMemo(() => queuedInputs().map((message) => ({ id: message.id, text: line(message.id) })))
 
   const steerFollowup = (messageID: string) => {
     const sessionID = params.id
@@ -2040,7 +2048,9 @@ export default function Page() {
       .finally(() => setFollowupBusy(messageID, undefined))
   }
 
-  const editFollowup = (messageID: string) => {
+  // Cancellation only succeeds while the input is unpromoted; once the runner has
+  // taken it, the server refuses and the prompt stays where the transcript put it.
+  const cancelFollowup = (messageID: string, restore: boolean) => {
     const sessionID = params.id
     if (!sessionID || followupBusy[messageID]) return
     const value = draft(messageID)
@@ -2065,6 +2075,7 @@ export default function Page() {
           )
           sync().set("part", messageID, reconcile([], { key: "id" }))
         })
+        if (!restore) return
         prompt.set(value, promptLength(value))
         requestAnimationFrame(() => inputRef?.focus())
       })
@@ -2073,13 +2084,16 @@ export default function Page() {
   }
 
   const sessionFollowupControls = () => {
-    const items = followupItems()
+    const items = pendingInputs()
     if (items.length === 0) return
     return {
       items,
-      pending: Object.values(followupBusy).some(Boolean),
-      onSend: steerFollowup,
-      onEdit: editFollowup,
+      busy: (id: string) => !!followupBusy[id],
+      // Editing replaces the composer, so it never overwrites a draft in progress.
+      editBlocked: prompt.dirty(),
+      onSteer: steerFollowup,
+      onEdit: (id: string) => cancelFollowup(id, true),
+      onRemove: (id: string) => cancelFollowup(id, false),
     }
   }
 
@@ -2470,7 +2484,9 @@ export default function Page() {
               onViewChange={setLiveDockView}
               agents={liveAgents}
               todos={composer.todos}
-            />
+            >
+              <SessionLiveMetrics />
+            </SessionLiveDock>
           </Show>
         }
         promptInput={
@@ -2483,7 +2499,9 @@ export default function Page() {
                   onViewChange={setLiveDockView}
                   agents={liveAgents}
                   todos={composer.todos}
-                />
+                >
+                  <SessionLiveMetrics />
+                </SessionLiveDock>
               </Show>
             }
             ref={(el) => {

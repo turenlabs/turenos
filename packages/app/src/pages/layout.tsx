@@ -40,6 +40,7 @@ import { clearWorkspaceTerminals } from "@/context/terminal"
 import { pickSessionCacheEvictions } from "@/context/global-sync/session-cache"
 import { useNotification } from "@/context/notification"
 import { usePermission } from "@/context/permission"
+import { permissionFromV2 } from "@/context/permission-request"
 import { Binary } from "@turenlabs/core/util/binary"
 import { retry } from "@turenlabs/core/util/retry"
 import { playSoundById } from "@/utils/sound"
@@ -409,7 +410,8 @@ export default function LegacyLayout(props: ParentProps) {
         if (
           e.details?.type === "question.v2.replied" ||
           e.details?.type === "question.v2.rejected" ||
-          e.details?.type === "permission.replied"
+          e.details?.type === "permission.replied" ||
+          e.details?.type === "permission.v2.replied"
         ) {
           const props = e.details.properties as { sessionID: string }
           const sessionKey = `${e.name}:${props.sessionID}`
@@ -417,15 +419,23 @@ export default function LegacyLayout(props: ParentProps) {
           return
         }
 
-        if (e.details?.type !== "permission.asked" && e.details?.type !== "question.v2.asked") return
-        const title =
-          e.details.type === "permission.asked"
-            ? language.t("notification.permission.title")
-            : language.t("notification.question.title")
-        const icon = e.details.type === "permission.asked" ? ("checklist" as const) : ("bubble-5" as const)
+        if (
+          e.details?.type !== "permission.asked" &&
+          e.details?.type !== "permission.v2.asked" &&
+          e.details?.type !== "question.v2.asked"
+        )
+          return
+        const request =
+          e.details.type === "permission.v2.asked"
+            ? permissionFromV2(e.details.properties)
+            : e.details.type === "permission.asked"
+              ? e.details.properties
+              : undefined
+        const title = request ? language.t("notification.permission.title") : language.t("notification.question.title")
+        const icon = request ? ("checklist" as const) : ("bubble-5" as const)
         const directory = e.name
         const props = e.details.properties
-        if (e.details.type === "permission.asked" && permission.autoResponds(e.details.properties, directory)) return
+        if (request && permission.autoResponds(request, directory)) return
 
         const [store] = serverSync().child(directory, { bootstrap: false })
         const session = store.session.find((s) => s.id === props.sessionID)
@@ -433,10 +443,9 @@ export default function LegacyLayout(props: ParentProps) {
 
         const sessionTitle = session?.title ?? language.t("command.session.new")
         const projectName = getFilename(directory)
-        const description =
-          e.details.type === "permission.asked"
-            ? language.t("notification.permission.description", { sessionTitle, projectName })
-            : language.t("notification.question.description", { sessionTitle, projectName })
+        const description = request
+          ? language.t("notification.permission.description", { sessionTitle, projectName })
+          : language.t("notification.question.description", { sessionTitle, projectName })
         const href = `/${base64Encode(directory)}/session/${props.sessionID}`
 
         const now = Date.now()
@@ -444,7 +453,7 @@ export default function LegacyLayout(props: ParentProps) {
         if (now - lastAlerted < cooldownMs) return
         alertedAtBySession.set(sessionKey, now)
 
-        if (e.details.type === "permission.asked") {
+        if (request) {
           if (settings.sounds.permissionsEnabled()) {
             void playSoundById(settings.sounds.permissions())
           }

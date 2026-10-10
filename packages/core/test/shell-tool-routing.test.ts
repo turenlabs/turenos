@@ -1,4 +1,4 @@
-import { describe, expect } from "bun:test"
+import { describe, expect, test } from "bun:test"
 import { Effect, Layer, Schema } from "effect"
 import { ShellToolRouting } from "@turenlabs/core/shell-tool-routing"
 import { testEffect } from "./lib/effect"
@@ -76,4 +76,24 @@ describe("ShellToolRouting", () => {
       }
     }),
   )
+})
+
+describe("search availability", () => {
+  test("a failed search tool steps the redirect aside for that tool and session only", () => {
+    ShellToolRouting.reportSearch("ses_a", "grep", false)
+    expect(ShellToolRouting.searchUnavailable("ses_a", "grep")).toBe(true)
+    expect(ShellToolRouting.searchUnavailable("ses_a", "glob")).toBe(false)
+    expect(ShellToolRouting.searchUnavailable("ses_b", "grep")).toBe(false)
+    // Mutations always route to their tools.
+    expect(ShellToolRouting.searchUnavailable("ses_a", "edit")).toBe(false)
+    ShellToolRouting.reportSearch("ses_a", "grep", true)
+    expect(ShellToolRouting.searchUnavailable("ses_a", "grep")).toBe(false)
+  })
+
+  test("the record stays bounded", () => {
+    for (let index = 0; index < 1_001; index++) ShellToolRouting.reportSearch(`ses_${index}`, "glob", false)
+    expect(ShellToolRouting.searchUnavailable("ses_0", "glob")).toBe(false)
+    expect(ShellToolRouting.searchUnavailable("ses_1000", "glob")).toBe(true)
+    for (let index = 0; index < 1_001; index++) ShellToolRouting.reportSearch(`ses_${index}`, "glob", true)
+  })
 })

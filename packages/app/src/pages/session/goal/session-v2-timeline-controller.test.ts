@@ -104,11 +104,75 @@ describe("shouldPollSessionUntilIdle", () => {
 })
 
 describe("commitSessionIdleAfterRefresh", () => {
+  test("settles idle after a failed refresh and reports the error after committing", async () => {
+    const error = new Error("Snapshot failed")
+    const state: { status: "busy" | "idle" } = { status: "busy" }
+    const reported: unknown[] = []
+    const input = {
+      refresh: () => Promise.reject(error),
+      current: () => true,
+      commit: () => {
+        state.status = "idle"
+      },
+      onRefreshError: (failure: unknown) => {
+        expect(state.status).toBe("idle")
+        reported.push(failure)
+      },
+    }
+
+    expect(await commitSessionIdleAfterRefresh(input)).toBe(true)
+    expect(state.status).toBe("idle")
+    expect(reported).toEqual([error])
+  })
+
+  test("does not publish idle or report a stale refresh failure", async () => {
+    let reject = (_error: unknown) => {}
+    let current = true
+    let committed = false
+    const reported: unknown[] = []
+    const refresh = new Promise<never>((_resolve, fail) => {
+      reject = fail
+    })
+    const input = {
+      refresh: () => refresh,
+      current: () => current,
+      commit: () => {
+        committed = true
+      },
+      onRefreshError: (error: unknown) => reported.push(error),
+    }
+    const settling = commitSessionIdleAfterRefresh(input)
+
+    current = false
+    reject(new Error("Snapshot failed"))
+
+    expect(await settling).toBe(false)
+    expect(committed).toBe(false)
+    expect(reported).toEqual([])
+  })
+
+  test("does not publish idle when refresh succeeds without projecting a snapshot", async () => {
+    let committed = false
+    const reported: unknown[] = []
+    const input = {
+      refresh: () => Promise.resolve(false),
+      current: () => true,
+      commit: () => {
+        committed = true
+      },
+      onRefreshError: (error: unknown) => reported.push(error),
+    }
+
+    expect(await commitSessionIdleAfterRefresh(input)).toBe(false)
+    expect(committed).toBe(false)
+    expect(reported).toEqual([])
+  })
+
   test("keeps stale terminal failures suppressed until the transcript refresh commits", async () => {
     let release = () => {}
     const state: { status: "busy" | "idle" } = { status: "busy" }
-    const refresh = new Promise<void>((resolve) => {
-      release = resolve
+    const refresh = new Promise<boolean>((resolve) => {
+      release = () => resolve(true)
     })
     const settling = commitSessionIdleAfterRefresh({
       refresh: () => refresh,
@@ -130,8 +194,8 @@ describe("commitSessionIdleAfterRefresh", () => {
     let release = () => {}
     let current = true
     let committed = false
-    const refresh = new Promise<void>((resolve) => {
-      release = resolve
+    const refresh = new Promise<boolean>((resolve) => {
+      release = () => resolve(true)
     })
     const settling = commitSessionIdleAfterRefresh({
       refresh: () => refresh,
@@ -477,6 +541,63 @@ describe("V2 timeline pagination", () => {
 
     expect(index).toBe(2)
     expect(window.messages.map((message) => message.id)).toEqual(["msg_anchor", "msg_new"])
+  })
+
+  test("preserves refresh continuity when growth pushes the anchor past the page cap", async () => {
+    const messages = Array.from(
+      { length: SESSION_V2_MESSAGE_PAGE_LIMIT * (SESSION_V2_WINDOW_PAGE_LIMIT + 2) },
+      (_, index) => user(`msg_${index + 1}`),
+    ).reverse()
+    let requests = 0
+    const window = await loadSessionV2Window({
+      sessionID: "ses_grown",
+      signal: new AbortController().signal,
+      request: async (payload) => {
+        requests += 1
+        const offset = Number(payload.cursor ?? 0)
+        const next = offset + payload.limit
+        return {
+          data: {
+            data: messages.slice(offset, next),
+            cursor: next < messages.length ? { next: String(next) } : {},
+          },
+        }
+      },
+      minimum: SESSION_V2_MESSAGE_PAGE_LIMIT,
+      until: "msg_1",
+    })
+
+    expect(requests).toBe(SESSION_V2_WINDOW_PAGE_LIMIT + 2)
+    expect(window.messages).toEqual([...messages].reverse())
+    expect(
+      sessionV2MessageWindowHasContinuity({
+        ...window,
+        current: { oldest: "msg_1", count: SESSION_V2_MESSAGE_PAGE_LIMIT },
+      }),
+    ).toBe(true)
+  })
+
+  test("stops at the end of history when a refresh anchor is absent", async () => {
+    let requests = 0
+    const window = await loadSessionV2Window({
+      sessionID: "ses_missing_anchor",
+      signal: new AbortController().signal,
+      request: async () => {
+        requests += 1
+        return {
+          data: {
+            data: [user(`msg_${requests}`)],
+            cursor: requests <= SESSION_V2_WINDOW_PAGE_LIMIT ? { next: String(requests) } : {},
+          },
+        }
+      },
+      minimum: 1,
+      until: "msg_missing",
+    })
+
+    expect(requests).toBe(SESSION_V2_WINDOW_PAGE_LIMIT + 1)
+    expect(window.complete).toBe(true)
+    expect(window.older).toBeUndefined()
   })
 })
 
@@ -1377,7 +1498,9 @@ describe("expandSessionV2ToolBody", () => {
         metadata: { structured: { exit: 0 } },
       },
     })
-    expect(h.data.part.msg_a?.[0]?.type === "tool" ? h.data.part.msg_a[0].metadata?.truncated : "missing").toBeUndefined()
+    expect(
+      h.data.part.msg_a?.[0]?.type === "tool" ? h.data.part.msg_a[0].metadata?.truncated : "missing",
+    ).toBeUndefined()
   })
 
   test("re-opening while the fetch is in flight issues no second request", async () => {
@@ -1443,7 +1566,9 @@ describe("expandSessionV2ToolBody", () => {
     release(fullMessage())
     await expect(pending).resolves.toBe(false)
     expect(h.data.part.msg_a?.[0]).toMatchObject({ state: { status: "completed", output: "settled live" } })
-    expect(h.data.part.msg_a?.[0]?.type === "tool" ? h.data.part.msg_a[0].metadata?.truncated : "missing").toBeUndefined()
+    expect(
+      h.data.part.msg_a?.[0]?.type === "tool" ? h.data.part.msg_a[0].metadata?.truncated : "missing",
+    ).toBeUndefined()
   })
 
   test("a part that already carries its body is never fetched", async () => {

@@ -1,11 +1,12 @@
 import { createEffect, createMemo, on, onCleanup } from "solid-js"
 import { createStore } from "solid-js/store"
-import type { PermissionRequest, QuestionRequest, Todo } from "@turenlabs/sdk/v2"
+import type { QuestionRequest, Todo } from "@turenlabs/sdk/v2"
 import { useParams } from "@solidjs/router"
 import { showToast } from "@/utils/toast"
 import { useServerSync } from "@/context/server-sync"
 import { useLanguage } from "@/context/language"
 import { usePermission } from "@/context/permission"
+import { replyToPermission, type SessionPermissionRequest } from "@/context/permission-request"
 import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
 import { todoDockAtBoundary, todoState } from "./session-composer-helpers"
@@ -25,7 +26,7 @@ export function createSessionComposerController(options?: { closeMs?: number | (
     return sessionQuestionRequest(sync().data.session, sync().data.question, params.id)
   })
 
-  const permissionRequest = createMemo((): PermissionRequest | undefined => {
+  const permissionRequest = createMemo((): SessionPermissionRequest | undefined => {
     return sessionPermissionRequest(sync().data.session, sync().data.permission, params.id, (item) => {
       return !permission.autoResponds(item, sdk().directory)
     })
@@ -69,8 +70,7 @@ export function createSessionComposerController(options?: { closeMs?: number | (
     if (store.responding === perm.id) return
 
     setStore("responding", perm.id)
-    sdk()
-      .client.permission.respond({ sessionID: perm.sessionID, permissionID: perm.id, response })
+    replyToPermission(sdk().client, perm, response)
       .catch((err: unknown) => {
         const description = err instanceof Error ? err.message : String(err)
         showToast({ title: language.t("common.requestFailed"), description })

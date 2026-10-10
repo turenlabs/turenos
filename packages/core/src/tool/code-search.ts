@@ -43,7 +43,6 @@ const toModelOutput = (output: ModelOutput) => {
 const layer = Layer.effectDiscard(
   Effect.gen(function* () {
     const tools = yield* Tools.Service
-    const location = yield* Location.Service
     const permission = yield* PermissionV2.Service
     const search = yield* CodeSearch.Service
 
@@ -67,7 +66,14 @@ const layer = Layer.effectDiscard(
                 source: { type: "tool", messageID: context.assistantMessageID, callID: context.toolCallID },
               })
               return yield* search.search({ queries: input.queries, path: input.path, limit: input.limit })
-            }).pipe(Effect.mapError(() => new ToolFailure({ message: `Unable to search for ${input.queries[0]}` }))),
+            }).pipe(
+              Effect.mapError(
+                (error) =>
+                  new ToolFailure({
+                    message: `Unable to search for ${input.queries[0]}${error instanceof Error ? `: ${error.message}` : ""}`,
+                  }),
+              ),
+            ),
         }),
       })
       .pipe(Effect.orDie)

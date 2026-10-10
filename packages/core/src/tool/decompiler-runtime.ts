@@ -27,6 +27,9 @@ export interface Interface {
 export class Service extends Context.Service<Service, Interface>()("@forge/v2/DecompilerRuntime") {}
 export const REQUEST_TIMEOUT_MS = 60_000
 const WORKER_READY_TIMEOUT_MS = 15_000
+// The wasm module never returns heap pages and leaks memory on every call, so a worker whose heap
+// has grown past this is replaced before the next request.
+const MAX_WORKER_HEAP_BYTES = 256 * 1024 * 1024
 
 type Request = {
   readonly id: number
@@ -35,7 +38,7 @@ type Request = {
 
 type Response =
   | { readonly id: number; readonly type: "started" }
-  | { readonly id: number; readonly type: "completed"; readonly code: string }
+  | { readonly id: number; readonly type: "completed"; readonly code: string; readonly heapBytes: number }
   | { readonly id: number; readonly type: "failed"; readonly error: string }
 
 type Pending = {
@@ -120,6 +123,10 @@ const layer = Layer.effect(
         if (!settled) return
         if (message.type === "completed") settled.resolve(message.code)
         else settled.reject(new Error(message.error))
+        // A failed request can leave the wasm instance in an unknown state, so the next request
+        // gets a fresh worker. The semaphore keeps only this request pending, so nothing else is rejected.
+        if (message.type === "failed" || message.heapBytes > MAX_WORKER_HEAP_BYTES)
+          stopWorker(current, new Error("Decompiler worker recycled"))
         if (pending.size === 0) currentWorker.unref()
       })
       currentWorker.on("error", (cause) => {
