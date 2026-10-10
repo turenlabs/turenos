@@ -13,7 +13,8 @@ export { parseSshTarget, serverLabel, sshDestination } from "./servers/targets"
 
 export function createServers(options: Options = {}) {
   const env = options.env ?? process.env
-  const home = options.home ?? homedir()
+  // HOME first, as os.homedir() reads it, so an agent command run with its own environment reads that home's records.
+  const home = options.home ?? (env.HOME || homedir())
   const platform = options.platform ?? process.platform
   const ctx: Context = {
     env,

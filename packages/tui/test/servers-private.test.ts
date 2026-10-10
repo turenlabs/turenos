@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { chmod, mkdir, readFile, rm, symlink, utimes, writeFile } from "node:fs/promises"
 import { hostname } from "node:os"
 import { join } from "node:path"
-import { scratch, server, desktop, local, open, cleanup } from "./servers-fixture"
+import { scratch, server, desktop, local, open, cleanup, persistent } from "./servers-fixture"
 
 describe("private headless server", () => {
   async function fakeForge(body: string) {
@@ -156,30 +156,36 @@ describe("record identity", () => {
     expect(await local(home).scan()).toEqual([])
   })
 
-  async function persistent(url: string, serverID: string) {
+  /** The persistent server's record names srv_1; the server on its socket describes itself as `descriptor`, or 404s. */
+  async function described(descriptor?: Record<string, unknown>) {
     const home = await scratch()
-    const record = join(home, "attach.json")
-    await writeFile(record, JSON.stringify({ version: 1, serverID, url, username: "forge", password: "secret" }))
-    return local(home, { platform: "linux", uid: undefined, persistentRecord: record })
+    const socket = join(home, "server.sock")
+    server("secret", descriptor ? { "/global/server": descriptor } : {}, socket)
+    return persistent(home, socket)
   }
 
   test("a server whose serverID differs from the record's is refused", async () => {
-    const servers = await persistent(server("secret", { "/global/server": { serverID: "srv_other" } }).url.origin, "srv_1")
+    const servers = await described({ serverID: "srv_other", mode: "persistent" })
     await expect(servers.resolve((await servers.preferred())!)).rejects.toThrow("not the server that published")
   })
 
   test("a server whose descriptor carries no serverID is refused", async () => {
-    const servers = await persistent(server("secret", { "/global/server": { mode: "persistent" } }).url.origin, "srv_1")
+    const servers = await described({ mode: "persistent" })
     await expect(servers.resolve((await servers.preferred())!)).rejects.toThrow("not the server that published")
   })
 
-  test("a server whose serverID matches the record's is accepted", async () => {
-    const servers = await persistent(server("secret", { "/global/server": { serverID: "srv_1" } }).url.origin, "srv_1")
+  test("a server that names the record's serverID but is not persistent is refused", async () => {
+    const servers = await described({ serverID: "srv_1", mode: "quick-connect" })
+    await expect(servers.resolve((await servers.preferred())!)).rejects.toThrow("not the server that published")
+  })
+
+  test("a persistent server whose serverID matches the record's is accepted", async () => {
+    const servers = await described({ serverID: "srv_1", mode: "persistent" })
     expect((await servers.resolve((await servers.preferred())!)).version).toBe("1.0.32")
   })
 
   test("a server that answers 404 for its descriptor is refused when the record names a serverID", async () => {
-    const servers = await persistent(server().url.origin, "srv_1")
+    const servers = await described()
     await expect(servers.resolve((await servers.preferred())!)).rejects.toThrow("not the server that published")
   })
 })
