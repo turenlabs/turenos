@@ -19,6 +19,7 @@ export function attachTerminal(input: AttachOptions): Promise<AttachResult> {
       options: input,
       open: input.socket ?? ((url: string) => new WebSocket(url)),
       decoder: new TextDecoder("utf-8"),
+      osc: { held: "", dropping: false },
       location: {
         "location[directory]": target.directory,
         ...(target.workspace ? { "location[workspace]": target.workspace } : {}),

@@ -18,6 +18,7 @@ import { snapshot } from "./snapshot"
 import { basicAuthHeaders, createTransport, validateConnection } from "./transport"
 import { worktree } from "./worktree"
 import type { Folder } from "../working-folders/folder"
+import { localFolders } from "../working-folders/local"
 
 export function connect(options: ConnectionOptions) {
   const { url, username, socketPath } = validateConnection(options)
@@ -25,7 +26,7 @@ export function connect(options: ConnectionOptions) {
   const headers = basicAuthHeaders(username, options.password)
   const transport = createTransport(controller, socketPath)
   const client = Forge.make({ baseUrl: url.href, headers, fetch: transport })
-  const folders = createWorkingFolders({ url, headers, transport })
+  const folders = localFolders(createWorkingFolders({ url, headers, transport }))
   const api = createApi({ url, headers, signal: controller.signal, socketPath })
   const missingFiles = new Set<string>()
   const ctx: Context = { url, headers, controller, options, transport, client, folders, api, missingFiles }

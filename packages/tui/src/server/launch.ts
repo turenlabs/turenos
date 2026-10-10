@@ -1,4 +1,5 @@
 import type { SessionsCreateOutput } from "@turenlabs/client"
+import { pathKey } from "@turenlabs/client/path-key"
 import { promptPayload } from "../prompt-files"
 import { invalid, modelRef, name } from "../response-validation"
 import type { Context } from "./context"
@@ -85,6 +86,16 @@ async function admit(ctx: Context, state: LaunchState, given: LaunchInput) {
   })
 }
 
+/** Nothing was sent: the fields are released as for a definite refusal, and the message names no server text. */
+function foreignSession(state: LaunchState) {
+  state.draft = undefined
+  state.routing = undefined
+  state.prompt = undefined
+  return new Error(
+    `Session ${state.sessionID} already exists with another directory or agent than requested. Nothing was sent.`,
+  )
+}
+
 async function write(
   ctx: Context,
   state: LaunchState,
@@ -99,6 +110,9 @@ async function write(
     model,
   })
   if (state.admitted.id !== state.sessionID) invalid("launch session identity")
+  // Core creates idempotently per ID, so an existing session comes back unchanged: refuse it before the prompt goes in.
+  const directory = pathKey(state.admitted.location.directory) !== pathKey(input.directory)
+  if (directory || (input.agent && state.admitted.agent !== input.agent)) throw foreignSession(state)
   state.created ??= { ...input }
   if (command) {
     await ctx.client.sessions.command({

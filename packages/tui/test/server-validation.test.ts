@@ -44,12 +44,12 @@ test("local directory mistakes make no requests and retain distinct server valid
 test("invalid local agent and model choices stay editable before admission", async () => {
   const server = fixture({
     "/api/session": async (request: Request) => {
-      const body = (await request.json()) as { id: string }
+      const body = (await request.json()) as { id: string; location: unknown; agent?: string }
       server.routes.set(`/api/session/${body.id}/prompt`, async (request: Request) => {
         const prompt = (await request.json()) as { id: string }
         return Response.json({ data: { id: prompt.id, sessionID: body.id } })
       })
-      return Response.json({ data: session(body.id) })
+      return Response.json({ data: { ...session(body.id), location: body.location, agent: body.agent } })
     },
   })
   const launch = server.connection.launch()
@@ -90,13 +90,13 @@ test("launch rejects a mismatched prompt acknowledgment and retries the original
   const prompts: { id: string; sessionID: string }[] = []
   const server = fixture({
     "/api/session": async (request: Request) => {
-      const body = (await request.json()) as { id: string }
+      const body = (await request.json()) as { id: string; location: unknown; agent?: string }
       server.routes.set(`/api/session/${body.id}/prompt`, async (request: Request) => {
         const prompt = (await request.json()) as { id: string }
         prompts.push({ id: prompt.id, sessionID: body.id })
         return Response.json({ data: { id: prompts.length === 1 ? "msg_wrong" : prompt.id, sessionID: body.id } })
       })
-      return Response.json({ data: session(body.id) })
+      return Response.json({ data: { ...session(body.id), location: body.location, agent: body.agent } })
     },
   })
   const launch = server.connection.launch()

@@ -214,6 +214,8 @@ test("the attachment ends with a terminal reset, so a PTY program's modes do not
   terminal.stdin.emit("data", Buffer.from([DETACH]))
   await attached
   expect(terminal.stdout.text.endsWith(RESTORE)).toBe(true)
+  // modifyOtherKeys, focus reporting, alternate scroll and the cursor style are PTY-settable too.
+  for (const reset of ["\x1b[>4;0m", "\x1b[?1004l", "\x1b[?1007l", "\x1b[0 q"]) expect(RESTORE).toContain(reset)
 })
 
 test("input past the reconnect limit is dropped as a whole, not resumed after a gap", async () => {
