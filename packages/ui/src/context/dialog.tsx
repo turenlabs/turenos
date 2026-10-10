@@ -226,6 +226,14 @@ export function useDialog() {
       const base = ctx.stack().at(-1)?.owner ?? owner
       return startTransition(() => ctx.show(element, base, onClose, canClose))
     },
+    showIfIdle(element: DialogElement, canShow: () => boolean) {
+      // Transitions start asynchronously. Check ownership at mount time, not
+      // before scheduling, so an automatic dialog cannot replace a user prompt.
+      return startTransition(() => {
+        if (!canShow() || ctx.stack().some((item) => !item.closing())) return
+        ctx.show(element, owner)
+      })
+    },
     push(element: DialogElement, onClose?: () => void, canClose?: () => boolean) {
       const base = ctx.stack().at(-1)?.owner ?? owner
       return startTransition(() => ctx.push(element, base, onClose, canClose))

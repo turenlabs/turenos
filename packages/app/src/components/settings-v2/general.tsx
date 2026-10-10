@@ -7,6 +7,7 @@ import { TextInputV2 } from "@turenlabs/ui/v2/text-input-v2"
 import { useTheme, type ColorScheme } from "@turenlabs/ui/theme/context"
 import { useDialog } from "@turenlabs/ui/context/dialog"
 import { useLanguage } from "@/context/language"
+import { SettingsReleaseNotes } from "../settings-release-notes"
 import { usePlatform } from "@/context/platform"
 import { useServerSync } from "@/context/server-sync"
 import { useServerSDK } from "@/context/server-sdk"
@@ -1143,6 +1144,16 @@ const SettingsGeneralContent: Component<{
             />
           </div>
         </SettingsRowV2>
+
+        <SettingsReleaseNotes>
+          {(title, description, open) => (
+            <SettingsRowV2 title={title} description={description}>
+              <ButtonV2 size="normal" variant="neutral" onClick={open}>
+                {title}
+              </ButtonV2>
+            </SettingsRowV2>
+          )}
+        </SettingsReleaseNotes>
 
         <Show when={platform.updater}>
           <SettingsRowV2

@@ -21,6 +21,7 @@ import type { ProfilerController } from "./profiler"
 import type { DesktopStorage } from "./storage/bridge"
 import { rendererStoreName } from "./renderer-store-name"
 import { TrustedIpc } from "./trusted-ipc"
+import type { createReleaseNotesCoordinator } from "./release-notes"
 
 // Keep registration syntax familiar while enforcing one trust gate for every channel.
 const ipcMain = TrustedIpc
@@ -67,6 +68,7 @@ type Deps = {
   resolveAppPath: (appName: string) => Promise<string | null>
   updater: UpdaterController
   storage: DesktopStorage
+  releaseNotes: ReturnType<typeof createReleaseNotesCoordinator>
   releaseProductStorage: (owner: number) => void
   getPinchZoomEnabled: (owner: number) => Promise<boolean>
   setPinchZoomEnabled: (owner: number, enabled: boolean) => Promise<void>
@@ -113,8 +115,13 @@ export function registerIpcHandlers(deps: Deps) {
     storageOwners.add(id)
     event.sender.once("destroyed", () => {
       storageOwners.delete(id)
+      deps.releaseNotes.release(id)
       deps.storage.release(id)
       deps.releaseProductStorage(id)
+    })
+    event.sender.on("render-process-gone", () => deps.releaseNotes.release(id))
+    event.sender.on("did-start-navigation", (details) => {
+      if (details.isMainFrame && !details.isSameDocument) deps.releaseNotes.release(id)
     })
     return id
   }
@@ -134,6 +141,12 @@ export function registerIpcHandlers(deps: Deps) {
     deps.finishFirstLaunchOnboarding(storageOwner(event)),
   )
   ipcMain.handle("is-old-layout-eligible", (event: IpcMainInvokeEvent) => deps.isOldLayoutEligible(storageOwner(event)))
+  ipcMain.handle("release-notes-claim", (event, enabled: unknown) => {
+    if (typeof enabled !== "boolean") throw new Error("Invalid release notes preference")
+    return deps.releaseNotes.claim(storageOwner(event), enabled)
+  })
+  ipcMain.handle("release-notes-shown", (event) => deps.releaseNotes.shown(storageOwner(event)))
+  ipcMain.handle("release-notes-release", (event) => deps.releaseNotes.release(storageOwner(event)))
   ipcMain.handle("get-display-backend", () => deps.getDisplayBackend())
   ipcMain.handle("set-display-backend", (_event: IpcMainInvokeEvent, backend: string | null) =>
     deps.setDisplayBackend(backend),

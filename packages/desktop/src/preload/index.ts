@@ -103,6 +103,11 @@ const api: ElectronAPI = {
     setLag: (lag) => ipcRenderer.invoke("updater-set-lag", lag),
   },
   consumeInitialDeepLinks: () => ipcRenderer.invoke("consume-initial-deep-links"),
+  releaseNotes: {
+    claim: (enabled) => ipcRenderer.invoke("release-notes-claim", enabled),
+    shown: () => ipcRenderer.invoke("release-notes-shown"),
+    release: () => ipcRenderer.invoke("release-notes-release"),
+  },
   getDefaultServerUrl: () => ipcRenderer.invoke("get-default-server-url"),
   setDefaultServerUrl: (url) => ipcRenderer.invoke("set-default-server-url", url),
   isFirstLaunchOnboardingPending: () => ipcRenderer.invoke("is-first-launch-onboarding-pending"),
