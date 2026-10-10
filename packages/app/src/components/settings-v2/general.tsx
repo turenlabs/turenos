@@ -673,7 +673,9 @@ const SettingsGeneralContent: Component<{
             <Switch
               checked={settings.general.composerPredictions()}
               onChange={settings.general.setComposerPredictions}
-            />
+            >
+              {language.t(toggleLabelKey(settings.general.composerPredictions()))}
+            </Switch>
           </SettingsRowV2>
         </Show>
 
