@@ -101,6 +101,7 @@ export const SessionPaths = {
   unshare: `${root}/:sessionID/share`,
   init: `${root}/:sessionID/init`,
   summarize: `${root}/:sessionID/summarize`,
+  prediction: `${root}/:sessionID/prediction`,
   prompt: `${root}/:sessionID/message`,
   promptAsync: `${root}/:sessionID/prompt_async`,
   command: `${root}/:sessionID/command`,
@@ -117,6 +118,18 @@ export const SessionApi = HttpApi.make("session")
   .add(
     HttpApiGroup.make("session")
       .add(
+        HttpApiEndpoint.post("prediction", SessionPaths.prediction, {
+          params: { sessionID: SessionID },
+          query: WorkspaceRoutingQuery,
+          success: Schema.Struct({ text: Schema.String }),
+          error: [HttpApiError.BadRequest, ApiNotFoundError],
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "session.prediction",
+            summary: "Predict the next user message",
+            description: "Suggest a draft from recent conversation text without running tools or changing the session.",
+          }),
+        ),
         HttpApiEndpoint.get("list", SessionPaths.list, {
           query: ListQuery,
           success: described(Schema.Array(Session.Info), "List of sessions"),
