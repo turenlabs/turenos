@@ -61,7 +61,7 @@ import { SwarmRoom } from "@turenlabs/core/team/room"
 import { Whiteboard } from "@turenlabs/core/session/whiteboard"
 import { AppNodeBuilderV1 } from "@/effect/app-node-builder-v1"
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
-import { httpClient } from "@turenlabs/core/effect/app-node-platform"
+import { httpClient, llmClient } from "@turenlabs/core/effect/app-node-platform"
 import { EventV2 } from "@turenlabs/core/event"
 import { ModelsDev } from "@turenlabs/core/models-dev"
 import { Npm } from "@turenlabs/core/npm"
@@ -76,6 +76,7 @@ import { SessionHarness } from "@turenlabs/core/session/harness"
 import { SessionReviewer } from "@turenlabs/core/session/reviewer"
 import { SessionV2 } from "@turenlabs/core/session"
 import { SessionExecution } from "@turenlabs/core/session/execution"
+import { SessionStore } from "@turenlabs/core/session/store"
 import * as SessionExecutionLocal from "@turenlabs/core/session/execution/local"
 import { SessionLegacyExecution } from "@turenlabs/core/session/legacy-execution"
 import { SessionTaskV2 } from "@turenlabs/core/session/task"
@@ -257,6 +258,7 @@ const app = LayerNode.group([
   PermissionSaved.node,
   Todo.node,
   Session.node,
+  SessionStore.node,
   SessionTaskV2.node,
   SessionProjector.node,
   SessionHarness.node,
@@ -288,6 +290,7 @@ const app = LayerNode.group([
   SessionShare.node,
   InstanceStore.node,
   httpClient,
+  llmClient,
   EventV2.node,
   ProjectV2.node,
   ProjectCopy.node,

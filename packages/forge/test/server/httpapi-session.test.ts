@@ -393,6 +393,20 @@ afterEach(async () => {
 })
 
 describe("session HttpApi", () => {
+  it.instance("returns no prediction for an empty session without changing its transcript", () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      const session = yield* createSession({ title: "prediction test" })
+      const result = yield* requestJson<{ text: string }>(`/session/${session.id}/prediction`, {
+        method: "POST",
+        headers: { "x-forge-directory": test.directory },
+      })
+      expect(result).toEqual({ text: "" })
+      const messages = yield* Session.Service.use((svc) => svc.messages({ sessionID: session.id }))
+      expect(messages).toEqual([])
+    }),
+  )
+
   it.instance(
     "binds one shared PTY to a session and exposes it through canonical PTY routes",
     () =>
