@@ -32,6 +32,9 @@ export function connect(options: ConnectionOptions) {
   const providers = createProviders({ url, headers, signal: controller.signal, socketPath })
   return {
     address: socketPath ? `unix:${socketPath}` : url.origin,
+    /** The origin requests are addressed to; with `socketPath` it is only `http://localhost`. */
+    url,
+    socketPath,
     providers,
     folders,
     client,
