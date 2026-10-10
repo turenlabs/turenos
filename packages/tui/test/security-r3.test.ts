@@ -12,6 +12,7 @@ afterEach(async () => {
   for (const close of cleanup.splice(0).reverse()) await close()
 })
 
+const linuxOnly = test.skipIf(process.platform !== "linux")
 const uid = process.getuid!()
 const other = uid + 1
 const PASSWORD = "synthetic-r3-password"
@@ -119,7 +120,8 @@ describe("an environment password reaches only our own loopback listener", () =>
     })
   }
 
-  test("a password discovered from the service is judged the same way, and the service is read first", async () => {
+  // Discovery reads the service's /proc/<pid>/environ, which only Linux has.
+  linuxOnly("a password discovered from the service is judged the same way, and the service is read first", async () => {
     const calls: string[] = []
     const foreign = tables(HEADER + row(V4, 4096, other), HEADER)
     const input = { url: new URL("http://127.0.0.1:4096/"), discoverAuth: true, env: {} }
@@ -152,7 +154,8 @@ describe("an environment password reaches only our own loopback listener", () =>
     })
   })
 
-  test("no request reaches a server when the agent's explicit loopback URL has no listener of ours", async () => {
+  // The listener-ownership check reads /proc/net/tcp, so it runs only on Linux; elsewhere the request is sent.
+  linuxOnly("no request reaches a server when the agent's explicit loopback URL has no listener of ours", async () => {
     const seen: string[] = []
     const bystander = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: (request) => (seen.push(request.url), new Response(null)) })
     cleanup.push(() => bystander.stop(true))

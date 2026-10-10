@@ -3,6 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { bypassLoopbackProxy } from "../src/server/proxy"
 import { PasswordRequired } from "../src/servers"
+import { appData } from "../src/servers/records"
 import { agent, world } from "./agent-fixture"
 import { scratch, server, desktop, local, open, cleanup, persistent } from "./servers-fixture"
 
@@ -196,35 +197,33 @@ describe("an explicit URL that names a server whose record this client trusts", 
     expect(trusted.seen.every((header) => header === null)).toBe(true)
   })
 
-  test("agent commands connect with the record and no exported password", async () => {
+  /** A scratch home whose desktop record names `url`, written where an agent command looks on this platform. */
+  async function agentHome(url: string) {
     const home = await scratch()
-    const config = join(home, "config")
-    const server = world({}, "secret")
-    const directory = join(config, "com.turenlabs.forge")
+    const env = { HOME: home, XDG_CONFIG_HOME: join(home, "config") }
+    const directory = join(appData({ platform: process.platform, home, env })!, "com.turenlabs.forge")
     await mkdir(directory, { recursive: true })
     await writeFile(
       join(directory, "attach.json"),
-      JSON.stringify({ version: 1, url: server.url, username: "forge", password: "secret", pid: process.pid }),
+      JSON.stringify({ version: 1, url, username: "forge", password: "secret", pid: process.pid }),
       { mode: 0o600 },
     )
-    const result = await agent(["pending", "ses_main", "--json"], { url: server.url, env: { XDG_CONFIG_HOME: config } })
+    return env
+  }
+
+  test("agent commands connect with the record and no exported password", async () => {
+    const server = world({}, "secret")
+    const env = await agentHome(server.url)
+    const result = await agent(["pending", "ses_main", "--json"], { url: server.url, env })
     expect(result.stderr).toBe("")
     expect(result.code).toBe(0)
   })
 
   test("agent commands do not lend the record's password to another port", async () => {
-    const home = await scratch()
-    const config = join(home, "config")
     const trusted = world({}, "secret")
     const elsewhere = world({}, "secret")
-    const directory = join(config, "com.turenlabs.forge")
-    await mkdir(directory, { recursive: true })
-    await writeFile(
-      join(directory, "attach.json"),
-      JSON.stringify({ version: 1, url: trusted.url, username: "forge", password: "secret", pid: process.pid }),
-      { mode: 0o600 },
-    )
-    const result = await agent(["pending", "ses_main"], { url: elsewhere.url, env: { XDG_CONFIG_HOME: config } })
+    const env = await agentHome(trusted.url)
+    const result = await agent(["pending", "ses_main"], { url: elsewhere.url, env })
     expect(result.code).not.toBe(0)
     expect(result.stderr).toContain("requires a password")
   })

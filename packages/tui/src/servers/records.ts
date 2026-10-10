@@ -79,7 +79,7 @@ export function forgeBinary(ctx: Context) {
   ].find((path): path is string => !!path && executable(path))
 }
 
-export function appData(ctx: Context) {
+export function appData(ctx: Pick<Context, "platform" | "home" | "env">) {
   if (ctx.platform === "darwin") return join(ctx.home, "Library", "Application Support")
   if (ctx.platform === "win32") return ctx.env.APPDATA
   return ctx.env.XDG_CONFIG_HOME || join(ctx.home, ".config")
