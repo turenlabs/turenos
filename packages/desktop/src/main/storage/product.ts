@@ -28,6 +28,7 @@ const KEY = {
   windowIds: "window-ids",
   updaterReady: "updater-ready",
   updaterLag: "updater-lag",
+  releaseNotesVersion: "release-notes-version",
 } as const
 
 export type WindowGeometry = {
@@ -243,7 +244,8 @@ export function createDesktopProductStorage(options: Options) {
       await ready
       await Promise.allSettled(pending)
       while (mutations.size > 0) await Promise.all(mutations.values())
-      const failure = failures.values().next().value
+      // Release notes are optional: retry their baseline next launch, never block quitting.
+      const failure = [...failures].find(([key]) => key !== KEY.releaseNotesVersion)?.[1]
       if (failure) throw failure
     },
     getDefaultServerUrl: (owner: Owner) => read(owner, KEY.defaultServerUrl, isNullableString),
@@ -257,6 +259,9 @@ export function createDesktopProductStorage(options: Options) {
     isFirstLaunchOnboardingPending: async (owner: Owner) =>
       (await read(owner, KEY.firstLaunchOnboardingComplete, isBoolean)) !== true,
     finishFirstLaunchOnboarding: (owner: Owner) => write(owner, KEY.firstLaunchOnboardingComplete, true),
+    getReleaseNotesVersion: (owner: Owner) =>
+      read(owner, KEY.releaseNotesVersion, (value): value is string => typeof value === "string"),
+    setReleaseNotesVersion: (owner: Owner, value: string) => write(owner, KEY.releaseNotesVersion, value),
     isOldLayoutEligible: async (owner: Owner) => (await read(owner, KEY.oldLayoutEligible, isBoolean)) === true,
     getWslServers: async (owner: Owner) => (await read(owner, KEY.wslServers, isWslServers)) ?? [],
     setWslServers: (owner: Owner, value: WslServerConfig[]) => write(owner, KEY.wslServers, value),

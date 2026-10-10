@@ -79,6 +79,14 @@ type PlatformBase = {
   /** Application-global desktop updater */
   updater?: UpdaterPlatform
 
+  /** Desktop-wide ownership of the first-launch release notes. */
+  releaseNotes?: {
+    ready: Accessor<boolean>
+    claim(enabled: boolean): Promise<{ previous: string } | null>
+    shown(): Promise<void>
+    release(): Promise<void>
+  }
+
   /** Fetch override */
   fetch?: typeof fetch
 

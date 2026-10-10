@@ -48,6 +48,11 @@ describe("TurenOS version authority", () => {
     expect(mismatches.some((message) => message.startsWith("bun.lock["))).toBe(true)
   })
 
+  test("blocks release preparation when VERSION has no bundled release notes", async () => {
+    const mismatches = await versionMismatches("999.0.0")
+    expect(mismatches).toContain("release-notes: Missing release notes for VERSION 999.0.0")
+  })
+
   test("fails closed for every unapproved package publication lane", () => {
     expect(publicationMismatches("package.json", { private: true })).toEqual([])
     expect(publicationMismatches("package.json", {})).toEqual([
