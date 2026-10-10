@@ -166,7 +166,9 @@ const layer: Layer.Layer<
     const store = yield* InstanceStore.Service
     // Retain recent named outcomes across event-stream reconnects. A restart or
     // eviction reports unknown; files on disk cannot prove bootstrap succeeded.
-    const creations = new Map<string, { outcome: CreationStatus }>()
+    // `real` is the checkout's canonical path, recorded at creation, so a removal still matches it once the
+    // checkout is gone.
+    const creations = new Map<string, { outcome: CreationStatus; real?: string }>()
     const creationStatus = Effect.fn("Worktree.creationStatus")(function* (name: string) {
       const ctx = yield* InstanceState.context
       return creations.get(`${ctx.project.id}:${slugify(name)}`)?.outcome ?? { status: "unknown" as const }
@@ -336,7 +338,7 @@ const layer: Layer.Layer<
         creations.delete(settled[0])
       }
       // A settled previous entry is replaced: the name is free again, so this attempt owns the record.
-      const entry = { outcome: { status: "pending" } as CreationStatus }
+      const entry = { outcome: { status: "pending" } as CreationStatus, real: undefined as string | undefined }
       if (key !== undefined) creations.set(key, entry)
       const record = (status: CreationStatus) => {
         if (key !== undefined && creations.get(key) === entry && entry.outcome.status === "pending")
@@ -345,6 +347,10 @@ const layer: Layer.Layer<
       return yield* Effect.gen(function* () {
         const info = yield* makeWorktreeInfo({ name: input?.name })
         record?.({ status: "pending", directory: info.directory })
+        // The checkout does not exist yet, so resolve its parent's symlinks; canonical() then applies the
+        // platform's case rule to the whole path. Once the checkout is deleted, forget() could no longer resolve them.
+        const parent = yield* canonical(pathSvc.dirname(info.directory))
+        entry.real = yield* canonical(pathSvc.join(parent, pathSvc.basename(info.directory)))
         yield* createFromInfo(info, input?.startCommand, record)
         return info
       }).pipe(
@@ -448,12 +454,7 @@ const layer: Layer.Layer<
     // Only after the checkout is gone: a failed removal leaves the recorded outcome true.
     const forget = Effect.fnUntraced(function* (directory: string) {
       for (const entry of creations.values()) {
-        if (
-          "directory" in entry.outcome &&
-          entry.outcome.directory &&
-          (yield* canonical(entry.outcome.directory)) === directory
-        )
-          entry.outcome = { status: "unknown" }
+        if (entry.real === directory) entry.outcome = { status: "unknown" }
       }
     })
 
