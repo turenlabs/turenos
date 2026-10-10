@@ -1,3 +1,4 @@
+import { RootRenderable } from "@opentui/core"
 import { richContent } from "../markdown/normalize"
 import { joinBlocks, pendingQuestions, transcriptBlocks } from "../messages"
 import { interruptedLine } from "../messages/failure"
@@ -145,30 +146,23 @@ function before(cached: LiveMessage[], first: Messages[number] | undefined) {
   return index > 0 ? cached[index - 1]!.message : undefined
 }
 
+/** The OpenTUI layout internals `syncLayout` resets so a second layout pass in one frame is not skipped. */
+type Stale = { _lastLayoutFrame: number; updateFromLayout(): void }
+type StaleScroll = Stale & { recalculateBarProps(): void; content: Stale; viewport: Stale }
+
 /** Forces the scroll box to lay out now so the position restore measures the new content. */
 export function syncLayout(c: Conversation) {
   const { ui } = c
   try {
-    const root = (ui.root.parent ?? ui.root) as any
-    if (typeof root?.calculateLayout === "function") {
-      root.calculateLayout()
-    } else if (typeof root?.getLayoutNode === "function") {
-      root.getLayoutNode()?.calculateLayout(root.width ?? 80, root.height ?? 24, 1)
+    const root = ui.root.parent ?? ui.root
+    if (root instanceof RootRenderable) root.calculateLayout()
+    // OpenTUI offers no public way to lay a node out twice in a frame, so its frame guard is cleared directly.
+    const detail = ui.detail as unknown as StaleScroll
+    for (const node of [detail, detail.content, detail.viewport]) {
+      node._lastLayoutFrame = -1
+      node.updateFromLayout()
     }
-    const detail = ui.detail as any
-    if (detail) {
-      detail._lastLayoutFrame = -1
-      detail.updateFromLayout?.()
-      if (detail.content) {
-        detail.content._lastLayoutFrame = -1
-        detail.content.updateFromLayout?.()
-      }
-      if (detail.viewport) {
-        detail.viewport._lastLayoutFrame = -1
-        detail.viewport.updateFromLayout?.()
-      }
-      detail.recalculateBarProps?.()
-    }
+    detail.recalculateBarProps()
   } catch {
     // Safe fallback: layout will sync on next frame render
   }

@@ -88,7 +88,7 @@ test("wait exits 5 when the idle session's latest turn failed, and a recovered o
   server.state.messages.push(user("q", "go"), failed("f", providerFailure))
   const result = await agent(["wait", "ses_main"], { url: server.url })
   expect(result.code).toBe(5)
-  expect(result.stdout).toStartWith("session ses_main · failed\nHTTP 401: invalid x-api-key\n")
+  expect(result.stdout).toStartWith("session ses_main · failed\n    HTTP 401: invalid x-api-key\n")
   const json = document(await agent(["wait", "ses_main", "--json"], { url: server.url }))
   expect(json).toMatchObject({ session: "ses_main", state: "failed", message: { id: "msg_f" } })
 
@@ -104,7 +104,7 @@ test("wait exits 5 and says interrupted when the turn was stopped", async () => 
   server.state.messages.push(user("q", "go"), failed("i", "Provider turn interrupted"))
   const result = await agent(["wait", "ses_main"], { url: server.url })
   expect(result.code).toBe(5)
-  expect(result.stdout).toStartWith("session ses_main · interrupted\nThe turn was stopped before it finished.\n")
+  expect(result.stdout).toStartWith("session ses_main · interrupted\n    The turn was stopped before it finished.\n")
   expect(document(await agent(["wait", "ses_main", "--json"], { url: server.url }))).toMatchObject({
     state: "interrupted",
   })
@@ -124,7 +124,7 @@ test("send --wait exits 5 when the reply to the sent message is a failed turn", 
   })
   const result = await agent(["send", "ses_main", "go", "--wait"], { url: server.url })
   expect(result.code).toBe(5)
-  expect(result.stdout).toStartWith("session ses_main · failed\nHTTP 401: invalid x-api-key\n")
+  expect(result.stdout).toStartWith("session ses_main · failed\n    HTTP 401: invalid x-api-key\n")
   const json = document(await agent(["send", "ses_main", "go again", "--wait", "--json"], { url: server.url }))
   expect(json).toMatchObject({ session: "ses_main", state: "failed" })
 })

@@ -7,7 +7,6 @@ import { whole } from "./options"
 import { turnFailure } from "./failure"
 import { requestsText } from "./requests"
 import {
-  activeIDs,
   activeTaskStatuses,
   getSession,
   idArgument,
@@ -69,7 +68,7 @@ export function report(run: Run, sessionID: string, outcome: Outcome, timeout: n
       : { session: sessionID, sessionID, state, ...error, message: last ?? null },
     [
       `session ${sessionID} · ${state}`,
-      ...(failure ? [failure.text] : []),
+      ...(failure ? [indented(failure.text)] : []),
       ...(shown.length ? ["", indented(transcript(shown))] : []),
       ...(failure ? ["", resumeLine(run, sessionID)] : []),
     ].join("\n"),
@@ -176,7 +175,7 @@ async function observe(
   after: Anchor | undefined,
 ): Promise<Outcome | undefined> {
   // Read busy first: a session that finishes between the reads then shows as idle with a reply, never as idle too early.
-  const running = (await activeIDs(connection)).has(sessionID)
+  const running = await connection.running(sessionID)
   const pending = await pendingFor(connection, sessionID)
   if (needsInput(pending)) return { state: "needs-input", pending }
   // A session cannot finish while a subagent it started waits for input, so that input is what to report.

@@ -1,5 +1,6 @@
 import { isAbsolute } from "node:path"
-import { checkDirectory, parseResponse, validateResponse } from "../response-validation"
+import { checkDirectory, object, parseResponse, validateResponse } from "../response-validation"
+import { activeSessions } from "../response-validation/session-routes"
 import { readBounded } from "../response-validation/body"
 import { UNSAFE_TEXT } from "../response-validation/primitives"
 import type { ConnectionOptions } from "./context"
@@ -56,7 +57,7 @@ export function requestTimeout(address: URL, method: string | undefined) {
  * Fetch with a per-route timeout (10 s unless requestTimeout says otherwise), no redirects, and bounded response bytes. Responses are validated and
  * sanitized before the generated client's JSON parser sees them.
  */
-export function createTransport(controller: AbortController, socketPath?: string) {
+export function createTransport(controller: AbortController, socketPath?: string, activeSessionID?: string) {
   return Object.assign(
     async (input: RequestInfo | URL, init?: RequestInit) => {
       const address = new URL(input instanceof Request ? input.url : input.toString())
@@ -81,7 +82,11 @@ export function createTransport(controller: AbortController, socketPath?: string
         // This root API has its own strict State/value parser in working-folders.
         if (address.pathname === "/global/storage")
           return new Response(body, { status: response.status, headers: response.headers })
-        const sanitized = validateResponse(address, init, parseResponse(await body.text()))
+        const parsed = parseResponse(await body.text())
+        const sanitized =
+          activeSessionID !== undefined && address.pathname === "/api/session/active"
+            ? activeSessions(object(parsed), activeSessionID)
+            : validateResponse(address, init, parsed)
         if (sanitized !== undefined) return Response.json(sanitized, { status: response.status })
       }
       return new Response(body, { status: response.status, headers: response.headers })

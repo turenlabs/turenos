@@ -200,7 +200,7 @@ test("a refused prompt after a created session keeps its ID and Ctrl+O visible",
       const body = await request.json()
       created.push(body.id)
       // batou:ignore trust_boundary -- test fixture server echoing a synthetic session; no Express session exists here
-      return { data: session(String(body.id).slice(4)) }
+      return { data: { ...session(String(body.id).slice(4)), location: body.location } }
     },
   }
   const routes = new Proxy(base, {

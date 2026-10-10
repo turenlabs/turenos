@@ -116,6 +116,35 @@ const stuckHttpApiLayer = stuckServedRoutes.pipe(
 )
 const stuckIt = testEffect(Layer.mergeAll(appLayer, stuckHttpApiLayer))
 
+// Only unrelated foreground activity is synthetic. Session and task rows use the real services and database.
+const crowdedExecution = Layer.succeed(
+  SessionExecution.Service,
+  SessionExecution.Service.of({
+    active: Effect.succeed(new Set(Array.from({ length: 130 }, (_, index) => SessionID.make(`ses_busy${index}`)))),
+    claimResume: () => Effect.succeed(Effect.void),
+    resume: () => Effect.void,
+    wake: () => Effect.void,
+    interrupt: () => Effect.void,
+  }),
+)
+const crowdedServedRoutes: Layer.Layer<never, Config.ConfigError, HttpServer.HttpServer> = HttpRouter.serve(
+  createRoutes(undefined, crowdedExecution),
+  {
+    disableListenLog: true,
+    disableLogger: true,
+  },
+)
+const crowdedIt = testEffect(
+  Layer.mergeAll(
+    appLayer,
+    crowdedServedRoutes.pipe(
+      Layer.provide(layerWebSocketConstructorGlobal),
+      Layer.provideMerge(NodeHttpServer.layerTest),
+      Layer.provideMerge(NodeServices.layer),
+    ),
+  ),
+)
+
 function pathFor(path: string, params: Record<string, string>) {
   return Object.entries(params).reduce((result, [key, value]) => result.replace(`:${key}`, value), path)
 }
@@ -397,6 +426,63 @@ afterEach(async () => {
 })
 
 describe("session HttpApi", () => {
+  crowdedIt.instance(
+    "TUI stop preserves real idle-parent tasks under active-map truncation unless --tasks is explicit",
+    () =>
+      Effect.gen(function* () {
+        const test = yield* TestInstance
+        const tasks = yield* SessionTaskV2.Service
+        const parent = yield* createSession({ title: "idle parent task preservation" })
+        const owned = yield* createTaskOwnedChild(parent, test.directory, "tui_idle_parent")
+        expect(["queued", "starting", "running"]).toContain(owned.task.status)
+        const http = yield* HttpServer.HttpServer
+        if (http.address._tag !== "TcpAddress") throw new Error("Expected TCP test server")
+        const url = `http://127.0.0.1:${http.address.port}`
+        yield* Effect.promise(async () => {
+          const { connect } = await import("../../../tui/src/server/connect")
+          const { stop } = await import("../../../tui/src/agent/stop")
+          const { settle } = await import("../../../tui/src/agent/wait")
+          const connection = connect({ url })
+          const run = {
+            connection,
+            positionals: [parent.id],
+            flags: "",
+            values: { json: true, tasks: false },
+            io: { env: {}, stdout() {}, stderr() {}, stdin: { tty: true, read: async () => "" } },
+          }
+          try {
+            expect(await stop(run)).toBe(0)
+            expect((await settle(connection, parent.id, { timeout: 1 })).state).toBe("idle")
+          } finally {
+            connection.close()
+          }
+        })
+        expect(yield* tasks.get(owned.taskID)).toMatchObject({
+          status: owned.task.status,
+          revision: owned.task.revision,
+        })
+        yield* Effect.promise(async () => {
+          const { connect } = await import("../../../tui/src/server/connect")
+          const { stop } = await import("../../../tui/src/agent/stop")
+          const connection = connect({ url })
+          try {
+            expect(
+              await stop({
+                connection,
+                positionals: [parent.id],
+                flags: "",
+                values: { json: true, tasks: true },
+                io: { env: {}, stdout() {}, stderr() {}, stdin: { tty: true, read: async () => "" } },
+              }),
+            ).toBe(0)
+          } finally {
+            connection.close()
+          }
+        })
+        expect(yield* tasks.get(owned.taskID)).toMatchObject({ status: "cancelled", revision: owned.task.revision + 1 })
+      }),
+    { git: true, config: { formatter: false, lsp: false } },
+  )
   for (const scenario of [
     "stored secrets",
     "truncation boundary",

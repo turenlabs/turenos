@@ -116,6 +116,17 @@ export function insertMention(value: string, token: NonNullable<ReturnType<typeo
   return { value: prefix + value.slice(token.end), caret: prefix.length }
 }
 
+/**
+ * The limits Team.FactoryConfig sets in @turenlabs/schema (src/team.ts) and Core's configureFactory enforces. They are
+ * restated because that module imports effect, which this one must stay free of.
+ */
+export const FACTORY_OUTCOME_MAX = 4000
+export const FACTORY_CONSTRAINTS_MAX = 8000
+export const FACTORY_ACCEPTANCE_MAX = 4000
+export const FACTORY_DIRECTORY_MAX = 4096
+export const FACTORY_ID_MAX = 256
+export const FACTORY_TEAMMATES_MAX = 10
+
 /** Why a factory configuration cannot be saved, or nothing when it can. */
 export function factoryConfigProblem(
   config: {
@@ -130,13 +141,19 @@ export function factoryConfigProblem(
 ) {
   if (!config.outcome.trim() || !config.acceptanceCriteria.trim() || !config.directory.trim())
     return "Outcome, acceptance criteria, and directory are required"
-  // The limits Team.FactoryConfig enforces on the server.
-  if (config.outcome.length > 4000) return "Outcome is limited to 4000 characters"
-  if (config.constraints.length > 8000) return "Constraints are limited to 8000 characters"
-  if (config.acceptanceCriteria.length > 4000) return "Acceptance criteria are limited to 4000 characters"
+  if (config.outcome.length > FACTORY_OUTCOME_MAX) return `Outcome is limited to ${FACTORY_OUTCOME_MAX} characters`
+  if (config.constraints.length > FACTORY_CONSTRAINTS_MAX)
+    return `Constraints are limited to ${FACTORY_CONSTRAINTS_MAX} characters`
+  if (config.acceptanceCriteria.length > FACTORY_ACCEPTANCE_MAX)
+    return `Acceptance criteria are limited to ${FACTORY_ACCEPTANCE_MAX} characters`
+  if (config.directory.length > FACTORY_DIRECTORY_MAX)
+    return `Directory is limited to ${FACTORY_DIRECTORY_MAX} characters`
   if (!config.coordinatorTeammateID || !config.teammateIDs.includes(config.coordinatorTeammateID))
     return "Select a coordinator from the selected teammates"
-  if (config.teammateIDs.length < 1 || config.teammateIDs.length > 10) return "Select between 1 and 10 teammates"
+  if (config.teammateIDs.length < 1 || config.teammateIDs.length > FACTORY_TEAMMATES_MAX)
+    return `Select between 1 and ${FACTORY_TEAMMATES_MAX} teammates`
+  if ([config.coordinatorTeammateID, ...config.teammateIDs].some((id) => id.length > FACTORY_ID_MAX))
+    return `Teammate IDs are limited to ${FACTORY_ID_MAX} characters`
   if (config.teammateIDs.some((id) => !teammates?.some((teammate) => teammate.id === id)))
     return "Factory teammates must belong to this room"
 }
