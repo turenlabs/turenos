@@ -167,11 +167,21 @@ export function transcriptBlocks(
   rich = false,
   view: TranscriptView = {},
 ) {
-  return messages.map((message, index): Block => {
-    const previous = index ? messages[index - 1] : view.previous
-    const text = messageText(message, raw, rich, view, { messages, index, previous })
-    return { text, turn: rich && !raw && startsTurn(message, previous) }
-  })
+  return messages.map((_, index) => transcriptBlock(messages, index, raw, rich, view))
+}
+
+/** The text of `messages[index]` alone, as `transcriptBlocks` builds it. */
+export function transcriptBlock(
+  messages: MessagesListOutput["data"],
+  index: number,
+  raw = false,
+  rich = false,
+  view: TranscriptView = {},
+): Block {
+  const message = messages[index]!
+  const previous = index ? messages[index - 1] : view.previous
+  const text = messageText(message, raw, rich, view, { messages, index, previous })
+  return { text, turn: rich && !raw && startsTurn(message, previous) }
 }
 
 export function joinBlocks(blocks: Block[]) {
@@ -187,8 +197,7 @@ function messageText(message: Message, raw: boolean, rich: boolean, view: Transc
   const chips = rich && !raw
   if (message.type === "assistant") return assistantText(message, raw, rich, view, at)
   if (message.type === "agent-switched") return `AGENT SWITCHED\nSwitched agent to ${display(message.agent)}`
-  if (message.type === "model-switched")
-    return `MODEL SWITCHED\nSwitched model to ${modelText(message.model)}`
+  if (message.type === "model-switched") return `MODEL SWITCHED\nSwitched model to ${modelText(message.model)}`
   if (message.type === "compaction")
     return `COMPACTION (${display(message.reason)})\n${display(message.summary || "Conversation history compacted.")}`
   if (message.type === "shell") return shellBlock(message, chips, view.expanded === true)
