@@ -1,19 +1,25 @@
 import { expect, test } from "bun:test"
 import { EventEmitter } from "node:events"
+import { mkdtemp, rm } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { createApi } from "../src/api"
 import { attachTerminal, DETACH, RESTORE } from "../src/attach"
+import { connect } from "../src/server"
 import { cleanup, until } from "./support"
 
-/** A PTY endpoint that behaves like the server's: ticketed WebSocket, replay, cursor frame, echo. */
-function pty(options: { drop?: boolean; gone?: boolean; flaky?: boolean } = {}) {
+/**
+ * A PTY endpoint that behaves like the server's: ticketed WebSocket, replay, cursor frame, echo. It listens on a
+ * loopback port, or on the Unix socket `socket` as a persistent server does.
+ */
+function pty(options: { drop?: boolean; gone?: boolean; flaky?: boolean; socket?: string } = {}) {
   const tickets = new Set<string>()
   const connects: URL[] = []
   const received: string[] = []
   let drops = options.drop ? 1 : 0
   let flaked = false
   const server = Bun.serve<{ url: URL }>({
-    hostname: "127.0.0.1",
-    port: 0,
+    ...(options.socket ? { unix: options.socket } : { hostname: "127.0.0.1", port: 0 }),
     fetch(request, server) {
       const url = new URL(request.url)
       if (url.pathname === "/api/pty/pty_1/connect-token" && request.method === "POST") {
@@ -52,7 +58,7 @@ function pty(options: { drop?: boolean; gone?: boolean; flaky?: boolean } = {}) 
     },
   })
   cleanup.push(() => server.stop(true))
-  return { url: new URL(server.url.origin), connects, received }
+  return { url: new URL(options.socket ? "http://localhost" : server.url.origin), connects, received }
 }
 
 function io() {
@@ -104,6 +110,30 @@ test("attach replays output, sends keystrokes as text, follows resizes, and Ctrl
   terminal.stdin.emit("data", Buffer.from([DETACH]))
   expect(await attached).toEqual({ reason: "detached" })
   expect(terminal.stdin.listenerCount("data")).toBe(0)
+})
+
+test("a server on a Unix socket is attached through that socket, as its connection reaches it", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "tui-attach-"))
+  cleanup.push(() => rm(directory, { recursive: true, force: true }))
+  const server = pty({ socket: join(directory, "server.sock") })
+  const connection = connect({ url: "http://localhost", socketPath: join(directory, "server.sock") })
+  cleanup.push(connection.close)
+  const terminal = io()
+  const attached = attachTerminal({
+    url: connection.url,
+    socketPath: connection.socketPath,
+    api: connection.api,
+    resize: async () => undefined,
+    target: { id: "pty_1", title: "shell", directory: "/srv" },
+    stdin: terminal.stdin,
+    stdout: terminal.stdout,
+  })
+  await until(() => terminal.stdout.text.includes("$ hello"))
+  expect(server.connects[0]?.searchParams.get("location[directory]")).toBe("/srv")
+  terminal.stdin.emit("data", "ls\r")
+  await until(() => server.received.join("") === "ls\r")
+  terminal.stdin.emit("data", Buffer.from([DETACH]))
+  expect(await attached).toEqual({ reason: "detached" })
 })
 
 test("attach ends when the terminal exits", async () => {

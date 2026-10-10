@@ -5,7 +5,7 @@ import { join } from "node:path"
 import { mountDashboard } from "../src/dashboard/mount"
 import { connect } from "../src/server"
 import { createServers } from "../src/servers"
-import { attachRecord, PERSISTENT_SOCKET } from "../src/servers/records"
+import { persistentAttach, PERSISTENT_SOCKET } from "../src/servers/records"
 import { cleanup, terminal, turen } from "./support"
 
 /** A scratch home with a 1.0.44 persistent server on a Unix socket and its version 2 attach record. */
@@ -75,18 +75,38 @@ test("the dashboard and its live events run over the socket", async () => {
   expect(server.paths()).toEqual(expect.arrayContaining(["/api/session", "/api/event"]))
 })
 
-test("version 2 records naming another socket, lacking credentials, or of an unknown version are refused", async () => {
-  const record = { version: 2, socketPath: PERSISTENT_SOCKET, username: "forge", password: "secret" }
-  expect(attachRecord(record)).toEqual({ url: "http://localhost", socketPath: PERSISTENT_SOCKET, username: "forge", password: "secret" })
-  expect(attachRecord({ ...record, socketPath: "/tmp/elsewhere.sock" })).toBeUndefined()
-  expect(attachRecord({ ...record, socketPath: "run/turenos/server.sock" })).toBeUndefined()
-  expect(attachRecord({ ...record, password: "" })).toBeUndefined()
-  expect(attachRecord({ ...record, username: "a:b" })).toBeUndefined()
-  expect(attachRecord({ ...record, version: 3 })).toBeUndefined()
+test("persistent records naming another socket, no serverID, a url, no credentials or another version are refused", async () => {
+  const record = { version: 2, serverID: "srv_1", socketPath: PERSISTENT_SOCKET, username: "forge", password: "secret" }
+  expect(persistentAttach(record)).toEqual({
+    url: "http://localhost",
+    socketPath: PERSISTENT_SOCKET,
+    persistent: true,
+    username: "forge",
+    password: "secret",
+    serverID: "srv_1",
+  })
+  expect(persistentAttach({ ...record, socketPath: "/tmp/elsewhere.sock" })).toBeUndefined()
+  expect(persistentAttach({ ...record, socketPath: "run/turenos/server.sock" })).toBeUndefined()
+  expect(persistentAttach({ ...record, serverID: "" })).toBeUndefined()
+  expect(persistentAttach({ ...record, url: "http://localhost" })).toBeUndefined()
+  expect(persistentAttach({ ...record, password: "" })).toBeUndefined()
+  expect(persistentAttach({ ...record, username: "a:b" })).toBeUndefined()
+  expect(persistentAttach({ ...record, version: 3 })).toBeUndefined()
   const { servers } = await persistent({ socketPath: "/tmp/elsewhere.sock" })
   await expect(servers.resolve({ kind: "persistent", id: "persistent", name: "Persistent server" })).rejects.toThrow(
     "attach record is missing or unreadable",
   )
+})
+
+test("a version 1 record naming a loopback port gets no credentials sent to whatever holds the port", async () => {
+  const seen: string[] = []
+  const impostor = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: (request) => (seen.push(request.url), new Response(null)) })
+  cleanup.push(() => impostor.stop(true))
+  const { servers } = await persistent({ version: 1, url: impostor.url.origin, socketPath: undefined })
+  await expect(servers.resolve({ kind: "persistent", id: "persistent", name: "Persistent server" })).rejects.toThrow(
+    "attach record is missing or unreadable",
+  )
+  expect(seen).toEqual([])
 })
 
 test("a typed http://localhost never borrows the socket record's credentials", async () => {

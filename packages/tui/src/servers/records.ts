@@ -27,7 +27,7 @@ export async function desktopRunning(ctx: Context, appId: string) {
 export async function desktopRecord(ctx: Context, file: string) {
   const text = await readPrivate(file, ctx.uid, "self").catch(() => undefined)
   const value = text === undefined ? undefined : parseJSON(text)
-  const record = attachRecord(value)
+  const record = desktopAttach(value)
   if (!record || !isRecord(value) || !alive(value.pid)) return undefined
   if (!(await writtenSinceStart(value.pid as number, [file]))) return undefined
   return record
@@ -50,7 +50,7 @@ export async function shimRecord(ctx: Context) {
 
 export async function persistentRecord(ctx: Context) {
   const text = await readPrivate(ctx.persistentPath, ctx.uid, "root")
-  const record = text === undefined ? undefined : attachRecord(parseJSON(text), ctx.persistentSocket)
+  const record = text === undefined ? undefined : persistentAttach(parseJSON(text), ctx.persistentSocket)
   if (!record) throw new Error("The persistent server's attach record is missing or unreadable.")
   return record
 }
@@ -79,7 +79,7 @@ export function forgeBinary(ctx: Context) {
   ].find((path): path is string => !!path && executable(path))
 }
 
-export function appData(ctx: Context) {
+export function appData(ctx: Pick<Context, "platform" | "home" | "env">) {
   if (ctx.platform === "darwin") return join(ctx.home, "Library", "Application Support")
   if (ctx.platform === "win32") return ctx.env.APPDATA
   return ctx.env.XDG_CONFIG_HOME || join(ctx.home, ".config")
@@ -102,19 +102,23 @@ export function shimState(lines: string[]): AttachRecord | undefined {
   }
 }
 
-/** Where a persistent server from TurenOS 1.0.44 listens; its version 2 record may name no other path. */
+/** Where a persistent server from TurenOS 1.0.44 listens; its record may name no other path. */
 export const PERSISTENT_SOCKET = "/run/turenos/server.sock"
 
 /**
- * A persistent server's published record. Version 1 (TurenOS 1.0.43) names a loopback URL; version 2 names the
- * fixed Unix socket, which only `turenos-operators` can open.
+ * A persistent server's published record, held to the desktop's `parseAttachRecord` rules: version 2, a
+ * `serverID`, the fixed Unix socket that only `turenos-operators` can open, and no `url`. A loopback URL is
+ * refused: whatever holds that port while the service is down would get the password before the serverID check.
  */
-export function attachRecord(value: unknown, socket = PERSISTENT_SOCKET): AttachRecord | undefined {
-  if (isRecord(value) && value.version === 2) {
-    if (value.socketPath !== socket) return undefined
-    const credentials = recordCredentials(value)
-    return credentials && { url: SOCKET_ORIGIN, socketPath: socket, ...credentials }
-  }
+export function persistentAttach(value: unknown, socket = PERSISTENT_SOCKET): AttachRecord | undefined {
+  if (!isRecord(value) || value.version !== 2 || value.socketPath !== socket || "url" in value) return undefined
+  if (typeof value.serverID !== "string" || !value.serverID) return undefined
+  const credentials = recordCredentials(value)
+  return credentials && { url: SOCKET_ORIGIN, socketPath: socket, persistent: true, ...credentials }
+}
+
+/** TurenOS Desktop's record, which names the loopback URL its server listens on. */
+function desktopAttach(value: unknown): AttachRecord | undefined {
   if (!isRecord(value) || value.version !== 1 || typeof value.url !== "string") return undefined
   const url = URL.parse(value.url)
   if (
@@ -132,7 +136,7 @@ export function attachRecord(value: unknown, socket = PERSISTENT_SOCKET): Attach
   return credentials && { url: url.origin, ...credentials }
 }
 
-/** A record's username, password and server identity, as both record versions publish them. */
+/** A record's username, password and server identity, as the desktop and persistent records publish them. */
 function recordCredentials(value: Record<string, unknown>) {
   if (typeof value.password !== "string" || !value.password || value.password.length > 1024) return undefined
   if (typeof value.username !== "string" || !validUsername(value.username)) return undefined
