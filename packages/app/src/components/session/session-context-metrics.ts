@@ -1,3 +1,4 @@
+import { contextTokens, promptTokens, usagePercent } from "@turenlabs/client/context"
 import type { AssistantMessage, Message } from "@turenlabs/sdk/v2/client"
 
 type Provider = {
@@ -33,24 +34,13 @@ type Context = {
   usage: number | null
 }
 
-/**
- * Context occupancy is a property of a single request, never a session-wide sum.
- *
- * Every assistant message records the usage of one provider request (transports that run
- * their own loop, like the Claude Code CLI, report their final request here and their run
- * total separately), so the newest one describes the window as it stands now. Adding
- * successive messages together would count cache reads once per round trip — a figure that
- * grows without bound and, being a running total, can never fall when a session is compacted.
- */
-const promptTotal = (msg: AssistantMessage) => msg.tokens.input + msg.tokens.cache.read + msg.tokens.cache.write
-
-const contextTotal = (msg: AssistantMessage) => promptTotal(msg) + msg.tokens.output + msg.tokens.reasoning
+// Occupancy is one request, never a sum: see @turenlabs/client/context.
 
 const lastAssistantWithTokens = (messages: Message[]) => {
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i]
     if (msg.role !== "assistant") continue
-    if (contextTotal(msg) <= 0) continue
+    if (contextTokens(msg.tokens) <= 0) continue
     return msg
   }
 }
@@ -62,7 +52,7 @@ const build = (messages: Message[] = [], providers: Provider[] = []): Context | 
   const provider = providers.find((item) => item.id === message.providerID)
   const model = provider?.models[message.modelID]
   const limit = model?.limit.context
-  const total = contextTotal(message)
+  const total = contextTokens(message.tokens)
 
   return {
     message,
@@ -72,11 +62,9 @@ const build = (messages: Message[] = [], providers: Provider[] = []): Context | 
     modelLabel: model?.name ?? message.modelID,
     limit,
     input: message.tokens.input,
-    prompt: promptTotal(message),
+    prompt: promptTokens(message.tokens),
     total,
-    // No published context limit means the percentage is unknowable. Say so rather
-    // than divide by a guess.
-    usage: limit ? Math.round((total / limit) * 100) : null,
+    usage: usagePercent(total, limit),
   }
 }
 

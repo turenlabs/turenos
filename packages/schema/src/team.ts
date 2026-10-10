@@ -5,6 +5,8 @@ import { Agent } from "./agent"
 import { Model } from "./model"
 import { optional } from "./schema"
 
+export { mentionedHandles, teammateHandle } from "./team-mention"
+
 const boundedText = (max: number) => Schema.String.pipe(Schema.check(Schema.isMaxLength(max)))
 const requiredText = (max: number) =>
   Schema.String.pipe(Schema.check(Schema.isMinLength(1)), Schema.check(Schema.isMaxLength(max)))
@@ -216,14 +218,3 @@ export class NotFoundError extends Schema.TaggedErrorClass<NotFoundError>()("Tea
 export class ConflictError extends Schema.TaggedErrorClass<ConflictError>()("Team.ConflictError", {
   message: Schema.String,
 }) {}
-
-export function mentionedHandles(text: string) {
-  // Match complete tokens so @rae- cannot fall back to @rae.
-  return [
-    ...new Set(
-      [...text.matchAll(/(?:^|[^a-zA-Z0-9_])@([a-zA-Z][a-zA-Z0-9_-]{0,31})(?![a-zA-Z0-9_-])/g)].map((match) =>
-        match[1]!.toLowerCase(),
-      ),
-    ),
-  ]
-}

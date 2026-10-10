@@ -8,6 +8,7 @@ import { OpenAICompatibleChat } from "@turenlabs/llm/protocols/openai-compatible
 import { OpenAIResponses } from "@turenlabs/llm/protocols/openai-responses"
 import { AmazonBedrock, Azure, OpenRouter, XAI } from "@turenlabs/llm/providers"
 import { Auth, type AnyRoute } from "@turenlabs/llm/route"
+import { ProviderURL } from "@turenlabs/schema/provider-url"
 import { Context, Effect, Layer, Schema } from "effect"
 import { Headers } from "effect/unstable/http"
 import { produce } from "immer"
@@ -598,25 +599,8 @@ const bridgeProvider = new Map<string, ReadonlySet<string>>([
   ["venice-ai-sdk-provider", new Set(["venice"])],
 ])
 
-const qualifiedURL = (value: string | undefined) => {
-  if (!value || !URL.canParse(value)) return false
-  const url = new URL(value)
-  if (url.username || url.password || url.hash) return false
-  if (url.protocol === "https:") return true
-  if (url.protocol !== "http:") return false
-  if (url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "[::1]") return true
-  if (!/^\d{1,3}(?:\.\d{1,3}){3}$/.test(url.hostname)) return false
-  const octets = url.hostname.split(".").map(Number)
-  if (octets.some((octet) => octet > 255)) return false
-  return (
-    octets[0] === 10 ||
-    (octets[0] === 172 && octets[1] !== undefined && octets[1] >= 16 && octets[1] <= 31) ||
-    (octets[0] === 192 && octets[1] === 168)
-  )
-}
-
 const qualifiedProviderURL = (model: ModelV2.Info, value: string | undefined) => {
-  if (!qualifiedURL(value) || value === undefined) return false
+  if (!ProviderURL.qualified(value) || value === undefined) return false
   const hostname = new URL(value).hostname
   if (model.providerID === ProviderV2.ID.make("cloudflare-ai-gateway"))
     return hostname === "cloudflare.com" || hostname.endsWith(".cloudflare.com")

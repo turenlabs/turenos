@@ -2424,6 +2424,24 @@ export type WorktreeError = {
   }
 }
 
+export type WorktreeCreationStatus =
+  | {
+      status: "unknown"
+    }
+  | {
+      status: "pending"
+      directory?: string
+    }
+  | {
+      status: "ready"
+      directory: string
+    }
+  | {
+      status: "failed"
+      message: string
+      directory?: string
+    }
+
 export type WorktreeCreateInput = {
   name?: string
   /**
@@ -10482,6 +10500,35 @@ export type WorktreeCreateResponses = {
 }
 
 export type WorktreeCreateResponse = WorktreeCreateResponses[keyof WorktreeCreateResponses]
+
+export type WorktreeCreationStatusData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    workspace?: string
+    name: string
+  }
+  url: "/experimental/worktree/status"
+}
+
+export type WorktreeCreationStatusErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type WorktreeCreationStatusError = WorktreeCreationStatusErrors[keyof WorktreeCreationStatusErrors]
+
+export type WorktreeCreationStatusResponses = {
+  /**
+   * Recorded checkout and bootstrap outcome
+   */
+  200: WorktreeCreationStatus
+}
+
+export type WorktreeCreationStatusResponse = WorktreeCreationStatusResponses[keyof WorktreeCreationStatusResponses]
 
 export type WorktreeResetData = {
   body?: WorktreeResetInput

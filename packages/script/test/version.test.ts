@@ -35,7 +35,7 @@ describe("TurenOS version authority", () => {
 
   test("keeps every version-bearing manifest synchronized", async () => {
     const version = await loadCanonicalVersion()
-    expect(VERSIONED_PACKAGE_FILES).toHaveLength(16)
+    expect(VERSIONED_PACKAGE_FILES).toHaveLength(17)
     expect(await discoverVersionedPackageFiles()).toEqual(
       [...VERSIONED_PACKAGE_FILES, ...INDEPENDENTLY_VERSIONED_PACKAGE_FILES].sort(),
     )

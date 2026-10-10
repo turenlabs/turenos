@@ -1,5 +1,6 @@
 export * as SessionCreation from "./creation"
 
+import { SessionTitle } from "@turenlabs/schema/session-title"
 import { Context, Effect, Layer } from "effect"
 import path from "path"
 import { Database } from "../database/database"
@@ -18,18 +19,16 @@ import { SessionSchema } from "./schema"
 import { SessionStore } from "./store"
 import { AgentV2 } from "../agent"
 
-const PLACEHOLDER_PREFIX = "New session - "
-const PLACEHOLDER = /^New session - \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/
-
 /** The stand-in name `create` gives a Session nobody has named yet. */
-export const placeholderTitle = (at: number) => `${PLACEHOLDER_PREFIX}${new Date(at).toISOString()}`
+export const placeholderTitle = (at: number) => SessionTitle.placeholder("new", at)
 
 /**
  * True while a Session still carries the name `create` gave it. Anything else -- a user rename, a
  * subagent's spawn description, a generated title -- is somebody's deliberate choice, and the
- * automatic titler must leave it alone. Owned here so the format has exactly one author.
+ * automatic titler must leave it alone. The format has one author, `@turenlabs/schema/session-title`,
+ * which clients read too.
  */
-export const isPlaceholderTitle = (title: string) => PLACEHOLDER.test(title)
+export const isPlaceholderTitle = (title: string) => SessionTitle.parsePlaceholder(title)?.kind === "new"
 
 export type CreateInput = {
   readonly id?: SessionSchema.ID

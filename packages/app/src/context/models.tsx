@@ -1,7 +1,6 @@
 import { type Accessor, createContext, createMemo, createResource, type ParentProps, useContext } from "solid-js"
 import { createStore } from "solid-js/store"
-import { DateTime } from "luxon"
-import { filter, firstBy, flat, groupBy, mapValues, pipe, uniqueBy, values } from "remeda"
+import { cleanModelName, latestModels, modelVisible, pushRecent } from "@turenlabs/client/models"
 import { createSimpleContext } from "@turenlabs/ui/context"
 import { useParams } from "@solidjs/router"
 import { decode64 } from "@/utils/base64"
@@ -19,8 +18,6 @@ type Store = {
   recent: ModelKey[]
   variant?: Record<string, string | undefined>
 }
-
-const RECENT_LIMIT = 5
 
 function modelKey(model: ModelKey) {
   return `${model.providerID}:${model.modelID}`
@@ -85,58 +82,30 @@ const modelsContext = createSimpleContext({
 
     const excluded = createMemo(() => new Set(serverSync().provider.excluded()))
 
-    const release = createMemo(
-      () =>
-        new Map(
-          available().map((model) => {
-            const parsed = DateTime.fromISO(model.release_date)
-            return [modelKey({ providerID: model.provider.id, modelID: model.id }), parsed] as const
-          }),
-        ),
+    const byKey = createMemo(
+      () => new Map(available().map((model) => [modelKey({ providerID: model.provider.id, modelID: model.id }), model])),
     )
 
-    const latest = createMemo(() =>
-      pipe(
-        available(),
-        filter(
-          (x) =>
-            Math.abs(
-              (release().get(modelKey({ providerID: x.provider.id, modelID: x.id })) ?? DateTime.invalid("invalid"))
-                .diffNow()
-                .as("months"),
-            ) < 6,
-        ),
-        groupBy((x) => x.provider.id),
-        mapValues((models) =>
-          pipe(
-            models,
-            groupBy((x) => x.family),
-            values(),
-            (groups) =>
-              groups.flatMap((g) => {
-                const first = firstBy(g, [(x) => x.release_date, "desc"])
-                return first ? [{ modelID: first.id, providerID: first.provider.id }] : []
-              }),
-          ),
-        ),
-        values(),
-        flat(),
+    const latestSet = createMemo(() =>
+      latestModels(
+        available().map((model) => ({
+          id: model.id,
+          providerID: model.provider.id,
+          family: model.family,
+          release_date: model.release_date,
+        })),
+        Date.now(),
       ),
     )
 
-    const latestSet = createMemo(() => new Set(latest().map((x) => modelKey(x))))
-
-    const visibility = createMemo(() => {
-      const map = new Map<string, Visibility>()
-      for (const item of store.user) map.set(`${item.providerID}:${item.modelID}`, item.visibility)
-      return map
-    })
+    const visibility = createMemo(
+      () => new Map(store.user.map((item) => [`${item.providerID}:${item.modelID}`, item.visibility === "show"])),
+    )
 
     const catalog = createMemo(() =>
       available().map((m) => ({
         ...m,
-        name: m.name.replace("(latest)", "").trim(),
-        latest: m.name.includes("(latest)"),
+        ...cleanModelName(m.name),
       })),
     )
 
@@ -153,26 +122,18 @@ const modelsContext = createSimpleContext({
       setStore("user", store.user.length, { ...model, visibility: state })
     }
 
-    const visible = (model: ModelKey) => {
-      const key = modelKey(model)
-      const state = visibility().get(key)
-      if (state === "hide") return false
-      if (state === "show") return true
-      if (latestSet().has(key)) return true
-      const date = release().get(key)
-      if (!date?.isValid) return true
-      return false
-    }
+    const visible = (model: ModelKey) =>
+      modelVisible(
+        { id: model.modelID, providerID: model.providerID, release_date: byKey().get(modelKey(model))?.release_date },
+        latestSet(),
+        visibility(),
+      )
 
     const setVisibility = (model: ModelKey, state: boolean) => {
       update(model, state ? "show" : "hide")
     }
 
-    const push = (model: ModelKey) => {
-      const uniq = uniqueBy([model, ...store.recent], (x) => `${x.providerID}:${x.modelID}`)
-      if (uniq.length > RECENT_LIMIT) uniq.pop()
-      setStore("recent", uniq)
-    }
+    const push = (model: ModelKey) => setStore("recent", pushRecent(store.recent, model))
 
     const variantKey = (model: ModelKey) => `${model.providerID}/${model.modelID}`
     const getVariant = (model: ModelKey) => store.variant?.[variantKey(model)]

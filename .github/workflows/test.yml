@@ -119,6 +119,13 @@ jobs:
               command: "bun run test",
             }
           - {
+              name: "tui",
+              host: blacksmith-4vcpu-ubuntu-2404,
+              github_host: ubuntu-latest,
+              directory: packages/tui,
+              command: "bun run test",
+            }
+          - {
               name: "packages (linux)",
               host: blacksmith-4vcpu-ubuntu-2404,
               github_host: ubuntu-latest,

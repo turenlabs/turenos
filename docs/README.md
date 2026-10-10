@@ -94,6 +94,10 @@ outputs, ownership, failure behavior, and implementation links. These systems ha
   - [Desktop storage](./systems/desktop-storage.md): server-backed Desktop settings and the one-time legacy store
     import.
   - [ACP server](./systems/acp.md): `forge acp` for editors that speak the Agent Client Protocol.
+- Clients
+  - [Terminal client](./systems/tui/README.md): the OpenTUI client in `packages/tui`, with its module map, transport,
+    live stream, server discovery and remote compatibility. [Usage](./systems/tui/usage.md) covers keys, connecting and
+    commands, and [GUI parity](./systems/tui/gui-parity.md) maps desktop features to TUI keys.
   - [Workspaces](./systems/workspaces.md): the experimental workspace control plane and its routing.
 
 ## Providers
@@ -124,6 +128,7 @@ outputs, ownership, failure behavior, and implementation links. These systems ha
   concurrent work in `packages/forge` tests.
 - [Desktop sidecar profiler](./development/desktop-profiler.md): recording a CPU profile of the local sidecar in
   dev-channel Desktop builds.
+- [TUI development](./development/tui.md): testing `packages/tui`, its size limits, fixture rules and the PTY audit.
 
 ## Experimental
 

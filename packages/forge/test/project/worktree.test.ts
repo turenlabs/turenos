@@ -232,6 +232,9 @@ describe("Worktree", () => {
       () =>
         withCreatedWorktree({ name: "test-workspace" }, ({ info }) =>
           Effect.gen(function* () {
+            const svc = yield* Worktree.Service
+            expect(yield* svc.creationStatus("not-created")).toEqual({ status: "unknown" })
+            expect(yield* svc.creationStatus("test-workspace")).toEqual({ status: "ready", directory: info.directory })
             expect(info.name).toBe("test-workspace")
             expect(info.branch).toBe("turen/test-workspace")
           }),
@@ -239,6 +242,21 @@ describe("Worktree", () => {
       { git: true },
     )
   })
+
+  it.instance(
+    "reused legacy names remain creatable and the latest attempt owns the readiness outcome",
+    () =>
+      withCreatedWorktree({ name: "reused" }, () =>
+        withCreatedWorktree({ name: "reused" }, ({ info }) =>
+          Effect.gen(function* () {
+            const svc = yield* Worktree.Service
+            expect(info.name).not.toBe("reused")
+            expect(yield* svc.creationStatus("reused")).toEqual({ status: "ready", directory: info.directory })
+          }),
+        ),
+      ),
+    { git: true },
+  )
 
   describe("createFromInfo", () => {
     wintest(

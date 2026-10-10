@@ -27,6 +27,19 @@ export const Info = Schema.Struct({
 }).annotate({ identifier: "Worktree" })
 export type Info = Schema.Schema.Type<typeof Info>
 
+/** Recorded completion of a named creation in this server process; unknown never implies ready. */
+export const CreationStatus = Schema.Union([
+  Schema.Struct({ status: Schema.Literal("unknown") }),
+  Schema.Struct({ status: Schema.Literal("pending"), directory: Schema.optional(Schema.String) }),
+  Schema.Struct({ status: Schema.Literal("ready"), directory: Schema.String }),
+  Schema.Struct({
+    status: Schema.Literal("failed"),
+    message: Schema.String,
+    directory: Schema.optional(Schema.String),
+  }),
+]).annotate({ identifier: "WorktreeCreationStatus" })
+export type CreationStatus = typeof CreationStatus.Type
+
 export const CreateInput = Schema.Struct({
   name: Schema.optional(Schema.String),
   startCommand: Schema.optional(
@@ -120,6 +133,7 @@ export interface Interface {
   readonly makeWorktreeInfo: (options?: { name?: string; detached?: boolean }) => Effect.Effect<Info, Error>
   readonly createFromInfo: (info: Info, startCommand?: string) => Effect.Effect<void, Error>
   readonly create: (input?: CreateInput) => Effect.Effect<Info, Error>
+  readonly creationStatus: (name: string) => Effect.Effect<CreationStatus>
   readonly list: () => Effect.Effect<(Omit<Info, "branch"> & { branch?: string })[], Error>
   readonly remove: (input: RemoveInput) => Effect.Effect<boolean, Error>
   readonly reset: (input: ResetInput) => Effect.Effect<boolean, Error>
@@ -150,6 +164,13 @@ const layer: Layer.Layer<
     const gitSvc = yield* Git.Service
     const project = yield* Project.Service
     const store = yield* InstanceStore.Service
+    // Retain recent named outcomes across event-stream reconnects. A restart or
+    // eviction reports unknown; files on disk cannot prove bootstrap succeeded.
+    const creations = new Map<string, { outcome: CreationStatus }>()
+    const creationStatus = Effect.fn("Worktree.creationStatus")(function* (name: string) {
+      const ctx = yield* InstanceState.context
+      return creations.get(`${ctx.project.id}:${slugify(name)}`)?.outcome ?? { status: "unknown" as const }
+    })
 
     const git = Effect.fnUntraced(
       function* (args: string[], opts?: { cwd?: string }) {
@@ -231,7 +252,11 @@ const layer: Layer.Layer<
       yield* project.addSandbox(ctx.project.id, info.directory).pipe(Effect.catch(() => Effect.void))
     })
 
-    const boot = Effect.fnUntraced(function* (info: Info, startCommand?: string) {
+    const boot = Effect.fnUntraced(function* (
+      info: Info,
+      startCommand?: string,
+      record?: (status: CreationStatus) => void,
+    ) {
       const ctx = yield* InstanceState.context
       const workspaceID = yield* InstanceState.workspaceID
       const projectID = ctx.project.id
@@ -240,6 +265,7 @@ const layer: Layer.Layer<
       const populated = yield* git(["reset", "--hard"], { cwd: info.directory })
       if (populated.code !== 0) {
         const message = populated.stderr || populated.text || "Failed to populate worktree"
+        record?.({ status: "failed", directory: info.directory, message })
         yield* Effect.logError("worktree checkout failed", { directory: info.directory, message })
         GlobalBus.emit("event", {
           directory: info.directory,
@@ -255,6 +281,7 @@ const layer: Layer.Layer<
         Effect.catch((error) =>
           Effect.gen(function* () {
             const message = errorMessage(error)
+            record?.({ status: "failed", directory: info.directory, message })
             yield* Effect.logError("worktree bootstrap failed", { directory: info.directory, message })
             GlobalBus.emit("event", {
               directory: info.directory,
@@ -268,6 +295,7 @@ const layer: Layer.Layer<
       )
       if (!booted) return
 
+      record?.({ status: "ready", directory: info.directory })
       GlobalBus.emit("event", {
         directory: info.directory,
         project: ctx.project.id,
@@ -281,18 +309,47 @@ const layer: Layer.Layer<
       yield* runStartScripts(info.directory, { projectID, extra })
     })
 
-    const createFromInfo = Effect.fn("Worktree.createFromInfo")(function* (info: Info, startCommand?: string) {
+    const createFromInfo = Effect.fn("Worktree.createFromInfo")(function* (
+      info: Info,
+      startCommand?: string,
+      record?: (status: CreationStatus) => void,
+    ) {
       yield* setup(info)
-      yield* boot(info, startCommand).pipe(
-        Effect.catchCause((cause) => Effect.logError("worktree bootstrap failed", { cause })),
+      yield* boot(info, startCommand, record).pipe(
+        Effect.catchCause((cause) => {
+          record?.({ status: "failed", directory: info.directory, message: errorMessage(cause) })
+          return Effect.logError("worktree bootstrap failed", { cause })
+        }),
         Effect.forkIn(scope),
       )
     })
 
     const create = Effect.fn("Worktree.create")(function* (input?: CreateInput) {
-      const info = yield* makeWorktreeInfo({ name: input?.name })
-      yield* createFromInfo(info, input?.startCommand)
-      return info
+      const ctx = yield* InstanceState.context
+      const key = input?.name ? `${ctx.project.id}:${slugify(input.name)}` : undefined
+      const previous = key === undefined ? undefined : creations.get(key)
+      if (previous?.outcome.status === "pending")
+        return yield* new CreateFailedError({ message: "A worktree with this name is still being prepared" })
+      if (key !== undefined && !previous && creations.size >= 1024) {
+        const settled = [...creations].find(([, state]) => state.outcome.status !== "pending")
+        if (!settled) return yield* new CreateFailedError({ message: "Too many worktrees are being prepared" })
+        creations.delete(settled[0])
+      }
+      // A settled previous entry is replaced: the name is free again, so this attempt owns the record.
+      const entry = { outcome: { status: "pending" } as CreationStatus }
+      if (key !== undefined) creations.set(key, entry)
+      const record = (status: CreationStatus) => {
+        if (key !== undefined && creations.get(key) === entry && entry.outcome.status === "pending")
+          entry.outcome = status
+      }
+      return yield* Effect.gen(function* () {
+        const info = yield* makeWorktreeInfo({ name: input?.name })
+        record?.({ status: "pending", directory: info.directory })
+        yield* createFromInfo(info, input?.startCommand, record)
+        return info
+      }).pipe(
+        Effect.tapCause((cause) => Effect.sync(() => record?.({ status: "failed", message: errorMessage(cause) }))),
+      )
     })
 
     const canonical = Effect.fnUntraced(function* (input: string) {
@@ -388,6 +445,18 @@ const layer: Layer.Layer<
       })
     }
 
+    // Only after the checkout is gone: a failed removal leaves the recorded outcome true.
+    const forget = Effect.fnUntraced(function* (directory: string) {
+      for (const entry of creations.values()) {
+        if (
+          "directory" in entry.outcome &&
+          entry.outcome.directory &&
+          (yield* canonical(entry.outcome.directory)) === directory
+        )
+          entry.outcome = { status: "unknown" }
+      }
+    })
+
     const remove = Effect.fn("Worktree.remove")(function* (input: RemoveInput) {
       const ctx = yield* InstanceState.context
       if (ctx.project.vcs !== "git") {
@@ -413,6 +482,7 @@ const layer: Layer.Layer<
           yield* stopFsmonitor(directory)
           yield* cleanDirectory(directory)
         }
+        yield* forget(directory)
         return true
       }
 
@@ -437,6 +507,7 @@ const layer: Layer.Layer<
       }
 
       yield* cleanDirectory(entry.path)
+      yield* forget(directory)
 
       const branch = entry.branch?.replace(/^refs\/heads\//, "")
       if (branch) {
@@ -613,7 +684,7 @@ const layer: Layer.Layer<
       return true
     })
 
-    return Service.of({ makeWorktreeInfo, createFromInfo, create, list, remove, reset })
+    return Service.of({ makeWorktreeInfo, createFromInfo, create, creationStatus, list, remove, reset })
   }),
 )
 
