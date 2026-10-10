@@ -120,6 +120,7 @@ dispose()
 host.remove()
 
 const { HighlightsProvider, useHighlights } = await import("@/context/highlights")
+const { SettingsReleaseNotes } = await import("@/components/settings-release-notes")
 const next = () => new Promise<void>((resolve) => setTimeout(resolve, 0))
 let highlights: ReturnType<typeof useHighlights> | undefined
 function mountStartup() {
@@ -133,7 +134,16 @@ function mountStartup() {
           return createComponent(HighlightsProvider, {
             get children() {
               highlights = useHighlights()
-              return null
+              return createComponent(SettingsReleaseNotes, {
+                children: (title, description, open) => {
+                  const control = document.createElement("button")
+                  control.dataset.action = "browse-release-notes"
+                  control.textContent = title
+                  control.title = description
+                  control.onclick = open
+                  return control
+                },
+              })
             },
           })
         },
@@ -171,7 +181,12 @@ await next()
 assert.equal(dialog.active, undefined)
 assert.ok(highlights)
 setPreferences("enabled", false)
-await highlights.open()
+const browse = document.querySelector<HTMLButtonElement>("[data-action=browse-release-notes]")
+assert.ok(browse)
+assert.equal(browse.textContent, dict["settings.general.releaseNotes.open"])
+assert.equal(browse.title, dict["settings.general.releaseNotes.open.description"])
+browse.click()
+await next()
 assert.ok(document.querySelector("[data-component=release-notes]"), "manual browsing works with popups off")
 assert.equal(calls.filter((call) => call.startsWith("claim")).length, 1)
 button("Got it").click()

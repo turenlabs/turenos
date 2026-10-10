@@ -10,7 +10,7 @@ import { useTheme, type ColorScheme } from "@turenlabs/ui/theme/context"
 import { useDialog } from "@turenlabs/ui/context/dialog"
 import { useParams } from "@solidjs/router"
 import { useLanguage } from "@/context/language"
-import { useHighlights } from "@/context/highlights"
+import { SettingsReleaseNotes } from "./settings-release-notes"
 import { usePlatform, type DisplayBackend } from "@/context/platform"
 import { useServerSync } from "@/context/server-sync"
 import { useServerSDK } from "@/context/server-sdk"
@@ -90,7 +90,6 @@ export const SettingsGeneral: Component = () => {
   const dialog = useDialog()
   const params = useParams()
   const settings = useSettings()
-  const highlights = useHighlights()
 
   const updater = useUpdaterAction()
 
@@ -728,16 +727,15 @@ export const SettingsGeneral: Component = () => {
           </div>
         </SettingsRow>
 
-        <Show when={highlights.available()}>
-          <SettingsRow
-            title={language.t("settings.general.releaseNotes.open")}
-            description={language.t("settings.general.releaseNotes.open.description")}
-          >
-            <Button size="small" variant="secondary" onClick={() => void highlights.open()}>
-              {language.t("settings.general.releaseNotes.open")}
-            </Button>
-          </SettingsRow>
-        </Show>
+        <SettingsReleaseNotes>
+          {(title, description, open) => (
+            <SettingsRow title={title} description={description}>
+              <Button size="small" variant="secondary" onClick={open}>
+                {title}
+              </Button>
+            </SettingsRow>
+          )}
+        </SettingsReleaseNotes>
 
         <Show when={platform.updater}>
           <SettingsRow

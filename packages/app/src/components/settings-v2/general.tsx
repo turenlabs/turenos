@@ -7,7 +7,7 @@ import { TextInputV2 } from "@turenlabs/ui/v2/text-input-v2"
 import { useTheme, type ColorScheme } from "@turenlabs/ui/theme/context"
 import { useDialog } from "@turenlabs/ui/context/dialog"
 import { useLanguage } from "@/context/language"
-import { useHighlights } from "@/context/highlights"
+import { SettingsReleaseNotes } from "../settings-release-notes"
 import { usePlatform } from "@/context/platform"
 import { useServerSync } from "@/context/server-sync"
 import { useServerSDK } from "@/context/server-sdk"
@@ -150,7 +150,6 @@ const SettingsGeneralContent: Component<{
   const language = useLanguage()
   const platform = usePlatform()
   const dialog = useDialog()
-  const highlights = useHighlights()
   const settings = useSettings()
   const serverSync = useServerSync()
   const serverSdk = useServerSDK()
@@ -1146,16 +1145,15 @@ const SettingsGeneralContent: Component<{
           </div>
         </SettingsRowV2>
 
-        <Show when={highlights.available()}>
-          <SettingsRowV2
-            title={language.t("settings.general.releaseNotes.open")}
-            description={language.t("settings.general.releaseNotes.open.description")}
-          >
-            <ButtonV2 size="normal" variant="neutral" onClick={() => void highlights.open()}>
-              {language.t("settings.general.releaseNotes.open")}
-            </ButtonV2>
-          </SettingsRowV2>
-        </Show>
+        <SettingsReleaseNotes>
+          {(title, description, open) => (
+            <SettingsRowV2 title={title} description={description}>
+              <ButtonV2 size="normal" variant="neutral" onClick={open}>
+                {title}
+              </ButtonV2>
+            </SettingsRowV2>
+          )}
+        </SettingsReleaseNotes>
 
         <Show when={platform.updater}>
           <SettingsRowV2

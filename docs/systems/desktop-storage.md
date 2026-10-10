@@ -42,8 +42,9 @@ release-notes toggle and a **What's changed** button for reopening the summary, 
 
 The main-process coordinator stores `release-notes-version` in `desktop/store/product-state-v1`. It imports the previous
 `highlights.v1` version through the existing `default.dat` storage bridge when available, then keeps the highest shown
-or explicitly skipped version. Fresh profiles are seeded before onboarding completes. An existing profile without a
-usable version marker starts at `0.0.0`, so it can receive the available bundled highlights.
+or explicitly skipped version. Fresh profiles are seeded before onboarding completes. Without a usable legacy version,
+an existing profile's missing or empty saved marker starts at `0.0.0`. The profile can then receive the available bundled highlights.
+A nonempty malformed saved marker is kept and suppresses automatic release notes.
 
 Only the claiming window can acknowledge an automatic popup, and acknowledgement follows mounting the dialog. Window
 teardown releases an unshown claim. A storage failure suppresses automatic notes for that process and allows a later
