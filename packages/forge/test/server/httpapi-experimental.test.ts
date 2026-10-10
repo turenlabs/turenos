@@ -265,8 +265,14 @@ describe("experimental HttpApi", () => {
     () =>
       Effect.gen(function* () {
         const tmp = yield* TestInstance
+        const initial = yield* request(`${ExperimentalPaths.worktreeStatus}?name=api-test`, tmp.directory)
+        expect(initial.status).toBe(200)
+        expect(yield* json(initial)).toEqual({ status: "unknown" })
         yield* withCreatedWorktree(tmp.directory, (info) =>
           Effect.gen(function* () {
+            const status = yield* request(`${ExperimentalPaths.worktreeStatus}?name=api-test`, tmp.directory)
+            expect(status.status).toBe(200)
+            expect(yield* json(status)).toEqual({ status: "ready", directory: info.directory })
             const listed = yield* request(ExperimentalPaths.worktree, tmp.directory)
             expect(listed.status).toBe(200)
             expect(yield* json(listed)).toContain(info.directory)
@@ -285,6 +291,8 @@ describe("experimental HttpApi", () => {
         const afterRemove = yield* request(ExperimentalPaths.worktree, tmp.directory)
         expect(afterRemove.status).toBe(200)
         expect(yield* json(afterRemove)).toEqual([])
+        const removedStatus = yield* request(`${ExperimentalPaths.worktreeStatus}?name=api-test`, tmp.directory)
+        expect(yield* json(removedStatus)).toEqual({ status: "unknown" })
       }),
     { git: true, config: { formatter: false, lsp: false } },
   )

@@ -1,0 +1,73 @@
+import { SelectRenderable, TextRenderable, type CliRenderer } from "@opentui/core"
+import { matchesKey } from "../keys"
+import { color } from "../theme"
+import { act, discard, preview, refresh, type Dock, type QueueContext } from "./dock"
+
+export function openQueue(ctx: QueueContext) {
+  const { state, dialogs } = ctx
+  const session = state.snapshot?.sessions.find((item) => item.id === state.selected)
+  if (state.tab !== "sessions" || !session) return ctx.say("Select a session first.")
+  if (!dialogs.navigate()) return
+  const dialog = dialogs.open("Queued messages", false, 26)
+  if (!dialog) return
+  dialog.recipient = session
+  const text = new TextRenderable(ctx.renderer, {
+    content: "Loading…",
+    fg: color.text,
+    wrapMode: "word",
+    selectable: true,
+  })
+  dialog.form.add(text)
+  const list = queueList(ctx.renderer)
+  dialog.frame.add(list, dialog.frame.getChildren().indexOf(dialog.error))
+  dialogs.track(dialog, list)
+  const dock: Dock = {
+    ctx,
+    session,
+    dialog,
+    text,
+    list,
+    inputs: [],
+    held: new Map(),
+    armed: "",
+    armedAt: 0,
+    request: 0,
+    acting: false,
+  }
+  list.on("selectionChanged", () => {
+    dock.armed = ""
+    const input = dock.inputs[list.getSelectedIndex()]
+    if (input) text.content = preview(session, input)
+  })
+  dialog.refresh = () => void refresh(dock)
+  dialog.key = (key) => {
+    const action = matchesKey(key, "r", { ctrl: true })
+      ? () => refresh(dock)
+      : matchesKey(key, "e", { ctrl: true })
+        ? () => act(dock, "edit")
+        : matchesKey(key, "d", { ctrl: true })
+          ? () => discard(dock)
+          : matchesKey(key, "enter")
+            ? () => act(dock, "steer")
+            : undefined
+    if (!action) return false
+    void action()
+    return true
+  }
+  list.focus()
+  void refresh(dock)
+}
+
+function queueList(renderer: CliRenderer) {
+  return new SelectRenderable(renderer, {
+    height: 8,
+    flexShrink: 0,
+    options: [],
+    showSelectionIndicator: true,
+    backgroundColor: color.panel,
+    textColor: color.text,
+    descriptionColor: color.muted,
+    selectedBackgroundColor: color.selected,
+    selectedTextColor: color.accent,
+  })
+}

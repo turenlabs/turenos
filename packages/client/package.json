@@ -6,7 +6,18 @@
   "license": "MIT",
   "exports": {
     ".": "./src/index.ts",
-    "./effect": "./src/effect.ts"
+    "./effect": "./src/effect.ts",
+    "./models": "./src/models.ts",
+    "./automation-schedule": "./src/automation-schedule.ts",
+    "./context": "./src/context.ts",
+    "./paths": "./src/paths.ts",
+    "./path-key": "./src/path-key.ts",
+    "./unsafe-text": "./src/unsafe-text.ts",
+    "./working-folders": "./src/working-folders.ts",
+    "./provider-url": "./src/provider-url.ts",
+    "./session-title": "./src/session-title.ts",
+    "./team": "./src/team.ts",
+    "./turn-interruption": "./src/turn-interruption.ts"
   },
   "scripts": {
     "generate": "bun run script/build.ts",

@@ -33,6 +33,7 @@ import {
   roomDeleteBlocker,
 } from "./team/model"
 import type { Team } from "@turenlabs/schema/team"
+import { factoryConfigProblem, teammateDraft } from "@turenlabs/client/team"
 
 const surface = "flex h-full min-h-0 w-full min-w-0 bg-v2-background-bg-base text-v2-text-text-base"
 const button = "rounded-[6px] px-2.5 py-1.5 text-[12px] hover:bg-v2-overlay-simple-overlay-hover"
@@ -318,18 +319,17 @@ export default function TeamPage() {
     const currentGeneration = generation
     const client = serverSDK().client
     const roomID = state.value?.room.id
-    const name = String(form.get("name") ?? "").trim()
-    const handle = String(form.get("handle") ?? "")
-      .trim()
-      .replace(/^@/, "")
-    if (!name || !handle) return
+    const draft = teammateDraft({
+      name: String(form.get("name") ?? ""),
+      handle: String(form.get("handle") ?? ""),
+      role: String(form.get("role") ?? ""),
+      mission: String(form.get("mission") ?? ""),
+    })
+    if (!draft.name || !draft.handle) return
     await teamApi(client).teammateCreate({
       roomID,
-      name,
-      handle,
-      role: String(form.get("role") ?? "").trim() || "Security teammate",
-      mission: String(form.get("mission") ?? ""),
-      avatar: state.createAvatar ?? generatePixelAvatar(handle),
+      ...draft,
+      avatar: state.createAvatar ?? generatePixelAvatar(draft.handle),
       directory: String(form.get("directory") ?? "") || undefined,
       agent: String(form.get("agent") ?? "") || undefined,
       model: String(form.get("model") ?? "")
@@ -380,14 +380,8 @@ export default function TeamPage() {
     const client = serverSDK().client
     const currentGeneration = generation
     const config = { ...state.factoryConfig, parameters: parseFactoryParameters(state.factoryParameters) }
-    if (!config.outcome.trim() || !config.acceptanceCriteria.trim() || !config.directory.trim())
-      throw new Error("Outcome, acceptance criteria, and directory are required")
-    if (!config.coordinatorTeammateID || !config.teammateIDs.includes(config.coordinatorTeammateID))
-      throw new Error("Select a coordinator from the selected teammates")
-    if (config.teammateIDs.length < 1 || config.teammateIDs.length > 10)
-      throw new Error("Select between 1 and 10 teammates")
-    if (config.teammateIDs.some((id) => !state.value?.teammates.some((teammate) => teammate.id === id)))
-      throw new Error("Factory teammates must belong to this room")
+    const problem = factoryConfigProblem(config, state.value?.teammates)
+    if (problem) throw new Error(problem)
     const saved = await teamApi(client).factoryConfigure({ roomID, config })
     if (
       !ownsTeamResponse(
@@ -998,7 +992,7 @@ export default function TeamPage() {
           role="log"
           aria-label="Room messages"
           aria-live="polite"
-          class="min-h-0 flex-1 overflow-y-auto px-6 py-5 font-mono text-[12px] max-sm:px-4"
+          class="min-h-0 flex-1 overflow-y-auto px-6 py-5 font-mono text-[12px] select-text max-sm:px-4"
         >
           <Show when={state.loading}>
             <p class="text-v2-text-text-muted">Loading room history...</p>

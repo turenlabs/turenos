@@ -10,7 +10,7 @@ const options = parseArgs({
 
 const root = path.resolve(import.meta.dir, "../..")
 // These are the portable suites also run on Windows.
-// Core, Forge, and Desktop retain their POSIX coverage in the native Bun shard jobs.
+// Core, Forge, Desktop, and the TUI retain their POSIX coverage in the native Bun shard jobs.
 const portable = [
   "packages/app",
   "packages/client",
@@ -38,7 +38,7 @@ for (const pattern of repository.workspaces.packages) {
     if (manifest.scripts?.test) actual.push(path.dirname(file).replaceAll("\\", "/"))
   }
 }
-const expected = [...portable, "packages/core", "packages/desktop", "packages/forge"].sort()
+const expected = [...portable, "packages/core", "packages/desktop", "packages/forge", "packages/tui"].sort()
 if (JSON.stringify(actual.sort()) !== JSON.stringify(expected))
   throw new Error(
     `CI suite inventory changed. Classify every test package before proceeding: ${JSON.stringify(actual)}`,

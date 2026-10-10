@@ -9,6 +9,7 @@ live in [`CONTRIBUTING.md`](../../CONTRIBUTING.md) and the operator procedures i
   `packages/forge` tests.
 - [Desktop sidecar profiler](./desktop-profiler.md): Bun profiling limits and sidecar memory diagnostics.
 - [Test selection](./testing.md): opt-in local affected-package plans and the informational CI report.
+- [TUI development](./tui.md): testing `packages/tui`, its size limits, fixture rules, the sandbox and the PTY audit.
 
 The Effect patterns used in `packages/forge` are specified beside that package, in
 [`packages/forge/specs/effect/`](../../packages/forge/specs/effect/): the [Effect guide](../../packages/forge/specs/effect/guide.md),

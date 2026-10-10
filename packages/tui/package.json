@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "@turenlabs/tui",
+  "version": "1.0.44",
+  "description": "A keyboard-first terminal client for TurenOS",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "turen-tui": "./src/cli.ts"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./server": "./src/server.ts"
+  },
+  "scripts": {
+    "build": "bun build src/cli.ts --target=bun --packages=external --outdir=dist",
+    "start": "bun src/cli.ts",
+    "test": "bun test --timeout 30000",
+    "test:e2e": "bun test --timeout 120000 ./e2e/*.e2e.ts",
+    "sandbox": "bun script/sandbox.ts",
+    "typecheck": "tsgo --noEmit --checkers 1"
+  },
+  "dependencies": {
+    "@opentui/core": "0.5.10",
+    "@turenlabs/client": "workspace:*",
+    "web-tree-sitter": "0.25.10"
+  },
+  "devDependencies": {
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:"
+  }
+}

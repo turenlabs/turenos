@@ -11,6 +11,7 @@ import {
 } from "@turenlabs/llm"
 import { ProviderShared } from "@turenlabs/llm/protocols"
 import { LobbySession } from "@turenlabs/schema/lobby-session"
+import { TurnInterruption } from "@turenlabs/schema/turn-interruption"
 import { createHash } from "node:crypto"
 import { Cause, Clock, DateTime, Effect, FiberSet, Layer, Option, Schedule, Scope, Semaphore, Stream } from "effect"
 import { AgentV2 } from "../../agent"
@@ -499,7 +500,7 @@ const layer = Layer.effect(
         sessionID,
         timestamp: yield* DateTime.now,
         assistantMessageID,
-        error: { type: "unknown", message: "Provider turn interrupted before it started" },
+        error: { type: "unknown", message: TurnInterruption.BEFORE_START },
       })
     })
     // The retry backoff is the one pre-assistant window that has already written durable state:
@@ -607,7 +608,7 @@ const layer = Layer.effect(
             timestamp: yield* DateTime.now,
             assistantMessageID: message.id,
             callID: tool.id,
-            error: { type: "unknown", message: "Tool execution interrupted" },
+            error: { type: "unknown", message: TurnInterruption.TOOL },
             provider: {
               executed: tool.provider?.executed === true,
               ...(tool.provider?.metadata === undefined ? {} : { metadata: tool.provider.metadata }),
@@ -861,20 +862,19 @@ const layer = Layer.effect(
         routeID: model.route.id,
         modelID: model.id,
       })
-      const toolSnapshot = toolsDisabled
-        ? undefined
-        : yield* toolSnapshots.materialize({
-            sessionID: session.id,
-            directory: location.directory,
-            model: modelRef,
-            agent: agent.id,
-            permissions: toolPermissions,
-            parentID: session.parentID,
-            taskOwned: session.parentID !== undefined,
-            control,
-            harnessState,
-            nativeToolSearch,
-          })
+      const toolSnapshotInput = {
+        sessionID: session.id,
+        directory: location.directory,
+        model: modelRef,
+        agent: agent.id,
+        permissions: toolPermissions,
+        parentID: session.parentID,
+        taskOwned: session.parentID !== undefined,
+        control,
+        harnessState,
+        nativeToolSearch,
+      }
+      const toolSnapshot = toolsDisabled ? undefined : yield* toolSnapshots.materialize(toolSnapshotInput)
       yield* startupPhase("tools_ready", { tools: toolSnapshot?.materialization.definitions.length ?? 0 })
       const objectiveChanged =
         knownGoal !== undefined &&
@@ -1369,6 +1369,19 @@ const layer = Layer.effect(
           Effect.forkScoped,
         )
       if (claudeMcpToken && toolMaterialization) {
+        // The CLI keeps calling tools inside this one provider turn, so a tool_load selection has to
+        // reach it now rather than on the next provider turn. Serialized so an older rematerialization
+        // cannot replace a newer one.
+        let claudeMaterialization = toolMaterialization
+        const refreshClaudeTools = Semaphore.makeUnsafe(1).withPermit(
+          Effect.gen(function* () {
+            const next = yield* toolSnapshots.materialize({ ...toolSnapshotInput, advanceTurn: false })
+            claudeMaterialization = next.materialization
+            yield* ClaudeCodeMcp.refresh(claudeMcpToken, next.materialization.definitions)
+          }).pipe(
+            Effect.catch((cause) => Effect.logWarning("Claude Code tool refresh after tool_load failed", { cause })),
+          ),
+        )
         executeClaudeTool = (call) =>
           Effect.uninterruptibleMask((restore) =>
             Effect.gen(function* () {
@@ -1382,7 +1395,7 @@ const layer = Layer.effect(
               const assistantMessageID = yield* publisher.assistantMessageID(call.id)
               toolTurnIDs.add(assistantMessageID)
               pendingToolCalls.set(call.id, { name: call.name, assistantMessageID, startedAt: Date.now() })
-              const settle = toolMaterialization.settle({
+              const settle = claudeMaterialization.settle({
                 sessionID: session.id,
                 agent: agent.id,
                 assistantMessageID,
@@ -1440,7 +1453,7 @@ const layer = Layer.effect(
                 const result = yield* protectReply({
                   type: "error",
                   value: Cause.hasInterruptsOnly(settlement.cause)
-                    ? "Tool execution interrupted"
+                    ? TurnInterruption.TOOL
                     : `Tool execution failed: ${yield* visible(Cause.squash(settlement.cause))}`,
                 })
                 yield* publish(LLMEvent.toolResult({ id: call.id, name: call.name, result }))
@@ -1468,6 +1481,8 @@ const layer = Layer.effect(
                 }),
                 settlement.value.outputPaths ?? [],
               )
+              // Before the reply, so the CLI lists the loaded tools before its next model call.
+              if (call.name === ToolBroker.LOAD_TOOL_NAME) yield* refreshClaudeTools
               return yield* protectReply(settlement.value.result)
             }),
           )
@@ -1784,7 +1799,7 @@ const layer = Layer.effect(
             (questionToolInFlight && interrupted)
           if (userDeclined) {
             yield* FiberSet.clear(toolFibers)
-            yield* withPublication(publisher.failUnsettledTools("Tool execution interrupted"))
+            yield* withPublication(publisher.failUnsettledTools(TurnInterruption.TOOL))
           }
           const turnInterrupted =
             interrupted &&
@@ -1792,14 +1807,14 @@ const layer = Layer.effect(
             (publisher.hasActiveAssistant() || unsettledToolNames.some((name) => name !== "question"))
           if (interrupted) {
             yield* FiberSet.clear(toolFibers)
-            yield* withPublication(publisher.failUnsettledTools("Tool execution interrupted"))
+            yield* withPublication(publisher.failUnsettledTools(TurnInterruption.TOOL))
             // Tool interruption after provider completion: fail the assistant even if it is
             // already inactive. A step-finish event marks the assistant inactive but leaves
             // durable `Step` settlement responsible for closure; interruption during the
             // following tool await must prevent that settlement from projecting a terminal idle.
             if (!turnInterrupted && !userDeclined && publisher.hasAssistantStarted())
-              yield* withPublication(publisher.failAssistant("Tool execution interrupted during settlement"))
-            if (turnInterrupted) yield* withPublication(publisher.failAssistant("Provider turn interrupted"))
+              yield* withPublication(publisher.failAssistant(TurnInterruption.SETTLEMENT))
+            if (turnInterrupted) yield* withPublication(publisher.failAssistant(TurnInterruption.TURN))
           }
           if (regularSettled._tag === "Failure" && !Cause.hasInterrupts(regularSettled.cause) && !userDeclined) {
             const failure = Cause.squash(regularSettled.cause)
@@ -1897,7 +1912,7 @@ const layer = Layer.effect(
             )
           }
           if (publisher.hasProviderError())
-            yield* withPublication(publisher.failUnsettledTools("Tool execution interrupted"))
+            yield* withPublication(publisher.failUnsettledTools(TurnInterruption.TOOL))
           if (stream._tag === "Success" && !publisher.hasProviderError())
             yield* withPublication(publisher.failUnsettledTools("Provider did not return a tool result", true))
           yield* resetReflectionContext(session.id)

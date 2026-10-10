@@ -1,3 +1,4 @@
+import { TurnInterruption } from "@turenlabs/client/turn-interruption"
 import type {
   FilePart,
   Message,
@@ -254,7 +255,7 @@ export function presentSessionV2Messages(input: {
       finish: message.finish,
       error: message.error
         ? {
-            name: "UnknownError",
+            name: TurnInterruption.isTurnInterrupted(message.error.message) ? "MessageAbortedError" : "UnknownError",
             data: { message: message.error.message },
           }
         : undefined,

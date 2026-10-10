@@ -1,4 +1,5 @@
 import type { ProviderUsageResponse } from "@turenlabs/sdk/v2/client"
+import { contextTokens } from "@turenlabs/client/context"
 import { ServerConnection } from "@/context/server"
 import type { ServerCtx } from "@/context/global"
 import type { useAgentsPanel } from "@/components/agents-panel-state"
@@ -57,14 +58,7 @@ export function providerUsageServerQuery(connection: ServerConnection.Any | unde
 }
 
 export function tokenTotal(usage: Usage | undefined) {
-  if (!usage) return 0
-  return (
-    usage.tokens.input +
-    usage.tokens.output +
-    usage.tokens.reasoning +
-    usage.tokens.cache.read +
-    usage.tokens.cache.write
-  )
+  return usage ? contextTokens(usage.tokens) : 0
 }
 
 export function usageTotals(data: ProviderUsageResponse | undefined) {

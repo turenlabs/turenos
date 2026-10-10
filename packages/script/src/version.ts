@@ -23,6 +23,7 @@ export const VERSIONED_PACKAGE_FILES = [
   "packages/script/package.json",
   "packages/server/package.json",
   "packages/session-ui/package.json",
+  "packages/tui/package.json",
   "packages/ui/package.json",
 ] as const
 

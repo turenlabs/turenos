@@ -1026,6 +1026,17 @@ const scenarios: Scenario[] = [
       check(body === true, "worktree remove should return true")
     }),
   http.protected
+    .get("/experimental/worktree/status", "worktree.status")
+    .at((ctx) => ({ path: "/experimental/worktree/status?name=api-never-created", headers: ctx.headers() }))
+    .json(200, (body) => {
+      object(body)
+      check(body.status === "unknown", "a name this process never created should be unknown, never ready")
+    }),
+  http.protected
+    .get("/experimental/worktree/status", "worktree.status.invalid")
+    .at((ctx) => ({ path: "/experimental/worktree/status", headers: ctx.headers() }))
+    .status(400),
+  http.protected
     .post("/experimental/worktree/reset", "worktree.reset")
     .mutating()
     .seeded((ctx) => ctx.worktree({ name: "api-reset" }))

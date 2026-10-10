@@ -1,7 +1,10 @@
 import { TextareaV2 } from "@turenlabs/ui/v2/textarea-v2"
 import { For, Show, createEffect, createMemo, createSignal, createUniqueId } from "solid-js"
 import type { Team } from "@turenlabs/schema/team"
+import { insertMention, mentionMatches, mentionToken } from "@turenlabs/client/team"
 import { PixelAvatar } from "./pixel-avatar"
+
+export { insertMention, mentionMatches, mentionToken }
 
 export interface TeamMentionInputProps {
   value: string
@@ -9,25 +12,6 @@ export interface TeamMentionInputProps {
   disabled?: boolean
   onInput: (value: string) => void
   onSend: () => void
-}
-
-export function mentionToken(value: string, start: number, end = start) {
-  if (start !== end || start < 0 || start > value.length) return
-  const match = /(?:^|[^a-zA-Z0-9_])@([a-zA-Z][a-zA-Z0-9_-]{0,31}|)$/.exec(value.slice(0, start))
-  if (!match) return
-  return { start: start - match[1]!.length - 1, end: start, query: match[1]! }
-}
-
-export function mentionMatches(teammates: readonly Team.Teammate[], query: string) {
-  const search = query.toLowerCase()
-  return teammates.filter((teammate) =>
-    [teammate.handle, teammate.name, teammate.role].some((value) => value.toLowerCase().includes(search)),
-  )
-}
-
-export function insertMention(value: string, token: NonNullable<ReturnType<typeof mentionToken>>, handle: string) {
-  const prefix = `${value.slice(0, token.start)}@${handle} `
-  return { value: prefix + value.slice(token.end), caret: prefix.length }
 }
 
 export function TeamMentionInput(props: TeamMentionInputProps) {
