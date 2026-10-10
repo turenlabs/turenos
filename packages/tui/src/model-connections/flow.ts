@@ -81,7 +81,7 @@ export function show(flow: Flow, title: string, height = 26) {
   flow.current = dialog
   dialog.frame.add(
     new TextRenderable(renderer, {
-      content: `Server-global credentials and configuration\nServer: ${label(URL.parse(connection.address)?.origin ?? "Unknown server", 512)}`,
+      content: `Server-global credentials and configuration\nServer: ${label(connection.address, 512)}`,
       fg: color.muted,
       flexShrink: 0,
       wrapMode: "word",

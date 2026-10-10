@@ -26,7 +26,8 @@ async function session(ctx: Context, pty: AttachTarget) {
   process.stdin.resume()
   process.stdout.write(`\x1b[2J\x1b[H\x1b[2m${label(pty.title, 80)} on the server · Ctrl+] detaches\x1b[0m\r\n`)
   return attachTerminal({
-    url: new URL(ctx.connection.address),
+    url: ctx.connection.url,
+    socketPath: ctx.connection.socketPath,
     api: ctx.connection.api,
     resize: (size) => ctx.connection.client.ptys.update({ ptyID: pty.id, location: where(pty), size }),
     target: pty,

@@ -34,6 +34,8 @@ export type Output = {
 
 export type AttachOptions = {
   url: URL
+  /** The server's Unix socket, which the PTY's WebSocket is dialled through; `url` then only names the origin. */
+  socketPath?: string
   api: Api
   resize: (size: { rows: number; cols: number }) => Promise<unknown>
   target: AttachTarget
