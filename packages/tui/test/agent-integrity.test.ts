@@ -56,14 +56,19 @@ test("a crowded active list neither leaks its omitted key as a session nor hides
   expect(pending.code).toBe(0)
   expect(server.paths().some((path) => path.includes("/omitted"))).toBe(false)
 
-  // ses_main may be among the cut sessions, so stop interrupts it rather than reporting it idle.
+  // An omitted idle session is not running; unrelated sessions must not cause an interrupt.
   const stopped = await agent(["stop", "ses_main", "--json"], { url: server.url })
   expect(stopped.code).toBe(0)
-  expect(interrupts).toEqual(["ses_main"])
+  expect(interrupts).toEqual([])
+  expect(document(stopped).running).toBe(false)
 
-  // And a wait cannot call it idle early: with a reply already there it ends in a timeout, not as done.
+  // A completed session still settles when the dashboard active map is truncated.
   const waited = await agent(["wait", "ses_main", "--timeout", "1", "--json"], { url: server.url })
-  expect(document(waited).state).toBe("timeout")
+  expect(document(waited).state).toBe("idle")
+
+  const cancelled = await agent(["stop", "ses_main", "--tasks", "--json"], { url: server.url })
+  expect(cancelled.code).toBe(0)
+  expect(interrupts).toEqual(["ses_main"])
 })
 
 test("a provider error cannot forge a client line at the start of a wait report", async () => {

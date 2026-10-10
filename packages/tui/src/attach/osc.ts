@@ -5,14 +5,14 @@ const ESC = "\x1b"
 const OSC8 = "\u009d"
 const INTRODUCER = /[\x1b\u009d]/g
 /** Icon and window titles (0, 1, 2) and the clipboard (52): a PTY program must not set them on the host terminal. */
-const BLOCKED = new Set(["0", "1", "2", "52"])
+const BLOCKED = new Set([0, 1, 2, 52])
 /** What ends an OSC string, as a terminal reads it: BEL, the 8-bit ST, or the cancel controls CAN and SUB. */
 const ENDS = new Set(["\x07", "\u009c", "\x18", "\x1a"])
 
 /**
  * PTY output without the OSC sequences in BLOCKED, wherever the WebSocket messages split them. A dropped
  * sequence ends where the host terminal would end it, and nothing of it is kept, so its length costs no memory.
- * Other OSCs, such as hyperlinks and the working directory, pass unchanged.
+ * Other OSCs pass unchanged. Selectors over 64 digits are dropped to bound retained memory.
  */
 export function filterOsc(osc: OscState, text: string) {
   const input = osc.held + text
@@ -22,6 +22,27 @@ export function filterOsc(osc: OscState, text: string) {
   while (at < input.length) {
     if (osc.dropping) {
       at = skip(osc, input, at)
+      continue
+    }
+    if (osc.selector) {
+      const selector = osc.selector
+      while (at < input.length && input[at]! >= "0" && input[at]! <= "9") {
+        selector.value = Math.min(53, selector.value * 10 + Number(input[at]))
+        selector.digits++
+        selector.prefix += input[at++]
+        if (selector.digits > 64) break
+      }
+      if (selector.digits > 64) {
+        osc.selector = undefined
+        osc.dropping = true
+        continue
+      }
+      if (at === input.length) return out
+      const next = input[at]!
+      osc.dropping =
+        selector.digits > 0 && BLOCKED.has(selector.value) && (next === ";" || next === ESC || ENDS.has(next))
+      if (!osc.dropping) out += selector.prefix
+      osc.selector = undefined
       continue
     }
     INTRODUCER.lastIndex = at
@@ -39,14 +60,7 @@ export function filterOsc(osc: OscState, text: string) {
       at = start + 1
       continue
     }
-    const digits = /^\d{0,3}/.exec(input.slice(body, body + 3))![0]
-    const next = input[body + digits.length]
-    if (next === undefined && digits.length < 3) {
-      osc.held = input.slice(start)
-      return out
-    }
-    osc.dropping = BLOCKED.has(digits) && (next === ";" || next === ESC || ENDS.has(next ?? ""))
-    if (!osc.dropping) out += input.slice(start, body)
+    osc.selector = { prefix: input.slice(start, body), value: 0, digits: 0 }
     at = body
   }
   return out

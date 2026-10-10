@@ -6,14 +6,15 @@ afterEach(async () => {
   await Promise.all(cleanup.splice(0).map((stop) => stop()))
 })
 
-function fixture(status: number) {
-  const control = { status, requests: 0 }
+function fixture(status: number, readable = false) {
+  const control = { status, requests: 0, readable }
   const server = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
     fetch(request) {
       if (new URL(request.url).pathname !== "/global/storage") return Response.json(null)
       control.requests++
+      if (control.readable && request.method === "GET") return Response.json({ state: null })
       return new Response(null, { status: control.status })
     },
   })
@@ -24,6 +25,19 @@ function fixture(status: number) {
   })
   return { connection, control }
 }
+
+test("successful empty reads retain local folders after unsupported writes", async () => {
+  const { connection } = fixture(405, true)
+  expect(await connection.folders.open("/one")).toEqual(["/one"])
+  expect(await connection.folders.read()).toEqual(["/one"])
+  expect(connection.folders.current()).toEqual(["/one"])
+  expect(await connection.folders.open("/two")).toEqual(["/one", "/two"])
+  expect(await connection.folders.read()).toEqual(["/one", "/two"])
+  expect(await connection.folders.close("/one")).toEqual(["/two"])
+  expect(await connection.folders.read()).toEqual(["/two"])
+  expect(connection.folders.takeNotice()).not.toBe("")
+  expect(connection.folders.takeNotice()).toBe("")
+})
 
 for (const status of [404, 405]) {
   test(`a server answering ${status} for storage keeps folders local and notices once per connection`, async () => {

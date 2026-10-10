@@ -28,7 +28,7 @@ export function localFolders(shared: ReturnType<typeof createWorkingFolders>) {
   }
   return {
     current: () => kept.list?.slice() ?? shared.current(),
-    read: () => shared.read().then(settle),
+    read: () => shared.read().then((list) => kept.list?.slice() ?? list),
     open: (directory: string) =>
       shared.open(directory).then(
         (list) => settle(list),

@@ -49,6 +49,8 @@ export type AttachResult = { reason: "detached" | "exited" | "failed"; detail?: 
 export type OscState = {
   /** An escape sequence's start that the message ended inside, at most a few characters. */
   held: string
+  /** A numeric selector is held until classified; selectors over 64 digits are dropped. */
+  selector?: { prefix: string; value: number; digits: number }
   /** Inside an OSC being dropped, which nothing is kept of. */
   dropping: boolean
 }

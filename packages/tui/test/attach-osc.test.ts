@@ -55,6 +55,8 @@ const kept = [
   ["colours split after the escape", ["red\x1b", "[31mx\x1b[0m"]],
   ["escapes in a row", ["\x1b\x1b[1m"]],
   ["an 8-bit hyperlink", ["\u009d8;;u\u009clink"]],
+  ["a padded safe selector split across frames", ["\x1b]00", "0", "7;file:///srv" + BEL]],
+  ["a long safe selector", ["\x1b]" + "9".repeat(64) + ";safe" + BEL]],
 ] as const
 
 test.each(kept)("OSC filter leaves %s unchanged", async (_name, frames) => {
@@ -69,9 +71,22 @@ const dropped = [
   ["a sequence split between every message", ["a\x1b", "]", "2;ti", "tle\x1b", "\\b"]],
   ["a command number split in two", ["a\x1b]5", "2;x" + BEL + "b"]],
   ["a sequence ended by a lone BEL message", ["a\x1b]52;c;", "QUJD", BEL, "b"]],
-  ["a clipboard payload far longer than one message", ["a\x1b]52;c;", ..."QUJD".repeat(4096).match(/.{1,1000}/g)!, BEL + "b"]],
+  [
+    "a clipboard payload far longer than one message",
+    ["a\x1b]52;c;", ..."QUJD".repeat(4096).match(/.{1,1000}/g)!, BEL + "b"],
+  ],
   ["the 8-bit introducer and terminator", ["a\u009d2;title\u009cb"]],
   ["a sequence cancelled by CAN", ["a\x1b]0;title\x18b"]],
+  ["a padded clipboard selector", ["a\x1b]052;c;QUJD" + BEL + "b"]],
+  ["a padded icon selector", ["a\x1b]00;title" + ST + "b"]],
+  ["a padded title selector", ["a\x1b]02;title" + BEL + "b"]],
+  ["padded digits split between frames", ["a\x1b]0", "0", "5", "2;c;QUJD", BEL + "b"]],
+  ["a 64-digit blocked selector", ["a\x1b]" + "0".repeat(62), "52;c;QUJD" + BEL + "b"]],
+  [
+    "an oversized padded selector",
+    ["a\x1b]", ...Array.from({ length: 100 }, () => "0".repeat(100)), "52;c;QUJD" + BEL + "b"],
+  ],
+  ["an oversized safe selector", ["a\x1b]" + "9".repeat(65) + ";safe" + BEL + "b"]],
 ] as const
 
 test.each(dropped)("OSC filter drops %s and keeps the text around it", async (_name, frames) => {

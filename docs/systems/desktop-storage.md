@@ -40,8 +40,9 @@ later edit to the old files is never re-imported.
 
 - A Tauri file that cannot be parsed fails the import of that store and is logged; other stores still import.
 - An import runs once per migration name; changes to the old files after the receipt is written are ignored.
-- A server with no storage route (HTTP 404 or 405) cannot hold the working-folders record. The terminal client then
-  keeps the list in memory for that connection and says so once; an authentication failure is still reported.
+- When a folder write returns HTTP 404 or 405, the terminal client keeps its folder list in memory for that connection.
+  It shows one notice. Successful reads, including `state: null`, do not clear this local list.
+  A successful folder mutation replaces it with shared state. Authentication and other failures still reach the caller.
 - The storage lives in the server database, so it follows the database's location and permissions (see
   [Persistence](../architecture/persistence.md)).
 
@@ -53,6 +54,8 @@ bun test src/main/storage src/main/migrate.test.ts
 ```
 
 ## Source
+
+- [`packages/tui/src/working-folders/local.ts`](../../packages/tui/src/working-folders/local.ts)
 
 - [`packages/desktop/src/main/storage/bridge.ts`](../../packages/desktop/src/main/storage/bridge.ts)
 - [`packages/desktop/src/main/storage/product.ts`](../../packages/desktop/src/main/storage/product.ts)

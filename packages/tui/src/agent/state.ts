@@ -64,11 +64,6 @@ export async function activeIDs(connection: Connection) {
   })
 }
 
-/** Whether the session may be running: listed, or possibly among the running sessions that were cut. */
-export function mayBeRunning(active: Awaited<ReturnType<typeof activeIDs>>, sessionID: string) {
-  return active.has(sessionID) || active.omitted > 0
-}
-
 /** Pending permissions and questions for one session; a session deleted meanwhile has none. */
 export async function pendingFor(connection: Connection, sessionID: string): Promise<Pending> {
   const [permissions, questions] = await Promise.all([

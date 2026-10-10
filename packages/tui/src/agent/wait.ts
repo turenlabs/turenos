@@ -7,13 +7,11 @@ import { whole } from "./options"
 import { turnFailure } from "./failure"
 import { requestsText } from "./requests"
 import {
-  activeIDs,
   activeTaskStatuses,
   getSession,
   idArgument,
   inBatches,
   latestMessages,
-  mayBeRunning,
   needsInput,
   pendingFor,
   type Message,
@@ -177,7 +175,7 @@ async function observe(
   after: Anchor | undefined,
 ): Promise<Outcome | undefined> {
   // Read busy first: a session that finishes between the reads then shows as idle with a reply, never as idle too early.
-  const running = mayBeRunning(await activeIDs(connection), sessionID)
+  const running = await connection.running(sessionID)
   const pending = await pendingFor(connection, sessionID)
   if (needsInput(pending)) return { state: "needs-input", pending }
   // A session cannot finish while a subagent it started waits for input, so that input is what to report.

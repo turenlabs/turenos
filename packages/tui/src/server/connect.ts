@@ -36,10 +36,18 @@ export function connect(options: ConnectionOptions) {
     providers,
     folders,
     client,
+    // Select the requested ID before the dashboard's active-map limit removes entries.
+    running: async (sessionID: string) => {
+      const targeted = Forge.make({
+        baseUrl: url.href,
+        headers,
+        fetch: createTransport(controller, socketPath, sessionID),
+      })
+      return Object.hasOwn(await targeted.sessions.active(), sessionID)
+    },
     api,
     missingFiles,
-    events: (signal: AbortSignal) =>
-      liveEvents(url, headers, AbortSignal.any([controller.signal, signal]), socketPath),
+    events: (signal: AbortSignal) => liveEvents(url, headers, AbortSignal.any([controller.signal, signal]), socketPath),
     snapshot: (folder?: Folder) => snapshot(ctx, folder),
     searchSessions: (input: SessionSearch, signal?: AbortSignal) => searchSessions(ctx, input, signal),
     updateSession: (session: Session, change: SessionChange) => updateSession(ctx, session, change),

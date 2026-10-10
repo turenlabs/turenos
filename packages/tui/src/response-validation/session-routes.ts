@@ -40,7 +40,14 @@ export function sessionRoute(route: string[], init: RequestInit | undefined, val
 /** Key under which an oversized active map carries how many entries were dropped; no session ID can collide with it. */
 export const ACTIVE_OMITTED = "omitted"
 
-function activeSessions(response: Record<string, unknown>) {
+export function activeSessions(response: Record<string, unknown>, sessionID?: string) {
+  if (sessionID !== undefined) {
+    identifier(sessionID, "ses_")
+    const data = object(response.data)
+    if (!Object.hasOwn(data, sessionID)) return { data: {} }
+    choice(object(data[sessionID]).type, ["running"])
+    return { data: { [sessionID]: { type: "running" } } }
+  }
   const entries = Object.entries(object(response.data))
   const kept = entries.slice(0, 128)
   for (const [id, item] of kept) {
