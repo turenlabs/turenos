@@ -4,15 +4,17 @@ import { join } from "node:path"
 import { bypassLoopbackProxy } from "../src/server/proxy"
 import { PasswordRequired } from "../src/servers"
 import { agent, world } from "./agent-fixture"
-import { scratch, server, desktop, local, open, cleanup } from "./servers-fixture"
+import { scratch, server, desktop, local, open, cleanup, persistent } from "./servers-fixture"
 
 describe("verification bounds", () => {
-  /** A server whose `path` answers with an endless body, counting what the client pulled; health is normal. */
-  function endless(path: string) {
+  /**
+   * A server whose `path` answers with an endless body, counting what the client pulled; health is normal. It listens
+   * on a loopback port, or on the Unix socket `socket`.
+   */
+  function endless(path: string, socket?: string) {
     let pulled = 0
     const listener = Bun.serve({
-      hostname: "127.0.0.1",
-      port: 0,
+      ...(socket ? { unix: socket } : { hostname: "127.0.0.1", port: 0 }),
       fetch(request) {
         if (request.headers.get("authorization") !== `Basic ${btoa("forge:secret")}`)
           return new Response(null, { status: 401 })
@@ -50,13 +52,9 @@ describe("verification bounds", () => {
 
   test("a server descriptor over the verification limit is refused", async () => {
     const home = await scratch()
-    const fixture = endless("/global/server")
-    const record = join(home, "attach.json")
-    await writeFile(
-      record,
-      JSON.stringify({ version: 1, serverID: "srv_1", url: fixture.url, username: "forge", password: "secret" }),
-    )
-    const servers = local(home, { platform: "linux", uid: undefined, persistentRecord: record })
+    const socket = join(home, "server.sock")
+    const fixture = endless("/global/server", socket)
+    const servers = await persistent(home, socket)
     await expect(servers.resolve((await servers.preferred())!)).rejects.toThrow("not the server that published")
     expect(fixture.pulled()).toBeLessThan(8 * 1024 * 1024)
   })

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { chmod, mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { PasswordRequired } from "../src/servers"
-import { scratch, server, desktop, local, open, healthy } from "./servers-fixture"
+import { scratch, server, desktop, local, open, healthy, persistent } from "./servers-fixture"
 
 describe("local discovery", () => {
   test("a running desktop app is discovered first and resolves with its published credentials", async () => {
@@ -76,27 +76,17 @@ describe("local discovery", () => {
 
   test("the persistent server's attach record is read on Linux", async () => {
     const home = await scratch()
-    const listener = server("secret", { "/global/server": { serverID: "srv_1" } })
-    const record = join(home, "attach.json")
-    await writeFile(
-      record,
-      JSON.stringify({
-        version: 1,
-        serverID: "srv_1",
-        url: listener.url.origin,
-        username: "forge",
-        password: "secret",
-      }),
-    )
-    const servers = local(home, { platform: "linux", uid: undefined, persistentRecord: record })
+    const socket = join(home, "server.sock")
+    server("secret", { "/global/server": { serverID: "srv_1", mode: "persistent" } }, socket)
+    const servers = await persistent(home, socket)
     const target = await servers.preferred()
     expect(target?.kind).toBe("persistent")
-    expect((await open(servers, target!)).url).toBe(listener.url.origin)
+    expect(await open(servers, target!)).toMatchObject({ url: "http://localhost", socketPath: socket })
   })
 
   test("the persistent server comes before a quick-connect server, and --server persistent names it", async () => {
     const home = await scratch()
-    const listener = server("secret", { "/global/server": { serverID: "srv_1" } })
+    const listener = server("secret")
     const run = join(home, ".forge", "run")
     await mkdir(run, { recursive: true })
     for (const [name, value] of [
@@ -105,10 +95,7 @@ describe("local discovery", () => {
       ["server.auth", "secret"],
     ] as const)
       await writeFile(join(run, name), value, { mode: 0o600 })
-    const record = join(home, "attach.json")
-    const published = { version: 1, serverID: "srv_1", url: listener.url.origin, username: "forge", password: "secret" }
-    await writeFile(record, JSON.stringify(published))
-    const servers = local(home, { platform: "linux", uid: undefined, persistentRecord: record })
+    const servers = await persistent(home, join(home, "server.sock"))
     expect((await servers.scan()).map((entry) => entry.target.kind).slice(0, 2)).toEqual(["persistent", "shim"])
     expect((await servers.preferred())?.kind).toBe("persistent")
     await servers.load()
