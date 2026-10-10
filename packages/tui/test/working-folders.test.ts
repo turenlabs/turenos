@@ -280,7 +280,7 @@ for (const status of [401, 403, 404, 500]) {
     control.status = 200
     control.state = stored([], 2)
     expect((await connection.snapshot()).folderError).toBeUndefined()
-    expect(connection.folders.current()).toEqual([])
+    expect(connection.folders.current()).toEqual(status === 404 ? ["/good", "/no-write"] : [])
   })
 }
 

@@ -1,24 +1,15 @@
 import { expect, test } from "bun:test"
-import { Forge } from "@turenlabs/client"
 import { stop } from "../src/agent/stop"
 import { connect } from "../src/server"
-import { session } from "./support"
+import { turen } from "./support"
 
 function fixture(running: boolean, tasks: boolean, status = 204) {
-  const calls: string[] = []
   const output: string[] = []
-  const connection = connect({ url: "http://127.0.0.1:1" })
-  connection.client = Forge.make({
-    baseUrl: connection.address,
-    fetch: Object.assign(
-      async (input: RequestInfo | URL, init?: RequestInit) => {
-        const path = new URL(input instanceof Request ? input.url : input.toString()).pathname
-        calls.push(`${init?.method ?? "GET"} ${path}`)
-        if (path === "/api/session/active")
-          return Response.json({ data: running ? { ses_main: { type: "running" } } : {} })
-        if (path === "/api/session/ses_main") return Response.json({ data: session("main") })
-        if (path !== "/api/session/ses_main/interrupt") throw new Error(`Unexpected request: ${path}`)
-        return status === 204
+  const server = turen({
+    routes: {
+      "GET /api/session/active": () => ({ data: running ? { ses_main: { type: "running" } } : {} }),
+      "POST /api/session/ses_main/interrupt": () =>
+        status === 204
           ? new Response(null, { status })
           : Response.json(
               {
@@ -27,13 +18,12 @@ function fixture(running: boolean, tasks: boolean, status = 204) {
                 message: "Cancellation failed",
               },
               { status },
-            )
-      },
-      { preconnect: fetch.preconnect },
-    ),
+            ),
+    },
   })
+  const connection = connect({ url: server.url })
   return {
-    calls,
+    calls: () => server.requests.map((request) => `${request.method} ${request.path}`),
     output,
     run: {
       connection,
@@ -56,7 +46,7 @@ for (const running of [false, true]) {
       const f = fixture(running, tasks)
       try {
         expect(await stop(f.run)).toBe(0)
-        expect(f.calls).toEqual([
+        expect(f.calls()).toEqual([
           "GET /api/session/ses_main",
           "GET /api/session/active",
           ...(running || tasks ? ["POST /api/session/ses_main/interrupt"] : []),
@@ -80,7 +70,7 @@ test("stop never acknowledges cancellation when the server fails", async () => {
   try {
     await expect(stop(f.run)).rejects.toThrow("Cancellation failed")
     expect(f.output).toEqual([])
-    expect(f.calls).toEqual([
+    expect(f.calls()).toEqual([
       "GET /api/session/ses_main",
       "GET /api/session/active",
       "POST /api/session/ses_main/interrupt",

@@ -123,13 +123,17 @@ const crowdedExecution = Layer.succeed(
     interrupt: () => Effect.void,
   }),
 )
+const crowdedServedRoutes: Layer.Layer<never, Config.ConfigError, HttpServer.HttpServer> = HttpRouter.serve(
+  createRoutes(undefined, crowdedExecution),
+  {
+    disableListenLog: true,
+    disableLogger: true,
+  },
+)
 const crowdedIt = testEffect(
   Layer.mergeAll(
     appLayer,
-    HttpRouter.serve(createRoutes(undefined, crowdedExecution), {
-      disableListenLog: true,
-      disableLogger: true,
-    }).pipe(
+    crowdedServedRoutes.pipe(
       Layer.provide(layerWebSocketConstructorGlobal),
       Layer.provideMerge(NodeHttpServer.layerTest),
       Layer.provideMerge(NodeServices.layer),
