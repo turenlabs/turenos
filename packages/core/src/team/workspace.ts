@@ -32,6 +32,8 @@ export type Duty = Team.Duty
 export type State = Team.State
 export type TaskExecution = Task & { readonly execution: TaskSnapshot }
 export type TaskSnapshot = TeamTaskSnapshot
+export const MAX_WAIT_TASKS = 100
+export const MAX_UNFINISHED_CHILDREN = 5
 
 export interface Interface {
   readonly state: (input?: {
@@ -432,7 +434,8 @@ const layer = Layer.effect(
           limit < 1 ||
           limit > 200 ||
           (input.after !== undefined && (!Number.isSafeInteger(input.after) || input.after < 0)) ||
-          (input.taskIDs && (input.taskIDs.length > 3 || new Set(input.taskIDs).size !== input.taskIDs.length))
+          (input.taskIDs &&
+            (input.taskIDs.length > MAX_WAIT_TASKS || new Set(input.taskIDs).size !== input.taskIDs.length))
         )
           return yield* new Team.InvalidRequestError({ message: "Invalid Team conversation query" })
         const senderTask = yield* db
@@ -1924,8 +1927,23 @@ const layer = Layer.effect(
             const delegationDepth = (senderSnapshot.delegationDepth ?? 0) + 1
             if (delegationDepth > 3)
               return yield* new Team.ConflictError({ message: "Team task delegation limit reached" })
-            if ((senderSnapshot.delegatedTaskIDs?.length ?? 0) >= 3)
-              return yield* new Team.ConflictError({ message: "A teammate task can assign at most three child tasks" })
+            // Lifetime history is unbounded. Count by durable parent identity
+            // rather than expanding historical IDs into SQL parameters.
+            const unfinished = yield* tx
+              .select({ count: sql<number>`count(*)` })
+              .from(TeamTaskTable)
+              .where(
+                and(
+                  eq(TeamTaskTable.room_id, room.id),
+                  sql`json_extract(${TeamTaskTable.snapshot}, '$.parentTaskID') = ${senderTask.id}`,
+                  inArray(TeamTaskTable.status, ["queued", "claimed", "running"]),
+                ),
+              )
+              .get()
+            if ((unfinished?.count ?? 0) >= MAX_UNFINISHED_CHILDREN)
+              return yield* new Team.ConflictError({
+                message: `A teammate task can have at most ${MAX_UNFINISHED_CHILDREN} unfinished child tasks; wait for a child to settle before assigning more work`,
+              })
             let ancestorTaskID: string | undefined = senderTask.id
             for (let depth = 0; ancestorTaskID && depth < 3; depth++) {
               const ancestor: typeof TeamTaskTable.$inferSelect | undefined = yield* tx

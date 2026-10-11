@@ -59,8 +59,7 @@ export function mergeLive(c: Conversation, messages: Messages, older = false) {
     cached.capped = true
   }
   // The message after an evicted one was built to continue it; it now opens the cache, so it needs its own header.
-  if (cached.messages[0]?.continued)
-    rebuild(cached, state.expandToolOutput, true)
+  if (cached.messages[0]?.continued) rebuild(cached, state.expandToolOutput, true)
   c.live.delete(id)
   c.live.set(id, cached)
   if (c.live.size > 5) {
