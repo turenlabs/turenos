@@ -32,6 +32,8 @@ import {
   displayName,
   errorMessage,
   homeProjectDirectories,
+  homeProjectSessionScope,
+  homeSessionDirectories,
   projectForSession,
   toggleHomeProjectSelection,
 } from "@/pages/layout/helpers"
@@ -170,11 +172,7 @@ export const { use: useAgentsPanel, provider: AgentsPanelProvider } = createSimp
       return global.servers.health[ServerConnection.key(conn)]?.healthy !== false
     })
     const directories = (project: LocalProject) => [project.worktree, ...(project.sandboxes ?? [])]
-    const projectDirectories = createMemo(() => {
-      const project = selectedProject()
-      if (!project) return projects().flatMap(directories)
-      return directories(project)
-    })
+    const projectDirectories = createMemo(() => homeSessionDirectories(projects(), selectedProject()))
 
     // The panel mounts under a second QueryClientProvider (the ServerShell client),
     // but the home index is written by the server event stream through
@@ -241,7 +239,7 @@ export const { use: useAgentsPanel, provider: AgentsPanelProvider } = createSimp
           const ctx = focusedServerCtx()
           if (!ctx) return [] as Session[]
           const project = selectedProject()
-          const scope = project ? (project.id ? { project: project.id } : { directory: project.worktree }) : {}
+          const scope = homeProjectSessionScope(project)
           const response = await ctx.sdk.client.v2.session.list(
             {
               ...scope,
@@ -277,7 +275,7 @@ export const { use: useAgentsPanel, provider: AgentsPanelProvider } = createSimp
           const ctx = focusedServerCtx()
           if (!ctx) return [] as Session[]
           const project = selectedProject()
-          const scope = project ? (project.id ? { project: project.id } : { directory: project.worktree }) : {}
+          const scope = homeProjectSessionScope(project)
           const response = await ctx.sdk.client.v2.session.list(
             {
               ...scope,
@@ -434,7 +432,7 @@ export const { use: useAgentsPanel, provider: AgentsPanelProvider } = createSimp
           order: "desc",
           roots: true,
           search: query,
-          ...(project?.id ? { project: project.id } : {}),
+          ...homeProjectSessionScope(project),
         },
         { signal },
       )

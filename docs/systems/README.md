@@ -142,6 +142,23 @@ Inline tool reference pages:
 | Generated artifacts                  | Generates Client clients, extension catalog data, database schema/migration outputs, OpenAPI, and packaged analysis assets from authoritative source.                                                                                                                                                                                                                                                                                                                                                                  | Inputs: Protocol schemas/API, extension manifests, database definitions/migrations, package source. Outputs: generated TypeScript, runtime OpenAPI, and verified package artifacts.                                             | Owner: each defining package's generator. Generated directories are not hand-edited; drift is a check/build failure, while runtime OpenAPI is built lazily.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | [`packages/client/script/build.ts`](../../packages/client/script/build.ts), [`packages/extensions/script/generate.ts`](../../packages/extensions/script/generate.ts), [`packages/forge/src/server/routes/instance/httpapi/server.ts`](../../packages/forge/src/server/routes/instance/httpapi/server.ts)                                                                                                                                                                                                                                                                         |
 | Desktop release notes | Shows bundled update highlights once after a stable upgrade and supports manual reopening. | Installed version, saved version marker, and release-notes preference; one claimed popup across Desktop windows. | Desktop owns the marker and window claim. Fresh installs and downgrades stay silent; storage failures suppress notes for that process without blocking shutdown. No startup content fetch. | [Desktop storage: release notes](./desktop-storage.md#release-notes-after-an-upgrade) |
 
+## Home project navigation
+
+Home selects a server before it selects a project. A non-Git folder shares the server's `global` project ID with other non-Git folders.
+Its session labels use the session directory to find the correct local project metadata, not the shared ID.
+Projects with a unique ID keep that ID as the primary metadata lookup.
+
+When a selected project has a shared or missing ID, session search, Inactive, and Archived requests use its directory.
+Projects with a unique ID use that ID in these requests. With no selected project, these requests have no project filter.
+Inactive and Archived rows must also match the selected project's root or sandbox directories before Home displays them.
+With no selected project, these rows can match any open project's directories.
+The Active and pinned groups remain server-wide; selecting a project does not hide those rows.
+
+Source: [`project-enrich.ts`](../../packages/app/src/context/project-enrich.ts),
+[`layout/helpers.ts`](../../packages/app/src/pages/layout/helpers.ts),
+[`agents-panel-state.tsx`](../../packages/app/src/components/agents-panel-state.tsx), and
+[`home.tsx`](../../packages/app/src/pages/home.tsx).
+
 ## Cross-system data paths
 
 ### Prompt to provider turn

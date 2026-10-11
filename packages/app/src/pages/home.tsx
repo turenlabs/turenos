@@ -43,7 +43,7 @@ import { ServerConnection, serverName, useServer } from "@/context/server"
 import { sessionHasOpenTab, useTabs } from "@/context/tabs"
 import { useServerSync } from "@/context/server-sync"
 import { useLanguage } from "@/context/language"
-import { displayName, errorMessage, getProjectAvatarSource } from "@/pages/layout/helpers"
+import { displayName, errorMessage, getProjectAvatarSource, homeSessionDirectories } from "@/pages/layout/helpers"
 import { useAgentsPanel, type HomeSessionRecord, type OpenSessionOptions } from "@/components/agents-panel-state"
 import { SessionTabAvatar } from "@/pages/layout/session-tab-avatar"
 import { sessionTitle } from "@/utils/session-title"
@@ -750,7 +750,7 @@ function HomeProjectColumn(props: {
     return props.projects.find((project) => pathKey(project.worktree) === key)
   })
   const knownDirectories = createMemo(
-    () => new Set(props.projects.flatMap((project) => [project.worktree, ...(project.sandboxes ?? [])]).map(pathKey)),
+    () => new Set(homeSessionDirectories(props.projects, selectedProject()).map(pathKey)),
   )
   const sessionRecords = createMemo(() => [
     ...new Map([...props.records, ...props.pinnedRecords].map((record) => [record.session.id, record])).values(),
