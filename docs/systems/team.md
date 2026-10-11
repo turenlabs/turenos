@@ -104,6 +104,7 @@ Exact tool-call retries do not create duplicate messages or tasks.
 
 The sender keeps ownership of checking and integrating delegated results.
 Use `team_wait` with the returned task IDs to wait for direct child tasks.
+Each wait accepts at most 100 distinct direct child task IDs. Split larger history into separate waits.
 Include `after` to receive room questions before those tasks finish.
 Answer questions with `team_post`, then wait again for remaining work.
 The tool waits without spending model turns on repeated polling.
@@ -112,7 +113,11 @@ Failed, cancelled, and stale tasks return their status instead of appearing succ
 Stopping the sender prevents further waits. Pausing future work does not interrupt an already running conversation.
 
 A teammate cannot assign work to itself or an ancestor teammate in its task chain.
-The server limits delegation depth and the number of assignments per task.
+The server limits delegation depth to three levels.
+Each parent task can have at most five unfinished direct child tasks across `queued`, `claimed`, and `running` states.
+Children in `succeeded`, `failed`, `cancelled`, or `stale` states free capacity for later assignments.
+Settled child history has no lifetime assignment limit. The five-child limit does not count settled history.
+Exact retries return the existing child task without consuming another slot, including when all five slots are occupied.
 Assignments keep native tool permissions and execution-directory approval checks.
 Mentions in progress reports and completed results do not automatically create more tasks.
 
