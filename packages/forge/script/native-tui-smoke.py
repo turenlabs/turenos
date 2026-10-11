@@ -57,7 +57,7 @@ with socket.socket() as endpoint, tempfile.TemporaryDirectory(prefix="forge-tui-
                     break
                 raw = not termios.tcgetattr(master)[3] & termios.ICANON
                 if not cancel_sent and raw and b"Esc cancel" in output:
-                    os.write(master, b"\x03")
+                    os.write(master, b"\x1b")
                     cancel_sent = True
                 if not quit_sent and raw and (
                     b"Connection cancelled." in output or b"q quit" in output
@@ -81,6 +81,8 @@ with socket.socket() as endpoint, tempfile.TemporaryDirectory(prefix="forge-tui-
         "outputBytes": len(output),
         "exitCode": child.returncode,
         "forcedStop": forced,
+        "cancelSent": cancel_sent,
+        "quitSent": quit_sent,
         "gracefulQuit": quit_sent and not forced and child.returncode == 0,
         "inertEndpoint": True,
         "cwdHasNodeModules": os.path.exists(os.path.join(root, "node_modules")),

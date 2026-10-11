@@ -93,7 +93,7 @@ On Linux, before `FORGE_SERVER_PASSWORD` or a `--discover-auth` password goes to
 
 Server credentials require HTTPS, except HTTP to numeric loopback `127.0.0.1` or `[::1]`, such as an already established SSH tunnel. `localhost`, private LAN addresses, and other loopback addresses do not receive this authenticated-HTTP exception. Unauthenticated HTTP is permitted, but does not protect session content. Prefer HTTPS for remote use. Redirects are refused rather than forwarding credentials.
 
-The CLI needs Bun and the complete installed `node_modules` tree, including OpenTUI's native dependencies. No compiled binary build or server is bundled. Running these commands does not change an installed helper or restart an existing server.
+The source CLI needs Bun and installed `node_modules`, including OpenTUI's native dependencies. The compiled `forge tui` embeds the client and target native library. It needs no external Bun or `node_modules`. The server picker can start a separate private `forge serve` process. Client commands do not replace an installed helper or restart an existing server.
 
 ## Send and retain drafts
 
