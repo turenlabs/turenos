@@ -60,7 +60,8 @@ with socket.socket() as endpoint, tempfile.TemporaryDirectory(prefix="forge-tui-
                 raw = not termios.tcgetattr(master)[3] & termios.ICANON
                 if not cancel_sent and raw and b"Esc cancel" in output:
                     cancel_offset = len(output)
-                    os.write(master, b"\x1b")
+                    # Give Escape a boundary so a following q cannot become Alt+q.
+                    os.write(master, b"\x1b[27u")
                     cancel_sent = True
                 if not quit_sent and raw and (
                     b"Connection cancelled." in output[cancel_offset:]
