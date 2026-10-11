@@ -42,6 +42,26 @@ Later setup edits apply to later runs. Live teammate pauses still prevent new ta
 Select **Stop factory** to cancel unfinished tasks in the current run.
 Failed or uncertain model work is not automatically retried.
 
+### Execution And Communication
+
+Factory prompts give each stage an execution contract.
+The coordinator assigns a concrete deliverable, first action, and observable completion check to each owner.
+Research has a specific question and stopping condition. Independent work does not wait for team consensus.
+Assignments include integration and verification, not only recommendations.
+
+Workers inspect inputs and take a concrete action. They make reversible choices within their assignment and existing permissions.
+Room updates report completed milestones, new evidence, changed decisions, or blockers. They do not repeat plans or poll for status.
+Each update names an artifact or evidence, the next action, and any blocker.
+A blocker includes a specific question and the person who must answer. Workers continue independent safe work when possible.
+Final results identify completed work, artifact paths, observed checks, and unresolved blockers.
+
+The final check uses the configured acceptance criteria. It does not add criteria or reopen choices without new evidence of a material defect.
+Missing deliverables or failed checks require a rejection with a specific correction.
+`needs_input` requires an exact question about a user decision, missing input, or permission.
+
+These contracts guide model behavior. They are not enforced deadlines or proof that work occurred.
+Native permissions, dependency delivery, and factory status rules remain unchanged.
+
 ## Room Messages
 
 A room opens at its latest message.
