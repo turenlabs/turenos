@@ -9,6 +9,7 @@ export async function attach(ctx: Context, pty: AttachTarget) {
   if (!ctx.state.connected) return ctx.say("Reconnect before attaching to a terminal.", true)
   if (!ctx.dialogs.navigate()) return
   ctx.state.attached = true
+  ctx.state.attachVersion = (ctx.state.attachVersion ?? 0) + 1
   ctx.renderer.suspend()
   const result = await session(ctx, pty).finally(() => {
     ctx.state.attached = false
