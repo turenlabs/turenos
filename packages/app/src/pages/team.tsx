@@ -2,12 +2,13 @@ import { ButtonV2 } from "@turenlabs/ui/v2/button-v2"
 import { Icon } from "@turenlabs/ui/v2/icon"
 import { TextInputV2 } from "@turenlabs/ui/v2/text-input-v2"
 import { TextareaV2 } from "@turenlabs/ui/v2/textarea-v2"
+import { SelectV2 } from "@turenlabs/ui/v2/select-v2"
 import { DropdownMenu } from "@turenlabs/ui/dropdown-menu"
 import { createStore } from "solid-js/store"
-import { For, Show, createEffect, onCleanup, untrack } from "solid-js"
+import { For, Show, batch, createEffect, createMemo, onCleanup, untrack } from "solid-js"
 import { useNavigate, useParams } from "@solidjs/router"
 import { useServerSDK } from "@/context/server-sdk"
-import { useServer } from "@/context/server"
+import { ServerConnection, serverName, useServer } from "@/context/server"
 import { useGlobal } from "@/context/global"
 import { usePlatform } from "@/context/platform"
 import { useNavRail } from "@/components/nav-rail"
@@ -170,6 +171,10 @@ export default function TeamPage() {
   const global = useGlobal()
   const server = useServer()
   const platform = usePlatform()
+  const serverOptions = createMemo(() =>
+    server.list.map((connection) => ({ key: ServerConnection.key(connection), label: serverName(connection) })),
+  )
+  const selectedServer = createMemo(() => serverOptions().find((option) => option.key === server.key))
   // Attachment drafts belong to one room on one server; the same room ID can exist on two servers.
   const draftScope = (roomID: string) => JSON.stringify([serverSDK().url, serverSDK().scope, roomID])
   const draft = createTeamAttachmentDraft({
@@ -820,6 +825,22 @@ export default function TeamPage() {
             </Show>
             <p class="mt-1 text-[12px] leading-4 text-v2-text-text-muted max-sm:hidden">Shared work and updates</p>
           </div>
+          <SelectV2
+            aria-label="Team server"
+            appearance="inline"
+            options={serverOptions()}
+            current={selectedServer()}
+            value={(option) => option.key}
+            label={(option) => option.label}
+            onSelect={(option) => {
+              if (!option || option.key === server.key) return
+              batch(() => {
+                // Room IDs belong to the selected server. Restore its last room through /team.
+                navigate("/team", { replace: true })
+                server.setActive(option.key)
+              })
+            }}
+          />
           <button
             class={`${button} whitespace-nowrap lg:hidden`}
             onClick={() => setState("mobilePanel", "members")}
