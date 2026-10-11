@@ -122,6 +122,11 @@ describe("TeamWorkspace", () => {
       })
       const run = yield* team.startFactoryRun({ id: "frun_stages", roomID: room.id })
       const [planTask] = yield* team.claimTasks({ owner: "factory-plan" })
+      expect(planTask!.execution.prompt).toContain("Planning contract:")
+      expect(planTask!.execution.prompt).toContain(
+        "a concrete deliverable, its first action, and an observable completion check",
+      )
+      expect(planTask!.execution.prompt).toContain("Do not make independent work wait for consensus")
       yield* team.startTask({ id: planTask!.id, owner: "factory-plan" })
       yield* team.finishTask({
         id: planTask!.id,
@@ -132,11 +137,21 @@ describe("TeamWorkspace", () => {
       yield* team.syncFactoryRuns()
       expect((yield* team.getFactoryRun(run.id)).phase).toBe("work")
       const [workTask] = yield* team.claimTasks({ owner: "factory-work" })
+      expect(workTask!.execution.prompt).toContain("Assignment: Build it")
+      expect(workTask!.execution.prompt).toContain("Execution contract:")
+      expect(workTask!.execution.prompt).toContain("Do not wait for team consensus")
+      expect(workTask!.execution.prompt).toContain("Never bypass permissions")
+      expect(workTask!.execution.prompt).toContain("artifact or evidence, the next action, and any blocker")
+      expect(workTask!.execution.prompt).toContain("A discussion or proposal is not completed implementation")
       yield* team.startTask({ id: workTask!.id, owner: "factory-work" })
       yield* team.finishTask({ id: workTask!.id, owner: "factory-work", status: "succeeded", text: "Feature built" })
       yield* team.syncFactoryRuns()
       expect((yield* team.getFactoryRun(run.id)).phase).toBe("check")
       const [checkTask] = yield* team.claimTasks({ owner: "factory-check" })
+      expect(checkTask!.execution.prompt).toContain("Check contract:")
+      expect(checkTask!.execution.prompt).toContain("Do not add acceptance criteria")
+      expect(checkTask!.execution.prompt).toContain("State the exact question in the summary")
+      expect(checkTask!.execution.prompt).toContain("Feature built")
       yield* team.startTask({ id: checkTask!.id, owner: "factory-check" })
       yield* team.finishTask({
         id: checkTask!.id,
