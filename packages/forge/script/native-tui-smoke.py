@@ -41,6 +41,7 @@ with socket.socket() as endpoint, tempfile.TemporaryDirectory(prefix="forge-tui-
             "FORGE_SERVER_PASSWORD": "",
         },
         start_new_session=True,
+        preexec_fn=lambda: fcntl.ioctl(0, termios.TIOCSCTTY, 0),
     )
     os.close(slave)
     output = bytearray()
@@ -86,6 +87,8 @@ with socket.socket() as endpoint, tempfile.TemporaryDirectory(prefix="forge-tui-
         "forcedStop": forced,
         "cancelSent": cancel_sent,
         "quitSent": quit_sent,
+        "terminalRestored": b"\x1b[?1049l" in output,
+        "closedLine": b"Turen TUI closed." in output,
         "gracefulQuit": quit_sent and not forced and child.returncode == 0,
         "inertEndpoint": True,
         "cwdHasNodeModules": os.path.exists(os.path.join(root, "node_modules")),
