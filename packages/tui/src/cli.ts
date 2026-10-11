@@ -171,9 +171,11 @@ export async function main(args = process.argv.slice(2)) {
   )
 }
 
-if (import.meta.main) {
-  await main().catch((error: unknown) => {
+export async function runCli(args = process.argv.slice(2)) {
+  await main(args).catch((error: unknown) => {
     console.error(`turen-tui: ${error instanceof CliError ? error.message : "Unable to start the terminal client."}`)
     process.exitCode = 1
   })
 }
+
+if (import.meta.main) await runCli()

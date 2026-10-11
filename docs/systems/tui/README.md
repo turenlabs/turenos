@@ -1,6 +1,8 @@
 # TurenOS terminal client
 
-The TUI (`packages/tui`, `@turenlabs/tui`) is a keyboard-first terminal client for a running TurenOS server, written in TypeScript on Bun and OpenTUI. It renders locally and keeps only process-local interaction state (drafts, reading positions, preferences); sessions, tools, model execution and persistent data stay on the server, so work started here continues in TurenOS Desktop and the reverse. In a checkout it is a source CLI: `bun run tui` runs `src/cli.ts` with Bun and the installed `node_modules`, including OpenTUI's native modules. The `forge` binary ships it too: `forge tui` runs the same `src/cli.ts` entry inside the compiled binary (see `packages/forge/src/index.ts`), so a release install needs no Bun or node_modules. There is no bundled server.
+The TUI (`packages/tui`, `@turenlabs/tui`) is a keyboard-first terminal client for a running TurenOS server, written in TypeScript on Bun and OpenTUI. It renders locally and keeps only process-local interaction state (drafts, reading positions, preferences). Sessions, tools, model execution and persistent data stay on the server. Work started here continues in TurenOS Desktop and the reverse. In a checkout, `bun run tui` runs `src/cli.ts` with Bun and installed `node_modules`, including OpenTUI's native modules. The Forge build also embeds the client: `forge tui` runs the same CLI without an external Bun or `node_modules`. The TUI does not start a server.
+
+`packages/forge/script/build.ts` provisions OpenTUI native packages for all build targets. It embeds the target library and selects glibc or musl through `packages/forge/script/tui.ts`, rather than the runtime `OPENTUI_LIBC` environment value. The compiled CLI regression checks help, argument errors, client authentication, and native-library selection. Native renderer qualification must also run on each shipped platform. A successful cross-compile alone does not verify Linux or musl rendering.
 
 [Usage](./usage.md) covers keys, connecting and commands, [agent commands](./agent-commands.md) covers the non-interactive commands for scripts and coding agents, [GUI parity](./gui-parity.md) maps desktop features to TUI keys, and [TUI development](../../development/tui.md) covers tests, the sandbox and the PTY audit.
 
@@ -133,6 +135,7 @@ The code started in the standalone `turen-tui` repository, which derived from th
 
 ## Source
 
+- `packages/forge/src/index.ts`, `packages/forge/script/build.ts`, `packages/forge/script/tui.ts`, `packages/forge/test/cli/tui.test.ts`
 - `packages/schema/src/team-mention.ts`, `packages/client/src/team.ts`
 - `packages/client/src/automation-schedule.ts`, `packages/client/src/path-key.ts`, `packages/client/src/working-folders.ts`
 - `packages/app/src/utils/working-folder-sync.ts`, `packages/app/src/context/server.tsx`

@@ -77,7 +77,9 @@ const generated = await import("./generate.ts")
 
 import { Script } from "@turenlabs/script"
 import pkg from "../package.json"
+import tuiPkg from "../../tui/package.json"
 import { stageVigil } from "./vigil"
+import { tuiNativeDefines } from "./tui"
 
 const singleFlag = process.argv.includes("--single")
 const baselineFlag = process.argv.includes("--baseline")
@@ -203,6 +205,9 @@ const binaries: Record<string, string> = {}
 if (!skipInstall) {
   await $`bun install --os="*" --cpu="*" @parcel/watcher@${pkg.dependencies["@parcel/watcher"]}`
   await $`bun install --os="*" --cpu="*" @ff-labs/fff-bun@${pkg.dependencies["@ff-labs/fff-bun"]}`
+  await $`bun install --os="*" --cpu="*" @opentui/core@${tuiPkg.dependencies["@opentui/core"]}`.cwd(
+    path.join(dir, "../tui"),
+  )
 }
 for (const item of targets) {
   const name = [
@@ -238,6 +243,7 @@ for (const item of targets) {
     },
     entrypoints: ["./src/index.ts"],
     define: {
+      ...tuiNativeDefines(item),
       FFF_LIBC: JSON.stringify(item.abi === "musl" ? "musl" : "gnu"),
       FORGE_VERSION: `'${Script.version}'`,
       FORGE_MODELS_DEV: generated.modelsData,

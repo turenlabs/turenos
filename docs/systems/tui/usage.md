@@ -12,6 +12,8 @@ forge tui --server lab                        # a saved server
 forge tui --dir /srv/project https://turen.example
 ```
 
+Put `tui` first, immediately after `forge`. Put client options and commands after `tui`, for example `forge tui sessions --json`. Forge global options before `tui` are not supported. Use `forge tui --help` for client options.
+
 From a source checkout, install dependencies with Bun (the version pinned in the root `package.json`), then run from the repository root:
 
 ```sh

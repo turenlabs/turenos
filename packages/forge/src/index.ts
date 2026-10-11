@@ -33,11 +33,8 @@ const args = hideBin(process.argv)
 // `tui` must run before the middleware below: claimPassword() removes FORGE_SERVER_PASSWORD
 // from the environment, and the terminal client reads it to authenticate.
 if (args[0] === "tui") {
-  const { main } = await import("@turenlabs/tui/cli")
-  await main(args.slice(1)).catch((error: unknown) => {
-    console.error(`turen-tui: ${error instanceof Error ? error.message : "Unable to start the terminal client."}`)
-    process.exitCode = 1
-  })
+  const { runCli } = await import("@turenlabs/tui/cli")
+  await runCli(args.slice(1))
   process.exit(process.exitCode ?? 0)
 }
 
