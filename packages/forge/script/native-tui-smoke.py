@@ -47,6 +47,7 @@ with socket.socket() as endpoint, tempfile.TemporaryDirectory(prefix="forge-tui-
     forced = False
     quit_sent = False
     cancel_sent = False
+    cancel_offset = 0
     try:
         deadline = time.monotonic() + 8
         while child.poll() is None and time.monotonic() < deadline:
@@ -57,10 +58,12 @@ with socket.socket() as endpoint, tempfile.TemporaryDirectory(prefix="forge-tui-
                     break
                 raw = not termios.tcgetattr(master)[3] & termios.ICANON
                 if not cancel_sent and raw and b"Esc cancel" in output:
+                    cancel_offset = len(output)
                     os.write(master, b"\x1b")
                     cancel_sent = True
                 if not quit_sent and raw and (
-                    b"Connection cancelled." in output or b"q quit" in output
+                    b"Connection cancelled." in output[cancel_offset:]
+                    or b"q quit" in output[cancel_offset:]
                 ):
                     os.write(master, b"q")
                     quit_sent = True
