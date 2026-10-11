@@ -4,7 +4,15 @@ Run the TurenOS terminal client in an interactive terminal against a TurenOS ser
 
 ## Connect and switch servers
 
-Install dependencies with Bun (the version pinned in the root `package.json`), then run from the repository root:
+An installed `forge` binary runs the client directly:
+
+```sh
+forge tui                                     # TurenOS on this computer
+forge tui --server lab                        # a saved server
+forge tui --dir /srv/project https://turen.example
+```
+
+From a source checkout, install dependencies with Bun (the version pinned in the root `package.json`), then run from the repository root:
 
 ```sh
 bun install --frozen-lockfile
