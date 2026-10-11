@@ -503,6 +503,7 @@
         "@turenlabs/script": "workspace:*",
         "@turenlabs/sdk": "workspace:*",
         "@turenlabs/server": "workspace:*",
+        "@turenlabs/tui": "workspace:*",
         "@types/ws": "8.18.1",
         "@zip.js/zip.js": "2.7.62",
         "ai": "catalog:",
