@@ -794,8 +794,9 @@ describe("TeamWorkspace", () => {
       expect(first.tasks).toHaveLength(1)
       const second = yield* team.collaborate({ ...request, id: "msg_collab_second", targetHandle: "target2" })
       yield* team.collaborate({ ...request, id: "msg_collab_third", targetHandle: "target3" })
+      yield* team.collaborate({ ...request, id: "msg_collab_fourth", targetHandle: "target4" })
       expect(
-        yield* team.collaborate({ ...request, id: "msg_collab_fourth", targetHandle: "target4" }).pipe(Effect.flip),
+        yield* team.collaborate({ ...request, id: "msg_collab_fifth", targetHandle: "target4" }).pipe(Effect.flip),
       ).toBeInstanceOf(TeamWorkspace.ConflictError)
       const childID = first.tasks[0]!.id
       expect((yield* team.getTask(childID)).execution).toMatchObject({ parentTaskID: parentID, delegationDepth: 1 })
@@ -811,6 +812,133 @@ describe("TeamWorkspace", () => {
       expect((yield* team.state()).messages.filter((message) => message.id === request.id)).toHaveLength(1)
     }),
   )
+
+  it.effect("scales unfinished delegation capacity to the active room roster", () =>
+    Effect.gen(function* () {
+      const team = yield* TeamWorkspace.Service
+      const sender = yield* team.createTeammate({ name: "Lead", handle: "lead", role: "Lead", mission: "Coordinate" })
+      const workers = yield* Effect.forEach(
+        Array.from({ length: 10 }, (_, index) => index),
+        (index) =>
+          team.createTeammate({ name: `Worker ${index}`, handle: `worker${index}`, role: "Worker", mission: "Work" }),
+      )
+      const paused = yield* team.createTeammate({ name: "Paused", handle: "paused", role: "Worker", mission: "Work" })
+      yield* team.editTeammate({ id: paused.id, status: "paused" })
+      const otherRoom = yield* team.createRoom({ name: "Other" })
+      yield* team.createTeammate({
+        roomID: otherRoom.id,
+        name: "Other",
+        handle: "other",
+        role: "Worker",
+        mission: "Work",
+      })
+      const [parent] = (yield* team.postMessage({ id: "msg_roster_parent", text: "@lead begin" })).tasks
+      yield* team.claimTasks({ owner: "lead-owner" })
+      yield* team.startTask({ id: parent!.id, owner: "lead-owner" })
+      const request = {
+        sessionID: parent!.sessionID,
+        assistantMessageID: "msg_roster_assistant",
+        directory: sender.directory,
+        text: "Independent work",
+      }
+      const children = yield* Effect.forEach(workers, (worker, index) =>
+        team.collaborate({ ...request, id: `msg_roster_${index}`, targetHandle: worker.handle }),
+      )
+      const taskIDs = children.map((child) => child.tasks[0]!.id)
+      expect(
+        (yield* team.conversation({ sessionID: parent!.sessionID, taskIDs })).tasks.map((task) => task.id),
+      ).toEqual(taskIDs)
+      expect(
+        yield* team
+          .conversation({ sessionID: parent!.sessionID, taskIDs: [taskIDs[0]!, taskIDs[0]!] })
+          .pipe(Effect.flip),
+      ).toBeInstanceOf(TeamWorkspace.InvalidRequestError)
+      expect(
+        yield* team
+          .conversation({
+            sessionID: parent!.sessionID,
+            taskIDs: Array.from({ length: TeamWorkspace.MAX_WAIT_TASKS + 1 }, (_, index) => `job_${index}`),
+          })
+          .pipe(Effect.flip),
+      ).toBeInstanceOf(TeamWorkspace.InvalidRequestError)
+      // Capacity covers queued, claimed, and running children together.
+      const claimed = yield* team.claimTasks({ owner: "worker-owner", limit: 2 })
+      yield* team.startTask({ id: claimed[0]!.id, owner: "worker-owner" })
+      expect(
+        yield* team
+          .collaborate({ ...request, id: "msg_roster_overflow", targetHandle: workers[0]!.handle })
+          .pipe(Effect.flip),
+      ).toMatchObject({ message: expect.stringContaining("10 unfinished child tasks") })
+      expect(
+        yield* team.collaborate({ ...request, id: "msg_roster_0", targetHandle: workers[0]!.handle }),
+      ).toMatchObject({
+        message: children[0]!.message,
+        tasks: [{ id: children[0]!.tasks[0]!.id, status: "running" }],
+      })
+      yield* team.cancelTask(children[0]!.tasks[0]!.id)
+      expect(
+        (yield* team.collaborate({ ...request, id: "msg_roster_replacement", targetHandle: workers[0]!.handle })).tasks,
+      ).toHaveLength(1)
+      expect((yield* team.getTask(parent!.id)).execution.delegatedTaskIDs).toHaveLength(11)
+    }),
+  )
+
+  for (const status of ["succeeded", "failed", "cancelled", "stale"] as const)
+    it.effect(`frees delegation capacity after a child is ${status}`, () =>
+      Effect.gen(function* () {
+        const team = yield* TeamWorkspace.Service
+        const sender = yield* team.createTeammate({ name: "Lead", handle: "lead", role: "Lead", mission: "Coordinate" })
+        const worker = yield* team.createTeammate({ name: "Worker", handle: "worker", role: "Worker", mission: "Work" })
+        const [parent] = (yield* team.postMessage({ id: "msg_reuse_parent", text: "@lead begin" })).tasks
+        yield* team.claimTasks({ owner: "lead-owner" })
+        yield* team.startTask({ id: parent!.id, owner: "lead-owner" })
+        const request = {
+          sessionID: parent!.sessionID,
+          assistantMessageID: "msg_reuse_assistant",
+          targetHandle: worker.handle,
+          directory: sender.directory,
+          text: "Bounded work",
+        }
+        const children = yield* Effect.forEach([0, 1, 2], (index) =>
+          team.collaborate({ ...request, id: `msg_reuse_${index}` }),
+        )
+        expect(yield* team.collaborate({ ...request, id: "msg_reuse_overflow" }).pipe(Effect.flip)).toMatchObject({
+          message: expect.stringContaining("3 unfinished child tasks"),
+        })
+        const child = children[0]!.tasks[0]!
+        if (status === "cancelled") yield* team.cancelTask(child.id)
+        if (status !== "cancelled") {
+          yield* team.claimTasks({ owner: "worker-owner" })
+          yield* team.startTask({ id: child.id, owner: "worker-owner" })
+          if (status === "stale") {
+            const database = yield* Database.Service
+            yield* database.db
+              .update(TeamTaskTable)
+              .set({ lease_expires_at: 0 })
+              .where(eq(TeamTaskTable.id, child.id))
+              .run()
+            yield* team.claimTasks({ owner: "recovery-owner" })
+          }
+          if (status === "succeeded" || status === "failed")
+            yield* team.finishTask({ id: child.id, owner: "worker-owner", status, text: "Settled" })
+        }
+        expect((yield* team.getTask(child.id)).status).toBe(status)
+        // Racing for the one freed slot must admit only one replacement.
+        const replacements = yield* Effect.forEach(
+          [0, 1],
+          (index) => team.collaborate({ ...request, id: `msg_reuse_replacement_${index}` }).pipe(Effect.result),
+          { concurrency: "unbounded" },
+        )
+        expect(replacements.filter((result) => result._tag === "Success")).toHaveLength(1)
+        expect(replacements.filter((result) => result._tag === "Failure")).toHaveLength(1)
+        expect(yield* team.collaborate({ ...request, id: "msg_reuse_0" })).toMatchObject({
+          message: children[0]!.message,
+          tasks: [{ id: child.id, status }],
+        })
+        const waited = yield* team.conversation({ sessionID: parent!.sessionID, taskIDs: [child.id] })
+        expect(waited.tasks[0]?.status).toBe(status)
+      }),
+    )
 
   it.effect("posts teammate messages without dispatch and publishes follow-up output once", () =>
     Effect.gen(function* () {

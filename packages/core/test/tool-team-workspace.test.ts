@@ -224,6 +224,26 @@ describe("TeamWorkspaceTool", () => {
         type: "json",
         value: { tasks: [{ id: childID, status: "succeeded" }], hasMore: true, timedOut: false },
       })
+      const later = yield* Effect.forEach([0, 1, 2], (index) =>
+        team.collaborate({
+          sessionID: running.sessionID,
+          assistantMessageID: "msg_later_assistant",
+          id: `msg_later_${index}`,
+          targetHandle: "sam",
+          directory: child.execution.directory,
+          text: "Later bounded work",
+        }),
+      )
+      const taskIDs = [childID, ...later.map((value) => value.tasks[0]!.id)]
+      yield* Effect.forEach(taskIDs.slice(1), (taskID) => team.cancelTask(taskID))
+      const batch = yield* executeTool(registry, {
+        ...call(TeamWorkspaceTool.waitName, { taskIDs, timeoutMs: 1 }, "call-wait-batch"),
+        sessionID: parentSession,
+      })
+      expect(batch).toMatchObject({
+        type: "json",
+        value: { tasks: taskIDs.map((taskID) => ({ id: taskID })), timedOut: false },
+      })
       if (waited.type === "json") {
         const waitValue = waited.value as {
           messages: ReadonlyArray<Team.Message>
