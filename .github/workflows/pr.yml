@@ -45,13 +45,14 @@ jobs:
 
       # Keep the failed gate. Export canonical Linux notices for a reviewed repair.
       - name: Generate stale third-party license inventory
+        id: generated-licenses
         if: failure() && steps.licenses.outcome == 'failure'
         run: |
           bun run license:generate
           bun run license:check
 
       - name: Upload generated third-party license inventory
-        if: failure() && steps.licenses.outcome == 'failure'
+        if: failure() && steps.licenses.outcome == 'failure' && steps.generated-licenses.outcome == 'success'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: third-party-licenses-${{ github.sha }}
