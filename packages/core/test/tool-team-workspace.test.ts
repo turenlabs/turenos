@@ -159,7 +159,8 @@ describe("TeamWorkspaceTool", () => {
     }),
   )
 
-  it.effect("runs teammate post and collaboration tools with derived identity and target permissions", () =>
+  // team_wait uses Date.now() for expiry, so its polling sleep must use the live clock too.
+  it.live("runs teammate post and collaboration tools with derived identity and target permissions", () =>
     Effect.gen(function* () {
       const registry = yield* ToolRegistry.Service
       const team = yield* TeamWorkspace.Service
