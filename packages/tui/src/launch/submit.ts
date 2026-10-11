@@ -57,7 +57,8 @@ export async function submitLaunch(form: LaunchForm) {
 }
 
 async function prepare(form: LaunchForm) {
-  if (form.workspace.getSelectedIndex() === 1 && !form.current.worktree?.directory) await prepareWorktree(form)
+  if (form.workspace.getSelectedIndex() === 1 && form.current.worktree?.directory !== form.directory.value.trim())
+    await prepareWorktree(form)
   await loadAgents(form)
   const requested = form.directory.value.trim()
   if (form.loaded !== requested)
