@@ -30,6 +30,14 @@ import { ServerMode } from "./server/mode"
 
 const args = hideBin(process.argv)
 
+// `tui` must run before the middleware below: claimPassword() removes FORGE_SERVER_PASSWORD
+// from the environment, and the terminal client reads it to authenticate.
+if (args[0] === "tui") {
+  const { runCli } = await import("@turenlabs/tui/cli")
+  await runCli(args.slice(1))
+  process.exit(process.exitCode ?? 0)
+}
+
 function show(out: string) {
   const text = out.trimStart()
   if (!text.startsWith("forge ")) {
@@ -102,6 +110,15 @@ const cli = yargs(args)
   .command(PrCommand)
   .command(SessionCommand)
   .command(DbCommand)
+  .command(
+    "tui",
+    "open the terminal client",
+    () => {},
+    () => {
+      console.error("Run `forge tui` first, before other options.")
+      process.exitCode = 2
+    },
+  )
   .demandCommand(1)
   .fail((msg, err) => {
     if (

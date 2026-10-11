@@ -1729,6 +1729,33 @@
       ]
     },
     {
+      "name": "@opentui/core",
+      "version": "0.5.10",
+      "license": "MIT",
+      "source": "https://github.com/anomalyco/opentui",
+      "licenseFiles": [
+        "LICENSE"
+      ]
+    },
+    {
+      "name": "@opentui/core-linux-x64",
+      "version": "0.5.10",
+      "license": "MIT",
+      "source": "https://github.com/anomalyco/opentui",
+      "licenseFiles": [
+        "LICENSE"
+      ]
+    },
+    {
+      "name": "@opentui/core-linux-x64-musl",
+      "version": "0.5.10",
+      "license": "MIT",
+      "source": "https://github.com/anomalyco/opentui",
+      "licenseFiles": [
+        "LICENSE"
+      ]
+    },
+    {
       "name": "@parcel/watcher",
       "version": "2.6.0",
       "license": "MIT",
@@ -3585,6 +3612,15 @@
       ]
     },
     {
+      "name": "bun-ffi-structs",
+      "version": "0.3.1",
+      "license": "MIT",
+      "source": "https://github.com/anomalyco/bun-ffi-structs.git",
+      "licenseFiles": [
+        "LICENSE"
+      ]
+    },
+    {
       "name": "bundle-name",
       "version": "4.1.0",
       "license": "MIT",
@@ -4438,6 +4474,15 @@
     {
       "name": "diff",
       "version": "8.0.4",
+      "license": "BSD-3-Clause",
+      "source": "https://github.com/kpdecker/jsdiff.git",
+      "licenseFiles": [
+        "LICENSE"
+      ]
+    },
+    {
+      "name": "diff",
+      "version": "9.0.0",
       "license": "BSD-3-Clause",
       "source": "https://github.com/kpdecker/jsdiff.git",
       "licenseFiles": [
@@ -6043,6 +6088,15 @@
     {
       "name": "marked",
       "version": "16.4.2",
+      "license": "MIT",
+      "source": "git://github.com/markedjs/marked.git",
+      "licenseFiles": [
+        "LICENSE.md"
+      ]
+    },
+    {
+      "name": "marked",
+      "version": "17.0.1",
       "license": "MIT",
       "source": "git://github.com/markedjs/marked.git",
       "licenseFiles": [

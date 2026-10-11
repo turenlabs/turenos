@@ -1,6 +1,10 @@
 # TurenOS terminal client
 
-The TUI (`packages/tui`, `@turenlabs/tui`) is a keyboard-first terminal client for a running TurenOS server, written in TypeScript on Bun and OpenTUI. It renders locally and keeps only process-local interaction state (drafts, reading positions, preferences); sessions, tools, model execution and persistent data stay on the server, so work started here continues in TurenOS Desktop and the reverse. It is a source CLI: it needs Bun and the installed `node_modules`, including OpenTUI's native modules. There is no compiled binary and no bundled server.
+The TUI (`packages/tui`, `@turenlabs/tui`) is a keyboard-first terminal client for a running TurenOS server, written in TypeScript on Bun and OpenTUI. It renders locally and keeps only process-local interaction state (drafts, reading positions, preferences). Sessions, tools, model execution and persistent data stay on the server. Work started here continues in TurenOS Desktop and the reverse. In a checkout, `bun run tui` runs `src/cli.ts` with Bun and installed `node_modules`, including OpenTUI's native modules. The Forge build also embeds the client: `forge tui` runs the same CLI without an external Bun or `node_modules`. The server picker can start a separate private `forge serve` process.
+
+`packages/forge/script/build.ts` provisions OpenTUI native packages for all build targets. It embeds the target library and selects glibc or musl through `packages/forge/script/tui.ts`, rather than the runtime `OPENTUI_LIBC` environment value. The compiled CLI regression checks help, argument errors, client authentication, and native-library selection. The Linux x64 backend CI also compiles the client and checks native rendering and normal quit in a private PTY. Its standard-library Python driver uses an empty PATH, private HOME/XDG directories, and no checkout dependencies. It connects to an explicit loopback port that the driver reserves without listening, with empty authentication. It reports rendering and graceful quit separately. Native renderer qualification must also run on each shipped platform. This glibc check and successful cross-compilation do not verify musl rendering.
+
+Linux CI checks generated runtime license notices, including OpenTUI and its native packages. If the check fails, CI generates and checks canonical notices, then uploads the three files for review. The original check remains failed until reviewed generated notices are committed.
 
 [Usage](./usage.md) covers keys, connecting and commands, [agent commands](./agent-commands.md) covers the non-interactive commands for scripts and coding agents, [GUI parity](./gui-parity.md) maps desktop features to TUI keys, and [TUI development](../../development/tui.md) covers tests, the sandbox and the PTY audit.
 
@@ -133,6 +137,7 @@ The code started in the standalone `turen-tui` repository, which derived from th
 
 ## Source
 
+- `packages/forge/src/index.ts`, `packages/forge/script/build.ts`, `packages/forge/script/tui.ts`, `packages/forge/script/native-tui-smoke.py`, `packages/forge/test/cli/tui.test.ts`, `.github/workflows/test.yml`, `.github/workflows/pr.yml`
 - `packages/schema/src/team-mention.ts`, `packages/client/src/team.ts`
 - `packages/client/src/automation-schedule.ts`, `packages/client/src/path-key.ts`, `packages/client/src/working-folders.ts`
 - `packages/app/src/utils/working-folder-sync.ts`, `packages/app/src/context/server.tsx`

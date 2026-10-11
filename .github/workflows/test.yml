@@ -283,6 +283,13 @@ jobs:
           dependency-cache: ${{ runner.os != 'Windows' }}
       - name: Verify Bun native terminal
         run: bun --cwd packages/script test ../core/test/pty/native-terminal.test.ts --timeout 15000
+      - name: Compile native terminal client
+        if: matrix.name == 'linux-x64'
+        working-directory: packages/forge
+        run: bun build src/index.ts --compile --outfile dist/forge-tui-native --define FORGE_VERSION='"test"' --define FORGE_CHANNEL='"dev"' --define FORGE_MODELS_DEV='{}' --define process.env.OPENTUI_LIBC='"glibc"'
+      - name: Verify native terminal client rendering and quit
+        if: matrix.name == 'linux-x64'
+        run: python3 packages/forge/script/native-tui-smoke.py packages/forge/dist/forge-tui-native
       - name: Build Forge Bun backend
         run: bun run --cwd packages/forge script/build-node.ts
       - name: Stage Bun runtime

@@ -11,7 +11,8 @@
   },
   "exports": {
     ".": "./src/index.ts",
-    "./server": "./src/server.ts"
+    "./server": "./src/server.ts",
+    "./cli": "./src/cli.ts"
   },
   "scripts": {
     "build": "bun build src/cli.ts --target=bun --packages=external --outdir=dist",

@@ -4,7 +4,17 @@ Run the TurenOS terminal client in an interactive terminal against a TurenOS ser
 
 ## Connect and switch servers
 
-Install dependencies with Bun (the version pinned in the root `package.json`), then run from the repository root:
+An installed `forge` binary runs the client directly:
+
+```sh
+forge tui                                     # TurenOS on this computer
+forge tui --server lab                        # a saved server
+forge tui --dir /srv/project https://turen.example
+```
+
+Put `tui` first, immediately after `forge`. Put client options and commands after `tui`, for example `forge tui sessions --json`. Forge global options before `tui` are not supported. Use `forge tui --help` for client options.
+
+From a source checkout, install dependencies with Bun (the version pinned in the root `package.json`), then run from the repository root:
 
 ```sh
 bun install --frozen-lockfile
@@ -83,7 +93,7 @@ On Linux, before `FORGE_SERVER_PASSWORD` or a `--discover-auth` password goes to
 
 Server credentials require HTTPS, except HTTP to numeric loopback `127.0.0.1` or `[::1]`, such as an already established SSH tunnel. `localhost`, private LAN addresses, and other loopback addresses do not receive this authenticated-HTTP exception. Unauthenticated HTTP is permitted, but does not protect session content. Prefer HTTPS for remote use. Redirects are refused rather than forwarding credentials.
 
-The CLI needs Bun and the complete installed `node_modules` tree, including OpenTUI's native dependencies. No compiled binary build or server is bundled. Running these commands does not change an installed helper or restart an existing server.
+The source CLI needs Bun and installed `node_modules`, including OpenTUI's native dependencies. The compiled `forge tui` embeds the client and target native library. It needs no external Bun or `node_modules`. The server picker can start a separate private `forge serve` process. Client commands do not replace an installed helper or restart an existing server.
 
 ## Send and retain drafts
 

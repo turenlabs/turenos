@@ -215,6 +215,9 @@ Each row identifies a resolved package and version, its declared license, and it
 | `@opentelemetry/sdk-trace-base` | `2.11.0` | Apache-2.0 | [source](open-telemetry/opentelemetry-js) |
 | `@opentelemetry/sdk-trace-node` | `2.11.0` | Apache-2.0 | [source](open-telemetry/opentelemetry-js) |
 | `@opentelemetry/semantic-conventions` | `1.41.1` | Apache-2.0 | [source](open-telemetry/opentelemetry-js) |
+| `@opentui/core` | `0.5.10` | MIT | [source](https://github.com/anomalyco/opentui) |
+| `@opentui/core-linux-x64` | `0.5.10` | MIT | [source](https://github.com/anomalyco/opentui) |
+| `@opentui/core-linux-x64-musl` | `0.5.10` | MIT | [source](https://github.com/anomalyco/opentui) |
 | `@parcel/watcher` | `2.6.0` | MIT | [source](https://github.com/parcel-bundler/watcher.git) |
 | `@parcel/watcher-linux-x64-glibc` | `2.6.0` | MIT | [source](https://github.com/parcel-bundler/watcher.git) |
 | `@parcel/watcher-linux-x64-musl` | `2.6.0` | MIT | [source](https://github.com/parcel-bundler/watcher.git) |
@@ -428,6 +431,7 @@ Each row identifies a resolved package and version, its declared license, and it
 | `browser-fs-access` | `0.29.1` | Apache-2.0 | [source](git+https://github.com/GoogleChromeLabs/browser-fs-access.git) |
 | `buffer-equal-constant-time` | `1.0.1` | BSD-3-Clause | [source](git@github.com:goinstant/buffer-equal-constant-time.git) |
 | `builder-util-runtime` | `9.7.0` | MIT | [source](git+https://github.com/electron-userland/electron-builder.git) |
+| `bun-ffi-structs` | `0.3.1` | MIT | [source](https://github.com/anomalyco/bun-ffi-structs.git) |
 | `bundle-name` | `4.1.0` | MIT | [source](sindresorhus/bundle-name) |
 | `bytes` | `3.1.2` | MIT | [source](visionmedia/bytes.js) |
 | `cacache` | `20.0.4` | ISC | [source](git+https://github.com/npm/cacache.git) |
@@ -524,6 +528,7 @@ Each row identifies a resolved package and version, its declared license, and it
 | `devlop` | `1.1.0` | MIT | [source](wooorm/devlop) |
 | `diff` | `8.0.3` | BSD-3-Clause | [source](https://github.com/kpdecker/jsdiff.git) |
 | `diff` | `8.0.4` | BSD-3-Clause | [source](https://github.com/kpdecker/jsdiff.git) |
+| `diff` | `9.0.0` | BSD-3-Clause | [source](https://github.com/kpdecker/jsdiff.git) |
 | `dns-packet` | `5.6.1` | MIT | [source](mafintosh/dns-packet) |
 | `dom-serializer` | `2.0.0` | MIT | [source](git://github.com/cheeriojs/dom-serializer.git) |
 | `domelementtype` | `2.3.0` | BSD-2-Clause | [source](git://github.com/fb55/domelementtype.git) |
@@ -704,6 +709,7 @@ Each row identifies a resolved package and version, its declared license, and it
 | `make-fetch-happen` | `15.0.6` | ISC | [source](git+https://github.com/npm/make-fetch-happen.git) |
 | `marked` | `15.0.12` | MIT | [source](git://github.com/markedjs/marked.git) |
 | `marked` | `16.4.2` | MIT | [source](git://github.com/markedjs/marked.git) |
+| `marked` | `17.0.1` | MIT | [source](git://github.com/markedjs/marked.git) |
 | `marked` | `17.0.6` | MIT | [source](git://github.com/markedjs/marked.git) |
 | `marked-katex-extension` | `5.1.6` | MIT | [source](git+https://github.com/UziTech/marked-katex-extension.git) |
 | `marked-shiki` | `1.2.1` | MIT | [source](https://github.com/bent10/marked-extensions) |
@@ -1009,6 +1015,6 @@ Each row identifies a resolved package and version, its declared license, and it
 | `zustand` | `4.5.7` | MIT | [source](git+https://github.com/pmndrs/zustand.git) |
 | `zwitch` | `2.0.4` | MIT | [source](wooorm/zwitch) |
 
-Inventory total: **987 resolved packages**.
+Inventory total: **993 resolved packages**.
 
 This file is regenerated during the desktop prebuild. Do not edit generated inventory content by hand.
