@@ -28,7 +28,8 @@ export type LaunchDraft = {
   cursor?: number
   /** Wants a new git worktree: `worktree` keeps its name across retries and its folder once ready. */
   isolate?: boolean
-  worktree?: { name: string; attempted: boolean; directory?: string; agent?: string }
+  /** `base` is the folder the worktree is made from; an edited Directory starts a new worktree. */
+  worktree?: { name: string; attempted: boolean; base?: string; directory?: string; agent?: string }
   start: ReturnType<Connection["launch"]>
 }
 export type MessageDraft = {
@@ -41,6 +42,8 @@ export type MessageDraft = {
   command?: { command: string; arguments: string }
   shell?: string
   restoredFrom?: string
+  /** Restored from a message sent as a prompt, so a leading `!` stays text instead of making a shell command. */
+  literal?: boolean
   cursor?: number
 }
 

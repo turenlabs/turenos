@@ -1,4 +1,4 @@
-import { eventStream } from "./live-events/stream"
+import { DROPPED, eventStream } from "./live-events/stream"
 import { identifier, invalid, isRecord, name, parseResponse } from "./response-validation"
 
 export type LiveEvent = {
@@ -7,6 +7,12 @@ export type LiveEvent = {
   data: Record<string, unknown>
   durable?: { aggregateID: string; seq: number; version: number }
 }
+
+/**
+ * Stands for a frame the stream dropped as too large or undecodable: the reader may have missed an update. Its
+ * empty ID tells it from a server event of the same type, whose ID cannot be empty.
+ */
+export const LOST_EVENT = "client.event.lost"
 
 /** The event in one frame, or undefined for a frame that is not a valid event: such a frame is skipped. */
 function envelope(text: string): LiveEvent | undefined {
@@ -37,6 +43,10 @@ export async function* liveEvents(
   socketPath?: string,
 ): AsyncIterable<LiveEvent> {
   for await (const data of eventStream(baseURL, headers, signal, socketPath)) {
+    if (data === DROPPED) {
+      yield { id: "", type: LOST_EVENT, data: {} }
+      continue
+    }
     const event = envelope(data)
     if (event) yield event
   }
