@@ -137,11 +137,14 @@ function agentModel(state: DashboardState, snapshot: Snapshot | undefined) {
   if (state.tab !== "sessions" || !state.selected) return ""
   const session = snapshot?.sessions.find((item) => item.id === state.selected)
   if (!session) return ""
+  // A turn stopped before its first step is recorded with an unknown model, so the latest reply that names one counts.
   const reply =
-    state.detail?.sessionID === session.id ? state.detail.messages.findLast((m) => m.type === "assistant") : undefined
-  const model =
-    session.model ??
-    (reply && (reply.model.providerID !== "unknown" || reply.model.id !== "unknown") ? reply.model : undefined)
+    state.detail?.sessionID === session.id
+      ? state.detail.messages.findLast(
+          (m) => m.type === "assistant" && (m.model.providerID !== "unknown" || m.model.id !== "unknown"),
+        )
+      : undefined
+  const model = session.model ?? (reply?.type === "assistant" ? reply.model : undefined)
   const agent = sessionAgent(state, session) ?? state.defaultAgent
   return `${label(agent ?? "server default", 40)} · ${model ? label(modelText(model), 80) : "server default"}`
 }

@@ -75,7 +75,8 @@ export function updateLive(c: Conversation, messages: MessagesListOutput["data"]
   c.hooks.actions()
 }
 
-export function invalidateSession(c: Conversation, sessionID: string) {
+/** `keepPage` keeps the History page the reader is on, so a reconnect reloads it instead of going back to page 1. */
+export function invalidateSession(c: Conversation, sessionID: string, keepPage = false) {
   const { state } = c
   c.live.delete(sessionID)
   c.positions.delete(sessionID)
@@ -84,8 +85,10 @@ export function invalidateSession(c: Conversation, sessionID: string) {
   ++c.generation
   c.textAnchor = undefined
   state.detail = undefined
-  state.historyCursor = undefined
-  state.historyPage = 1
+  if (!keepPage || !state.history) {
+    state.historyCursor = undefined
+    state.historyPage = 1
+  }
   c.pageRequest = undefined
   c.position = undefined
   c.prepend = undefined
@@ -97,7 +100,7 @@ export function invalidateAll(c: Conversation) {
   c.live.clear()
   c.positions.clear()
   // On another tab the selection is a terminal or automation, whose pane must stay as it is.
-  if (c.state.selected && c.state.tab === "sessions") invalidateSession(c, c.state.selected)
+  if (c.state.selected && c.state.tab === "sessions") invalidateSession(c, c.state.selected, true)
 }
 
 export function page(c: Conversation, direction: "next" | "previous") {

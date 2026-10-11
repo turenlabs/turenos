@@ -57,7 +57,8 @@ export async function submitLaunch(form: LaunchForm) {
 }
 
 async function prepare(form: LaunchForm) {
-  if (form.workspace.getSelectedIndex() === 1 && !form.current.worktree?.directory) await prepareWorktree(form)
+  if (form.workspace.getSelectedIndex() === 1 && form.current.worktree?.directory !== form.directory.value.trim())
+    await prepareWorktree(form)
   await loadAgents(form)
   const requested = form.directory.value.trim()
   if (form.loaded !== requested)
@@ -81,8 +82,11 @@ async function prepare(form: LaunchForm) {
 
 async function prepareWorktree(form: LaunchForm) {
   const { current, dialog, directory } = form
-  // One name per draft: a retry finds the worktree an uncertain attempt made instead of adding one.
-  const worktree = (current.worktree ??= { name: `tui-${crypto.randomUUID().slice(0, 8)}`, attempted: false })
+  const base = directory.value.trim()
+  // One name per draft and folder: a retry finds the worktree an uncertain attempt made instead of adding one, and
+  // a retry from another folder must not ask for that name there.
+  if (current.worktree && current.worktree.base !== base) current.worktree = undefined
+  const worktree = (current.worktree ??= { name: `tui-${crypto.randomUUID().slice(0, 8)}`, attempted: false, base })
   saveDraft(form)
   worktree.agent = current.agent
   const retry = worktree.attempted
@@ -99,7 +103,7 @@ async function prepareWorktree(form: LaunchForm) {
   )
   // The server keeps preparing after Esc; the same name lets the next send find that worktree.
   const result = await Promise.race([
-    form.deps.connection.worktree(directory.value.trim(), worktree.name, retry, stop.signal).catch((error) => {
+    form.deps.connection.worktree(base, worktree.name, retry, stop.signal).catch((error) => {
       if (error instanceof WorktreeNotStartedError) worktree.attempted = false
       throw error
     }),

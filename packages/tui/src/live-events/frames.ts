@@ -10,6 +10,8 @@ export type Frames = {
   /** Dropping the rest of an oversized or undecodable frame, up to its blank line. */
   skipping: boolean
   data: string[]
+  /** Frames dropped so far; a dropped frame may have carried an event the reader then never sees. */
+  dropped: number
 }
 
 export function newFrames(): Frames {
@@ -22,6 +24,7 @@ export function newFrames(): Frames {
     carriageReturn: false,
     skipping: false,
     data: [],
+    dropped: 0,
   }
 }
 
@@ -85,6 +88,7 @@ function overflow(f: Frames, lineEnd: boolean) {
     // The blank line that ends this frame is the byte over the limit: the next frame starts clean.
     f.data = []
     f.frameBytes = 0
+    f.dropped++
     return
   }
   skipRest(f)
@@ -97,6 +101,7 @@ function skipRest(f: Frames) {
   f.skipping = true
   f.data = []
   f.length = 0
+  f.dropped++
 }
 
 function decode(f: Frames): string | undefined {

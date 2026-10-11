@@ -53,8 +53,8 @@ export function mergeLive(c: Conversation, messages: Messages, older = false) {
   cached.messages = older
     ? [...incoming.filter((item) => !have.has(item.id)), ...cached.messages]
     : [...cached.messages.filter((item) => !have.has(item.id)), ...incoming]
-  // Older messages change how the first cached one reads: its header and turn break depend on what precedes it.
-  if (older) rebuild(cached, state.expandToolOutput)
+  // A partial page can finish a turn whose header is in the retained window.
+  rebuild(cached, state.expandToolOutput)
   let size = cached.messages.reduce((sum, item) => sum + Math.max(item.formatted.length, item.raw.length) + 2, 0)
   // Only older messages are evicted; the newest (the running reply) stays even when it alone exceeds the budget.
   while (cached.messages.length > 1 && (cached.messages.length > 120 || size > 80000)) {
@@ -62,6 +62,9 @@ export function mergeLive(c: Conversation, messages: Messages, older = false) {
     size -= Math.max(removed.formatted.length, removed.raw.length) + 2
     cached.capped = true
   }
+  // The message after an evicted one was built to continue it; it now opens the cache, so it needs its own header.
+  if (cached.messages[0]?.continued)
+    rebuild(cached, state.expandToolOutput)
   c.live.delete(id)
   c.live.set(id, cached)
   if (c.live.size > 5) {

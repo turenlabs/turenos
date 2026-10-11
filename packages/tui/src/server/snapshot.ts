@@ -30,9 +30,11 @@ export async function snapshot(ctx: Context, folder?: Folder) {
   const active = Object.fromEntries(Object.entries(reported).filter(([id]) => id !== ACTIVE_OMITTED))
   const sessions = await recentAndActive(ctx.client, recent, active, request)
   for (const session of inFolderPage) if (!sessions.has(session.id)) sessions.set(session.id, session)
-  const needsInput = omitted > 0 ? [] : await waitingOnInput(ctx.client, Object.keys(active).slice(0, 8), request)
-  // Terminals are location-scoped on the server; read the server location and open folders.
-  const directories = [...new Set([location.directory, ...(ctx.folders.current() ?? [])])].slice(0, 8)
+  const needsInput = omitted > 0 ? [] : await waitingOnInput(ctx, Object.keys(active), request)
+  // Terminals are location-scoped on the server; read the server location, the shown folder, and every open folder.
+  const directories = [
+    ...new Set([location.directory, ...(folder ? [folder.directory] : []), ...(ctx.folders.current() ?? [])]),
+  ]
   const terminals = await readTerminals(ctx.client, directories, request, inventoryErrors)
   const folderStatus: { workingFolders?: string[]; folderError?: string } = {
     workingFolders: ctx.folders.current(),
@@ -64,21 +66,28 @@ export async function snapshot(ctx: Context, folder?: Folder) {
   }
 }
 
-/** Each folder's terminals. Folders that fail beside ones that answer are listed, not reported as the whole inventory failing. */
+/**
+ * Each folder's terminals, eight folders at a time. Folders that fail beside ones that answer are listed, not
+ * reported as the whole inventory failing.
+ */
 async function readTerminals(
   client: Client,
   directories: string[],
   request: () => { signal: AbortSignal },
   inventoryErrors: InventoryErrors,
 ) {
-  const results = await Promise.all(
-    directories.map((directory) =>
-      client.ptys.list({ location: { directory } }, request()).then(
-        (page) => ({ page }),
-        (error: unknown) => ({ directory, error: rethrowUnauthorized(error) }),
-      ),
-    ),
-  )
+  const results = []
+  for (let offset = 0; offset < directories.length; offset += 8)
+    results.push(
+      ...(await Promise.all(
+        directories.slice(offset, offset + 8).map((directory) =>
+          client.ptys.list({ location: { directory } }, request()).then(
+            (page) => ({ page }),
+            (error: unknown) => ({ directory, error: rethrowUnauthorized(error) }),
+          ),
+        ),
+      )),
+    )
   const pages = results.flatMap((result) => ("page" in result ? [result.page] : []))
   const failures = results.flatMap((result) => ("error" in result ? [result] : []))
   if (!pages.length) failures.forEach((failure) => inventoryError(inventoryErrors, "terminals", failure.error))
@@ -132,22 +141,31 @@ async function folderSessions(client: Client, folder: Folder | undefined, reques
   })
 }
 
-/** At most four sessions at a time, so no more than eight requests are in flight; a failed read means no mark. */
-async function waitingOnInput(client: Client, running: string[], request: () => { signal: AbortSignal }) {
-  const waiting: string[] = []
-  for (let offset = 0; offset < running.length; offset += 4) {
-    const chunk = running.slice(offset, offset + 4)
+/**
+ * Eight running sessions per snapshot, taking turns from where the last snapshot stopped, so every one is marked
+ * within a few snapshots; the others keep their last mark. At most four sessions at a time, so no more than eight
+ * requests are in flight; a failed read means no mark.
+ */
+async function waitingOnInput(ctx: Context, running: string[], request: () => { signal: AbortSignal }) {
+  const state = ctx.needsInput
+  const start = state.offset < running.length ? state.offset : 0
+  const checked = [...running, ...running].slice(start, start + Math.min(8, running.length))
+  state.offset = running.length ? (start + checked.length) % running.length : 0
+  const waiting = new Set([...state.waiting].filter((id) => running.includes(id) && !checked.includes(id)))
+  for (let offset = 0; offset < checked.length; offset += 4) {
+    const chunk = checked.slice(offset, offset + 4)
     const pending = await Promise.all(
       chunk.map((sessionID) =>
         Promise.all([
-          client.permissions.list({ sessionID }, request()).catch(() => []),
-          client.questions.list({ sessionID }, request()).catch(() => []),
+          ctx.client.permissions.list({ sessionID }, request()).catch(() => []),
+          ctx.client.questions.list({ sessionID }, request()).catch(() => []),
         ]),
       ),
     )
-    waiting.push(...chunk.filter((_, index) => pending[index]!.some((list) => list.length > 0)))
+    chunk.filter((_, index) => pending[index]!.some((list) => list.length > 0)).forEach((id) => waiting.add(id))
   }
-  return waiting
+  state.waiting = waiting
+  return running.filter((id) => waiting.has(id))
 }
 
 /** A rejected credential fails the snapshot; any other error is returned for the caller to record. */

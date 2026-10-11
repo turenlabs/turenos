@@ -29,7 +29,8 @@ export function connect(options: ConnectionOptions) {
   const folders = localFolders(createWorkingFolders({ url, headers, transport }))
   const api = createApi({ url, headers, signal: controller.signal, socketPath })
   const missingFiles = new Set<string>()
-  const ctx: Context = { url, headers, controller, options, transport, client, folders, api, missingFiles }
+  const needsInput = { offset: 0, waiting: new Set<string>() }
+  const ctx: Context = { url, headers, controller, options, transport, client, folders, api, missingFiles, needsInput }
   const providers = createProviders({ url, headers, signal: controller.signal, socketPath })
   return {
     address: socketPath ? `unix:${socketPath}` : url.origin,

@@ -35,6 +35,15 @@ test("before a session names an agent the footer shows the agent it will use", (
   expect(statusline(state, snapshot, 120)).toContain("build · server default")
 })
 
+test("after a turn stopped before its first step the footer keeps the model of the last reply that named one", () => {
+  const state = createDashboardState()
+  state.selected = "ses_a"
+  const snapshot = { sessions: [{ id: "ses_a" }], active: {} } as unknown as Snapshot
+  const stopped = assistant("stopped", "", { model: { providerID: "unknown", id: "unknown" } })
+  state.detail = { sessionID: "ses_a", messages: [assistant("done", "reply"), stopped] } as never
+  expect(statusline(state, snapshot, 120)).toContain("build · test/model")
+})
+
 test("typed-word dialogs say Enter or Ctrl+S, and Enter does confirm", async () => {
   const { server, view, screen, palette } = await dashboard(interrupt)
   await screen("main task")

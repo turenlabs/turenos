@@ -14,10 +14,25 @@ export function outsideNotice(text: string, directory: string, acknowledged: str
   }
 }
 
-/** The one-line attachment list shown under an editor, with escaping paths flagged. */
-export function attachmentSummary(text: string, directory: string, scope?: MentionScope, frozenFiles?: PromptFile[]) {
+/**
+ * The one-line attachment list shown under an editor, with escaping paths flagged. `literal` marks text that was
+ * already sent as a message, whose leading `!` stays text.
+ */
+export function attachmentSummary(
+  text: string,
+  directory: string,
+  scope?: MentionScope,
+  frozenFiles?: PromptFile[],
+  literal = false,
+) {
   // A leading `!` makes the whole message a shell command, which attaches nothing.
-  if (/^!./s.test(text)) return "Shell command · Enter runs it on the server (Steer only)"
+  if (/^!./s.test(text) && !literal) return "Shell command · Enter runs it on the server (Steer only)"
+  const note = /^!./s.test(text) ? "Sent as a message, not a shell command" : undefined
+  const summary = fileSummary(text, directory, scope, frozenFiles)
+  return note && summary ? `${note} · ${summary}` : (note ?? summary)
+}
+
+function fileSummary(text: string, directory: string, scope?: MentionScope, frozenFiles?: PromptFile[]) {
   const report = mentionReport(text, directory, scope)
   const files = frozenFiles ?? report.files
   const outside = report.outside.filter((text) => files.some((file) => file.source.text === text))
