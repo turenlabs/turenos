@@ -38,7 +38,7 @@ export function createFiles(
       request: 0,
       preview: 0,
     }
-    panel.list.on("selectionChanged", () => void preview(browser))
+    panel.list.on("selectionChanged", () => void preview(browser, true))
     panel.dialog.key = (key) => {
       const bindings: [boolean, () => unknown][] = [
         [matchesKey(key, "enter") || matchesKey(key, "right"), () => enter(browser)],

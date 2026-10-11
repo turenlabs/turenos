@@ -379,8 +379,7 @@ test("the Working marker clears at the final step end without waiting for the po
   const f = await fixture()
   await f.wait(() => f.reads() >= 2)
   await f.screen("Working")
-  const seen = f.reads()
-  await f.wait(() => f.reads() > seen)
+  // The next poll is five seconds away while the stream is live, so only the event can clear the marker in time.
   f.emit("session.next.step.ended", {
     finish: "stop",
     cost: 0,
