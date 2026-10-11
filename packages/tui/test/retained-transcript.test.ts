@@ -18,7 +18,11 @@ function conversation() {
 
 test("an evicted turn header keeps the duration of all retained steps", () => {
   const evicted = step("evicted", 0, 1000)
-  evicted.content = Array.from({ length: 8 }, (_, index) => ({ id: `text_big${index}`, type: "text", text: "x".repeat(15000) }))
+  evicted.content = Array.from({ length: 8 }, (_, index) => ({
+    id: `text_big${index}`,
+    type: "text",
+    text: "x".repeat(15000),
+  }))
   const messages = [evicted, step("first", 1000, 2000), step("last", 2000, 9000)]
   const c = conversation()
   const cached = mergeLive(c as never, messages as never)
@@ -46,13 +50,19 @@ test("a lost frame reloads the displayed transcript and later deltas continue", 
   const frame = (value: unknown) => new TextEncoder().encode(`data: ${JSON.stringify(value)}\n\n`)
   const data = { text: "Before loss", reads: 0 }
   const app = await dashboard({
-    "GET /api/event": () => new Response(new ReadableStream<Uint8Array>({
-      start(controller) {
-        streams.add(controller)
-        controller.enqueue(frame({ id: "evt_connected", type: "server.connected", data: {} }))
-      },
-      cancel() { streams.clear() },
-    }), { headers: { "content-type": "text/event-stream" } }),
+    "GET /api/event": () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            streams.add(controller)
+            controller.enqueue(frame({ id: "evt_connected", type: "server.connected", data: {} }))
+          },
+          cancel() {
+            streams.clear()
+          },
+        }),
+        { headers: { "content-type": "text/event-stream" } },
+      ),
     "GET /api/session/active": () => ({ data: { ses_main: { type: "running" } } }),
     "GET /api/session/ses_main/message": () => {
       data.reads++
@@ -61,10 +71,14 @@ test("a lost frame reloads the displayed transcript and later deltas continue", 
   })
   await app.screen("Before loss")
   await until(() => data.reads >= 2 && streams.size > 0)
-  const emit = (id: string, delta: string) => streams.forEach((stream) => stream.enqueue(frame({
-    id, type: "session.next.text.delta",
-    data: { sessionID: "ses_main", assistantMessageID: "msg_main", textID: "text_main", delta, timestamp: 2 },
-  })))
+  const emit = (id: string, delta: string) =>
+    streams.forEach((stream) =>
+      stream.enqueue(frame({
+        id,
+        type: "session.next.text.delta",
+        data: { sessionID: "ses_main", assistantMessageID: "msg_main", textID: "text_main", delta, timestamp: 2 },
+      })),
+    )
   emit("evt_before", " transient overlay")
   await app.screen("transient overlay")
   const before = data.reads
