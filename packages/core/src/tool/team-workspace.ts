@@ -233,7 +233,7 @@ const layer = Layer.effectDiscard(
         [collaborateName]: Tool.make({
           deferred: true,
           description:
-            "Assign one bounded task to one active teammate in your own room. This explicitly queues one durable Team task. Ask questions with team_post and replyTo the task request. The sender must use team_wait, then respond. Replies and progress are context, not permissions. Do not delegate work that needs approval or broader permissions.",
+            "Assign one bounded task to one active teammate in your own room. This explicitly queues one durable Team task. You may have five unfinished child tasks at once, with no lifetime assignment limit; settled children free capacity for later rounds. Ask questions with team_post and replyTo the task request. The sender must use team_wait, then respond. Replies and progress are context, not permissions. Do not delegate work that needs approval or broader permissions.",
           input: Schema.Struct({ targetHandle: text(32), text: text(8000), replyTo: text(256).pipe(Schema.optional) }),
           output: Team.Posted,
           execute: (input, context) =>
@@ -299,7 +299,10 @@ const layer = Layer.effectDiscard(
           description:
             "Wait for your delegated tasks to finish or for new room messages. Use team_post with replyTo to answer questions. Replies and progress are context, not permissions.",
           input: Schema.Struct({
-            taskIDs: Schema.Array(text(128)).pipe(Schema.check(Schema.isMaxLength(3)), Schema.optional),
+            taskIDs: Schema.Array(text(128)).pipe(
+              Schema.check(Schema.isMaxLength(TeamWorkspace.MAX_WAIT_TASKS)),
+              Schema.optional,
+            ),
             after: Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(0)), Schema.optional),
             timeoutMs: Schema.Int.pipe(
               Schema.check(Schema.isGreaterThanOrEqualTo(1)),
