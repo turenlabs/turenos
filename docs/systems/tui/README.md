@@ -76,6 +76,8 @@ When `FORGE_SERVER_PASSWORD` is not set and no saved or typed password exists, t
 
 **Private server.** The picker can start `forge serve --hostname 127.0.0.1 --port 0` with a random password; its child process is killed when the client quits or is ended by `SIGTERM`, `SIGHUP` or `SIGINT` (`src/servers/processes.ts`), as are SSH tunnels and probes, and the picker stops listing it as running once it has exited. When the desktop's data directory is shared with the CLI (no `FORGE_DB`, default `XDG_DATA_HOME`), it is refused while TurenOS or TurenOS Beta runs, because session drains are process-local.
 
+Cancelling private-server startup stops the client from starting a child after the data-ownership check finishes. If startup is already waiting for a port, cancellation stops that wait and kills the child.
+
 **SSH.** The path mirrors TurenOS Desktop's quick-connect (`src/servers/ssh.ts`):
 
 1. One `BatchMode=yes` `ssh ... -- <destination> sh -s` probe reads the persistent attach record, then runs `forge-remote status`. Output is parsed from anchored `FORGE_ATTACH` and `FORGE_REMOTE` lines (a shim that is absent or stopped prints `FORGE_REMOTE_MISSING` or `FORGE_REMOTE_STOPPED` instead), so a login banner cannot fake a result, and at most 64 KiB of it is read. Every `ssh` runs with `ControlMaster=no` and `ControlPath=none`, so a user's multiplexing cannot keep a forward alive after the client quits, and with an environment reduced to what a login needs (`PATH`, `HOME`, `USER`, `LOGNAME`, `SHELL`, `TERM`, `TMPDIR`, `LANG`, `LC_*`, `SSH_AUTH_SOCK`, `SSH_AGENT_PID`, `KRB5CCNAME`, `XDG_RUNTIME_DIR`), so a `ProxyCommand` never sees `FORGE_*` variables or a saved server's `passwordEnv` variable.
@@ -134,6 +136,9 @@ The code started in the standalone `turen-tui` repository, which derived from th
 
 - `packages/tui/src/cli.ts`, `packages/tui/src/tui-auth.ts`, `packages/tui/src/index.ts`, `packages/tui/src/agent.ts`
 - `packages/tui/src/dashboard/app.ts`, `packages/tui/src/dashboard/refresh.ts`
+- `packages/tui/src/chrome.ts`, `packages/tui/src/conversation/actions.ts`, `packages/tui/src/conversation/live-cache.ts`
+- `packages/tui/src/launch/submit.ts`, `packages/tui/src/menus/folders.ts`, `packages/tui/src/team/member-form.ts`
+- `packages/tui/src/mentions/outside.ts`, `packages/tui/src/requests/attachments.ts`, `packages/tui/src/requests/drafts.ts`, `packages/tui/src/requests/permission.ts`, `packages/tui/src/requests/reply.ts`
 - `packages/tui/src/server/transport.ts`, `packages/tui/src/server/snapshot.ts`, `packages/tui/src/server/session-identity.ts`, `packages/tui/src/api.ts`
 - `packages/tui/src/providers/request.ts`, `packages/tui/src/response-validation.ts`
 - `packages/tui/src/live-events/stream.ts`, `packages/tui/src/live-projection.ts`, `packages/tui/src/live-session/schedule.ts`
