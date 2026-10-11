@@ -795,8 +795,9 @@ describe("TeamWorkspace", () => {
       const second = yield* team.collaborate({ ...request, id: "msg_collab_second", targetHandle: "target2" })
       yield* team.collaborate({ ...request, id: "msg_collab_third", targetHandle: "target3" })
       yield* team.collaborate({ ...request, id: "msg_collab_fourth", targetHandle: "target4" })
+      yield* team.collaborate({ ...request, id: "msg_collab_fifth", targetHandle: "target4" })
       expect(
-        yield* team.collaborate({ ...request, id: "msg_collab_fifth", targetHandle: "target4" }).pipe(Effect.flip),
+        yield* team.collaborate({ ...request, id: "msg_collab_sixth", targetHandle: "target4" }).pipe(Effect.flip),
       ).toBeInstanceOf(TeamWorkspace.ConflictError)
       const childID = first.tasks[0]!.id
       expect((yield* team.getTask(childID)).execution).toMatchObject({ parentTaskID: parentID, delegationDepth: 1 })
@@ -813,7 +814,7 @@ describe("TeamWorkspace", () => {
     }),
   )
 
-  it.effect("scales unfinished delegation capacity to the active room roster", () =>
+  it.effect("limits unfinished delegation to five even in larger rooms", () =>
     Effect.gen(function* () {
       const team = yield* TeamWorkspace.Service
       const sender = yield* team.createTeammate({ name: "Lead", handle: "lead", role: "Lead", mission: "Coordinate" })
@@ -841,7 +842,7 @@ describe("TeamWorkspace", () => {
         directory: sender.directory,
         text: "Independent work",
       }
-      const children = yield* Effect.forEach(workers, (worker, index) =>
+      const children = yield* Effect.forEach(workers.slice(0, 5), (worker, index) =>
         team.collaborate({ ...request, id: `msg_roster_${index}`, targetHandle: worker.handle }),
       )
       const taskIDs = children.map((child) => child.tasks[0]!.id)
@@ -868,7 +869,7 @@ describe("TeamWorkspace", () => {
         yield* team
           .collaborate({ ...request, id: "msg_roster_overflow", targetHandle: workers[0]!.handle })
           .pipe(Effect.flip),
-      ).toMatchObject({ message: expect.stringContaining("10 unfinished child tasks") })
+      ).toMatchObject({ message: expect.stringContaining("5 unfinished child tasks") })
       expect(
         yield* team.collaborate({ ...request, id: "msg_roster_0", targetHandle: workers[0]!.handle }),
       ).toMatchObject({
@@ -879,7 +880,36 @@ describe("TeamWorkspace", () => {
       expect(
         (yield* team.collaborate({ ...request, id: "msg_roster_replacement", targetHandle: workers[0]!.handle })).tasks,
       ).toHaveLength(1)
-      expect((yield* team.getTask(parent!.id)).execution.delegatedTaskIDs).toHaveLength(11)
+      expect((yield* team.getTask(parent!.id)).execution.delegatedTaskIDs).toHaveLength(6)
+    }),
+  )
+
+  it.effect("keeps admitting later rounds without a lifetime assignment limit", () =>
+    Effect.gen(function* () {
+      const team = yield* TeamWorkspace.Service
+      const worker = yield* team.createTeammate({ name: "Worker", handle: "worker", role: "Worker", mission: "Work" })
+      yield* team.createTeammate({ name: "Lead", handle: "lead", role: "Lead", mission: "Coordinate" })
+      const [parent] = (yield* team.postMessage({ id: "msg_lifetime_parent", text: "@lead begin" })).tasks
+      yield* team.claimTasks({ owner: "lead-owner" })
+      yield* team.startTask({ id: parent!.id, owner: "lead-owner" })
+      yield* Effect.forEach(
+        Array.from({ length: 25 }, (_, index) => index),
+        (round) =>
+          Effect.gen(function* () {
+            const children = yield* Effect.forEach([0, 1, 2, 3, 4], (index) =>
+              team.collaborate({
+                sessionID: parent!.sessionID,
+                assistantMessageID: "msg_lifetime_assistant",
+                id: `msg_lifetime_${round}_${index}`,
+                targetHandle: worker.handle,
+                directory: worker.directory,
+                text: "Next factory item",
+              }),
+            )
+            yield* Effect.forEach(children, (child) => team.cancelTask(child.tasks[0]!.id))
+          }),
+      )
+      expect((yield* team.getTask(parent!.id)).execution.delegatedTaskIDs).toHaveLength(125)
     }),
   )
 
@@ -899,11 +929,11 @@ describe("TeamWorkspace", () => {
           directory: sender.directory,
           text: "Bounded work",
         }
-        const children = yield* Effect.forEach([0, 1, 2], (index) =>
+        const children = yield* Effect.forEach([0, 1, 2, 3, 4], (index) =>
           team.collaborate({ ...request, id: `msg_reuse_${index}` }),
         )
         expect(yield* team.collaborate({ ...request, id: "msg_reuse_overflow" }).pipe(Effect.flip)).toMatchObject({
-          message: expect.stringContaining("3 unfinished child tasks"),
+          message: expect.stringContaining("5 unfinished child tasks"),
         })
         const child = children[0]!.tasks[0]!
         if (status === "cancelled") yield* team.cancelTask(child.id)

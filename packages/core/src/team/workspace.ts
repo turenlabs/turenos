@@ -33,6 +33,7 @@ export type State = Team.State
 export type TaskExecution = Task & { readonly execution: TaskSnapshot }
 export type TaskSnapshot = TeamTaskSnapshot
 export const MAX_WAIT_TASKS = 100
+export const MAX_UNFINISHED_CHILDREN = 5
 
 export interface Interface {
   readonly state: (input?: {
@@ -1926,31 +1927,22 @@ const layer = Layer.effect(
             const delegationDepth = (senderSnapshot.delegationDepth ?? 0) + 1
             if (delegationDepth > 3)
               return yield* new Team.ConflictError({ message: "Team task delegation limit reached" })
-            // Keep small-room fan-out bounded, but let larger rooms use their
-            // active roster. Terminal children remain in the snapshot for waits
-            // and exact retries; they no longer consume delegation capacity.
-            const peers = yield* tx
+            // Lifetime history is unbounded. Count by durable parent identity
+            // rather than expanding historical IDs into SQL parameters.
+            const unfinished = yield* tx
               .select({ count: sql<number>`count(*)` })
-              .from(TeamTeammateTable)
-              .where(and(eq(TeamTeammateTable.room_id, room.id), eq(TeamTeammateTable.status, "active")))
+              .from(TeamTaskTable)
+              .where(
+                and(
+                  eq(TeamTaskTable.room_id, room.id),
+                  sql`json_extract(${TeamTaskTable.snapshot}, '$.parentTaskID') = ${senderTask.id}`,
+                  inArray(TeamTaskTable.status, ["queued", "claimed", "running"]),
+                ),
+              )
               .get()
-            const maximum = Math.max(3, (peers?.count ?? 0) - 1)
-            const unfinished = senderSnapshot.delegatedTaskIDs?.length
-              ? yield* tx
-                  .select({ count: sql<number>`count(*)` })
-                  .from(TeamTaskTable)
-                  .where(
-                    and(
-                      eq(TeamTaskTable.room_id, room.id),
-                      inArray(TeamTaskTable.id, senderSnapshot.delegatedTaskIDs),
-                      inArray(TeamTaskTable.status, ["queued", "claimed", "running"]),
-                    ),
-                  )
-                  .get()
-              : undefined
-            if ((unfinished?.count ?? 0) >= maximum)
+            if ((unfinished?.count ?? 0) >= MAX_UNFINISHED_CHILDREN)
               return yield* new Team.ConflictError({
-                message: `A teammate task can have at most ${maximum} unfinished child tasks; wait for a child to settle before assigning more work`,
+                message: `A teammate task can have at most ${MAX_UNFINISHED_CHILDREN} unfinished child tasks; wait for a child to settle before assigning more work`,
               })
             let ancestorTaskID: string | undefined = senderTask.id
             for (let depth = 0; ancestorTaskID && depth < 3; depth++) {
