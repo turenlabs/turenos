@@ -25,6 +25,8 @@ export type LiveMessage = {
   raw: string
   turn: boolean
   continued: boolean
+  /** The messages the text was built from: the one before, this one, and the later steps of a turn it heads. */
+  sources: readonly unknown[]
 }
 
 export type LivePage = {

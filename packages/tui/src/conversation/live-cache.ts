@@ -1,6 +1,6 @@
 import { RootRenderable } from "@opentui/core"
 import { richContent } from "../markdown/normalize"
-import { joinBlocks, pendingQuestions, transcriptBlocks } from "../messages"
+import { joinBlocks, pendingQuestions, transcriptBlock } from "../messages"
 import { interruptedLine } from "../messages/failure"
 import { fenceFor } from "../messages/literal"
 import { continuesTurn } from "../messages/turns"
@@ -34,13 +34,9 @@ export function mergeLive(c: Conversation, messages: Messages, older = false) {
     rebuild(cached, state.expandToolOutput)
     cached.toolsExpanded = state.expandToolOutput
   }
-  const incoming = build(messages, before(cached.messages, messages[0]), state.expandToolOutput)
-  if (
-    !older &&
-    incoming.length &&
-    cached.messages.length &&
-    !incoming.some((item) => cached.messages.some((previous) => previous.id === item.id))
-  ) {
+  const incoming = build(messages, before(cached.messages, messages[0]), state.expandToolOutput, cached.messages)
+  const cachedIDs = new Set(cached.messages.map((item) => item.id))
+  if (!older && incoming.length && cached.messages.length && !incoming.some((item) => cachedIDs.has(item.id))) {
     cached.messages = []
     cached.cursor = state.detail?.cursor.next ?? undefined
     cached.capped = false
@@ -54,7 +50,7 @@ export function mergeLive(c: Conversation, messages: Messages, older = false) {
     ? [...incoming.filter((item) => !have.has(item.id)), ...cached.messages]
     : [...cached.messages.filter((item) => !have.has(item.id)), ...incoming]
   // A partial page can finish a turn whose header is in the retained window.
-  rebuild(cached, state.expandToolOutput)
+  rebuild(cached, state.expandToolOutput, true)
   let size = cached.messages.reduce((sum, item) => sum + Math.max(item.formatted.length, item.raw.length) + 2, 0)
   // Only older messages are evicted; the newest (the running reply) stays even when it alone exceeds the budget.
   while (cached.messages.length > 1 && (cached.messages.length > 120 || size > 80000)) {
@@ -63,8 +59,7 @@ export function mergeLive(c: Conversation, messages: Messages, older = false) {
     cached.capped = true
   }
   // The message after an evicted one was built to continue it; it now opens the cache, so it needs its own header.
-  if (cached.messages[0]?.continued)
-    rebuild(cached, state.expandToolOutput)
+  if (cached.messages[0]?.continued) rebuild(cached, state.expandToolOutput, true)
   c.live.delete(id)
   c.live.set(id, cached)
   if (c.live.size > 5) {
@@ -120,27 +115,52 @@ function block(item: LiveMessage, raw: boolean) {
   return { text: `${fence}text\n${item.raw}\n${fence}`, turn: item.turn }
 }
 
-/** Rebuilds every cached message's text from the messages themselves. */
-function rebuild(cached: LivePage, expanded: boolean) {
+/** Rebuilds the cached messages' text from the messages themselves; `keep` reuses text whose sources did not change. */
+function rebuild(cached: LivePage, expanded: boolean, keep = false) {
   cached.messages = build(
     cached.messages.map((item) => item.message),
     undefined,
     expanded,
+    keep ? cached.messages : [],
   )
 }
 
-/** Every message's text in both views, with each one aware of the message before it. */
-function build(messages: Messages, previous: Messages[number] | undefined, expanded: boolean): LiveMessage[] {
-  const formatted = transcriptBlocks(messages, false, true, { expanded, previous })
-  const raw = transcriptBlocks(messages, true, false, { previous })
-  return messages.map((message, index) => ({
-    id: message.id,
-    message,
-    formatted: formatted[index]!.text,
-    raw: raw[index]!.text,
-    turn: formatted[index]!.turn,
-    continued: continuesTurn(message, index ? messages[index - 1] : previous),
-  }))
+/**
+ * Every message's text in both views, with each one aware of the message before it. A live paint changes only
+ * the running message, so an entry of `known` is reused when the messages its text was built from are the same.
+ */
+function build(
+  messages: Messages,
+  previous: Messages[number] | undefined,
+  expanded: boolean,
+  known: readonly LiveMessage[] = [],
+): LiveMessage[] {
+  const reusable = new Map(known.map((item) => [item.id, item]))
+  return messages.map((message, index) => {
+    const sources = sourcesOf(messages, index, previous)
+    const kept = reusable.get(message.id)
+    if (kept && kept.sources.length === sources.length && kept.sources.every((item, at) => item === sources[at]))
+      return kept
+    const formatted = transcriptBlock(messages, index, false, true, { expanded, previous })
+    return {
+      id: message.id,
+      message,
+      formatted: formatted.text,
+      raw: transcriptBlock(messages, index, true, false, { previous }).text,
+      turn: formatted.turn,
+      continued: continuesTurn(message, sources[0] as Messages[number] | undefined),
+      sources,
+    }
+  })
+}
+
+/** What `messages[index]` reads from: the message before it, itself, and, when it heads a turn, the turn's later steps. */
+function sourcesOf(messages: Messages, index: number, previous: Messages[number] | undefined) {
+  const before = index ? messages[index - 1] : previous
+  const sources: unknown[] = [before, messages[index]]
+  if (continuesTurn(messages[index], before)) return sources
+  for (let next = index + 1; continuesTurn(messages[next], messages[next - 1]); next++) sources.push(messages[next])
+  return sources
 }
 
 /** The cached message just before `first`, when it is already cached. */
