@@ -36,3 +36,16 @@ test("a live paint reuses the text of messages that did not change and matches a
   const done = [...earlier, first, step("a2", "partial and more", 50)]
   expect(texts(paint(c, done))).toEqual(texts(paint(conversation(), done)))
 })
+
+test("a partial-page paint rebuilds the retained turn header and reuses unrelated entries", () => {
+  const c = conversation()
+  const earlier = [user("u0", "previous question"), step("a0", "previous answer", 20), user("u1", "current question")]
+  const first = step("a1", "first step", 30)
+  const before = paint(c, [...earlier, first, step("a2", "partial")])
+  const last = step("a2", "completed", 50)
+  const after = paint(c, [last])
+  expect(after.map((item) => item.id)).toEqual(before.map((item) => item.id))
+  after.slice(0, 3).forEach((item, index) => expect(item).toBe(before[index]!))
+  expect(after[3]).not.toBe(before[3])
+  expect(texts(after)).toEqual(texts(paint(conversation(), [...earlier, first, last])))
+})
