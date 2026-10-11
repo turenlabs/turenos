@@ -16,9 +16,12 @@ import {
   hasProjectPermissions,
   homeProjectNavigation,
   homeProjectDirectories,
+  homeProjectSessionScope,
+  homeSessionDirectories,
   homeSessionServerStatus,
   latestRootSession,
   projectForDirectory,
+  projectForSession,
   sessionLocationName,
   toggleHomeProjectSelection,
 } from "./helpers"
@@ -350,6 +353,53 @@ describe("layout workspace helpers", () => {
     expect(label("/repos/weekly_health_check")).toBe("weekly_health_check")
     expect(label("/repos/alpha_project")).toBe("Alpha")
     expect(label("/Users/me/Desktop/scratch")).toBe("scratch")
+  })
+
+  test("resolves shared project metadata from the session's directory", () => {
+    const paladin = { id: "global", worktree: "/Users/me/paladin", name: "Paladin" }
+    const jobHunting = { id: "global", worktree: "/Users/me/job-hunting", name: "job-hunting" }
+    const projects = [paladin, jobHunting]
+    const current = session({ id: "paladin-session", projectID: "global", directory: paladin.worktree })
+    const byID = new Map(projects.map((project) => [project.id, project]))
+
+    expect(byID.get("global")).toBe(jobHunting)
+    expect(projectForSession(current, projects)).toBe(paladin)
+    expect(projectForSession(current, projects, byID)).toBe(paladin)
+    expect(projectForSession({ ...current, directory: jobHunting.worktree }, projects)).toBe(jobHunting)
+    expect(projectForSession({ ...current, directory: "/Users/me/scratch" }, projects)).toBeUndefined()
+    expect(sessionLocationName(current, projectForSession(current, projects))).toBe("Paladin")
+  })
+
+  test("keeps non-shared project IDs authoritative", () => {
+    const owner = { id: "owner", worktree: "/repos/owner", name: "Owner" }
+    const other = { id: "other", worktree: "/repos/other", name: "Other" }
+    const current = session({ id: "session", projectID: owner.id, directory: other.worktree })
+
+    expect(projectForSession(current, [owner, other])).toBe(owner)
+    expect(projectForSession({ ...current, projectID: "missing" }, [owner, other])).toBe(other)
+  })
+
+  test("scopes shared project session queries by directory on each platform", () => {
+    for (const directory of ["/Users/me/paladin", "/home/me/paladin", "C:\\Users\\me\\paladin"]) {
+      expect(homeProjectSessionScope({ id: "global", worktree: directory })).toEqual({ directory })
+      expect(homeProjectSessionScope({ worktree: directory })).toEqual({ directory })
+      expect(homeProjectSessionScope({ id: "paladin", worktree: directory })).toEqual({ project: "paladin" })
+    }
+    expect(homeProjectSessionScope()).toEqual({})
+  })
+
+  test("limits secondary session rows to the selected project's directories", () => {
+    for (const root of ["/Users/me", "/home/me", "C:\\Users\\me"]) {
+      const paladin = { worktree: `${root}/paladin`, sandboxes: [`${root}/paladin-copy`] }
+      const jobHunting = { worktree: `${root}/job-hunting`, sandboxes: [] }
+      const projects = [paladin, jobHunting]
+      const allowed = new Set(homeSessionDirectories(projects, paladin).map(pathKey))
+
+      expect(allowed.has(pathKey(paladin.worktree))).toBe(true)
+      expect(allowed.has(pathKey(paladin.sandboxes[0]!))).toBe(true)
+      expect(allowed.has(pathKey(jobHunting.worktree))).toBe(false)
+      expect(homeSessionDirectories(projects)).toEqual([paladin.worktree, paladin.sandboxes[0]!, jobHunting.worktree])
+    }
   })
 
   test("scopes home project selection by server", () => {

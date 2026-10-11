@@ -5,6 +5,7 @@ import { pathKey } from "@/utils/path-key"
 import type { ServerConnection } from "@/context/server"
 import type { HomeProjectSelection } from "@/context/layout"
 import { Session as SessionSchema } from "@turenlabs/schema/session"
+import { isSharedProject } from "@/context/project-enrich"
 
 type SessionStore = {
   session?: Session[]
@@ -136,7 +137,8 @@ export function projectForSession<T extends { id?: string; worktree: string; san
   projects: T[],
   byID: Map<string, T> = new Map(projects.flatMap((project) => (project.id ? [[project.id, project] as const] : []))),
 ) {
-  const direct = byID.get(session.projectID)
+  // Shared IDs have per-directory metadata, not one unique project label.
+  const direct = isSharedProject(session.projectID) ? undefined : byID.get(session.projectID)
   if (direct) return direct
   return projectForDirectory(session.directory, projects)
 }
@@ -149,6 +151,18 @@ export function projectForDirectory<T extends { worktree: string; sandboxes?: st
   return projects.find(
     (project) => pathKey(project.worktree) === key || project.sandboxes?.some((sandbox) => pathKey(sandbox) === key),
   )
+}
+
+export function homeProjectSessionScope(project?: { id?: string; worktree: string }) {
+  if (!project) return {}
+  return isSharedProject(project.id) ? { directory: project.worktree } : { project: project.id }
+}
+
+export function homeSessionDirectories<T extends { worktree: string; sandboxes?: string[] }>(
+  projects: T[],
+  selected?: T,
+) {
+  return (selected ? [selected] : projects).flatMap((project) => [project.worktree, ...(project.sandboxes ?? [])])
 }
 
 export const errorMessage = (err: unknown, fallback: string) => {
