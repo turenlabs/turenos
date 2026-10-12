@@ -2,6 +2,25 @@ import type { ReleaseNote } from "../release-notes"
 
 export const notes: readonly ReleaseNote[] = [
   {
+    version: "1.0.46",
+    summary:
+      "The terminal client ships inside the `forge` CLI, and the app links it into your shell as `forge` and `turenos`.",
+    changes: {
+      new: [
+        "Run `forge tui` to open the full terminal client from the compiled `forge` binary.",
+        "The app links its bundled CLI into ~/.local/bin as `forge` and `turenos` so both commands work in any terminal.",
+      ],
+      improved: [
+        "The terminal client qualifies its embedded native builds and quits cleanly across terminal platforms.",
+      ],
+      fixed: [
+        "Team room history stays stable and reloads less often.",
+        "Retrying duty loading from the room error action works again.",
+        "Shared project navigation is scoped by directory.",
+      ],
+    },
+  },
+  {
     version: "1.0.45",
     summary:
       "A new terminal client, composer predictions, bundled release notes, and Team tools across the app and terminal.",
