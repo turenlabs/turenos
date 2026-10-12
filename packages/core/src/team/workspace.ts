@@ -248,7 +248,21 @@ const layer = Layer.effect(
       ...(row.loop_id ? { loopID: row.loop_id } : {}),
       time: row.time_created,
     })
-    const taskInfo = (row: typeof TeamTaskTable.$inferSelect): Task => ({
+    const taskInfo = (
+      row: Pick<
+        typeof TeamTaskTable.$inferSelect,
+        | "id"
+        | "room_id"
+        | "message_id"
+        | "teammate_id"
+        | "session_id"
+        | "status"
+        | "error"
+        | "factory_run_id"
+        | "time_created"
+        | "time_updated"
+      >,
+    ): Task => ({
       id: row.id,
       roomID: row.room_id,
       messageID: row.message_id,
@@ -259,7 +273,12 @@ const layer = Layer.effect(
       ...(row.factory_run_id ? { factoryRunID: row.factory_run_id } : {}),
       time: { created: row.time_created, updated: row.time_updated },
     })
-    const factoryRunInfo = (row: typeof TeamFactoryRunTable.$inferSelect): Team.FactoryRun => ({
+    const factoryRunInfo = (
+      row: Pick<
+        typeof TeamFactoryRunTable.$inferSelect,
+        "id" | "room_id" | "status" | "phase" | "task_ids" | "result" | "error" | "time_created" | "time_updated"
+      >,
+    ): Team.FactoryRun => ({
       id: row.id,
       roomID: row.room_id,
       status: row.status,
@@ -388,7 +407,18 @@ const layer = Layer.effect(
           .all()
           .pipe(Effect.orDie)
         const tasks = yield* db
-          .select()
+          .select({
+            id: TeamTaskTable.id,
+            room_id: TeamTaskTable.room_id,
+            message_id: TeamTaskTable.message_id,
+            teammate_id: TeamTaskTable.teammate_id,
+            session_id: TeamTaskTable.session_id,
+            status: TeamTaskTable.status,
+            error: TeamTaskTable.error,
+            factory_run_id: TeamTaskTable.factory_run_id,
+            time_created: TeamTaskTable.time_created,
+            time_updated: TeamTaskTable.time_updated,
+          })
           .from(TeamTaskTable)
           .where(eq(TeamTaskTable.room_id, roomID))
           .orderBy(desc(TeamTaskTable.time_created))
@@ -396,9 +426,20 @@ const layer = Layer.effect(
           .all()
           .pipe(Effect.orDie)
         const activeTasks = yield* db
-          .select()
+          .select({
+            id: TeamTaskTable.id,
+            room_id: TeamTaskTable.room_id,
+            message_id: TeamTaskTable.message_id,
+            teammate_id: TeamTaskTable.teammate_id,
+            session_id: TeamTaskTable.session_id,
+            status: TeamTaskTable.status,
+            error: TeamTaskTable.error,
+            factory_run_id: TeamTaskTable.factory_run_id,
+            time_created: TeamTaskTable.time_created,
+            time_updated: TeamTaskTable.time_updated,
+          })
           .from(TeamTaskTable)
-          .where(and(eq(TeamTaskTable.room_id, roomID), inArray(TeamTaskTable.status, ["claimed", "running"])))
+          .where(and(eq(TeamTaskTable.room_id, roomID), sql`${TeamTaskTable.status} IN ('claimed', 'running')`))
           .orderBy(asc(TeamTaskTable.time_created))
           .limit(100)
           .all()
@@ -414,7 +455,17 @@ const layer = Layer.effect(
           tasks: visibleTasks.map(taskInfo),
           duties: duties.map(({ team_duty }) => ({ loopID: team_duty.loop_id, teammateID: team_duty.teammate_id })),
           factoryRuns: (yield* db
-            .select()
+            .select({
+              id: TeamFactoryRunTable.id,
+              room_id: TeamFactoryRunTable.room_id,
+              status: TeamFactoryRunTable.status,
+              phase: TeamFactoryRunTable.phase,
+              task_ids: TeamFactoryRunTable.task_ids,
+              result: TeamFactoryRunTable.result,
+              error: TeamFactoryRunTable.error,
+              time_created: TeamFactoryRunTable.time_created,
+              time_updated: TeamFactoryRunTable.time_updated,
+            })
             .from(TeamFactoryRunTable)
             .where(eq(TeamFactoryRunTable.room_id, roomID))
             .orderBy(desc(TeamFactoryRunTable.time_created))

@@ -940,10 +940,17 @@ export default {
       yield* tx.run(
         `CREATE INDEX \`team_factory_run_room_status_idx\` ON \`team_factory_run\` (\`room_id\`,\`status\`);`,
       )
+      yield* tx.run(
+        `CREATE INDEX \`team_factory_run_room_time_idx\` ON \`team_factory_run\` (\`room_id\`,\`time_created\`);`,
+      )
       yield* tx.run(`CREATE UNIQUE INDEX \`team_message_room_seq_idx\` ON \`team_message\` (\`room_id\`,\`seq\`);`)
       yield* tx.run(`CREATE UNIQUE INDEX \`team_message_source_idx\` ON \`team_message\` (\`source_key\`);`)
       yield* tx.run(`CREATE INDEX \`team_message_room_time_idx\` ON \`team_message\` (\`room_id\`,\`time_created\`);`)
       yield* tx.run(`CREATE UNIQUE INDEX \`team_room_name_idx\` ON \`team_room\` (\`name\`);`)
+      yield* tx.run(`CREATE INDEX \`team_task_room_time_idx\` ON \`team_task\` (\`room_id\`,\`time_created\`);`)
+      yield* tx.run(
+        `CREATE INDEX \`team_task_active_room_time_idx\` ON \`team_task\` (\`room_id\`,\`time_created\`) WHERE "team_task"."status" IN ('claimed', 'running');`,
+      )
       yield* tx.run(`CREATE INDEX \`team_task_status_lease_idx\` ON \`team_task\` (\`status\`,\`lease_expires_at\`);`)
       yield* tx.run(`CREATE INDEX \`team_task_teammate_status_idx\` ON \`team_task\` (\`teammate_id\`,\`status\`);`)
       yield* tx.run(

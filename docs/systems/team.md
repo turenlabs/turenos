@@ -7,6 +7,15 @@ The interface uses the current TurenOS design system and a compact IRC-style mes
 The room follows new messages at the bottom, including late rich-output layout changes.
 Scroll up to read history without automatic jumps. Sending a message restores bottom-follow.
 
+## Room History
+
+The room opens the latest 100 messages. Select **Load older messages** to read earlier pages.
+Catalogue updates and failed refreshes keep loaded messages and the current scroll position.
+Duty updates load separately and do not delay room messages.
+Rich output loads when its message approaches the visible area. Message text appears without waiting for rich output.
+Completed source messages share a bounded cache within one server client. Failed or unfinished sources remain available for **Retry**.
+File links load their Session location and preview on demand, including messages without rich-output sources.
+
 ## Factory Channels
 
 Configure a channel as a factory to give its teammates a shared outcome and work inputs.
@@ -217,4 +226,6 @@ Pixel avatars stay in TurenOS Desktop.
 - [Room persistence and task admission](../../packages/core/src/team/workspace.ts)
 - [Native task execution](../../packages/forge/src/team/runtime.ts)
 - [Room interface](../../packages/app/src/pages/team.tsx)
+- [Room rich output](../../packages/app/src/pages/team/message-content.tsx)
+- [Rich-output loading and cache](../../packages/app/src/pages/team/rich-output.ts)
 - [Public room API](../../packages/protocol/src/groups/team.ts)

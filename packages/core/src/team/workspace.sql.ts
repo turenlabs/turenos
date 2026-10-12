@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm"
 import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core"
 import type { Team } from "@turenlabs/schema/team"
 import type { AgentV2 } from "../agent"
@@ -132,6 +133,10 @@ export const TeamTaskTable = sqliteTable(
     time_updated: integer().notNull(),
   },
   (table) => [
+    index("team_task_room_time_idx").on(table.room_id, table.time_created),
+    index("team_task_active_room_time_idx")
+      .on(table.room_id, table.time_created)
+      .where(sql`${table.status} IN ('claimed', 'running')`),
     index("team_task_status_lease_idx").on(table.status, table.lease_expires_at),
     index("team_task_teammate_status_idx").on(table.teammate_id, table.status),
     uniqueIndex("team_task_message_teammate_idx").on(table.message_id, table.teammate_id),
@@ -175,5 +180,8 @@ export const TeamFactoryRunTable = sqliteTable(
     time_created: integer().notNull(),
     time_updated: integer().notNull(),
   },
-  (table) => [index("team_factory_run_room_status_idx").on(table.room_id, table.status)],
+  (table) => [
+    index("team_factory_run_room_status_idx").on(table.room_id, table.status),
+    index("team_factory_run_room_time_idx").on(table.room_id, table.time_created),
+  ],
 )

@@ -72,6 +72,8 @@ export default function TeamPage() {
     value?: Team.State
     error?: string
     loadError?: string
+    dutyError?: string
+    dutyRetry: number
     loading: boolean
     busy: boolean
     text: string
@@ -92,6 +94,7 @@ export default function TeamPage() {
     createAvatar?: string[]
     createHandle: string
   }>({
+    dutyRetry: 0,
     loading: true,
     busy: false,
     text: "",
@@ -169,7 +172,6 @@ export default function TeamPage() {
         received = [...received, ...page]
         result = { ...next, messages: received }
       }
-      const dutyDefinitions = mode === "older" ? state.dutyDefinitions : responseData(await loopApi(sdk.client).list())
       if (!roomID) await lastRoomReady.promise
       if (current !== generation || revision !== roomRevision || roomID !== params.roomID) return
       if (!roomID && result.room.id) {
@@ -178,7 +180,6 @@ export default function TeamPage() {
         return
       }
       setLastRoom(sdk.scope, result.room.id)
-      setState("dutyDefinitions", dutyDefinitions)
       const previous = state.value
       const messages =
         mode === "older"
@@ -250,8 +251,21 @@ export default function TeamPage() {
         if (!ownsTeamResponse(catalogOwner, { client: serverSDK().client, generation })) return
         setState("error", error instanceof Error ? error.message : "Could not load agent catalogue")
       })
+    const timer = window.setInterval(() => void load("poll"), 2_000)
+    onCleanup(() => {
+      generation++
+      window.clearInterval(timer)
+    })
+    void roomID
+  })
+
+  // Catalogue changes must not reset the room or its scroll position.
+  createEffect(() => {
     const connection = server.current
-    if (!connection) return
+    if (!connection) {
+      setState("models", [])
+      return
+    }
     const provider = global.ensureServerCtx(connection).sync.data.provider
     setState(
       "models",
@@ -268,12 +282,33 @@ export default function TeamPage() {
           : []
       }),
     )
-    const timer = window.setInterval(() => void load("poll"), 2_000)
+  })
+
+  createEffect(() => {
+    const client = serverSDK().client
+    state.dutyRetry
+    let active = true
+    let pending = false
+    setState("dutyDefinitions", [])
+    setState("dutyError", undefined)
+    const refreshDuties = async () => {
+      if (pending) return
+      pending = true
+      try {
+        const definitions = responseData(await loopApi(client).list())
+        if (active) setState({ dutyDefinitions: definitions, dutyError: undefined })
+      } catch (error) {
+        if (active) setState("dutyError", error instanceof Error ? error.message : "Could not load duties")
+      } finally {
+        pending = false
+      }
+    }
+    void refreshDuties()
+    const timer = window.setInterval(() => void refreshDuties(), 2_000)
     onCleanup(() => {
-      generation++
+      active = false
       window.clearInterval(timer)
     })
-    void roomID
   })
 
   const send = async () => {
@@ -966,13 +1001,19 @@ export default function TeamPage() {
             </section>
           </div>
         </Show>
-        <Show when={state.error ?? state.loadError}>
+        <Show when={state.error ?? state.loadError ?? state.dutyError}>
           <div
             role="alert"
             class="flex items-center justify-between border-b border-v2-state-border-danger bg-v2-state-bg-danger px-4 py-2 text-[12px]"
           >
-            <span>{state.error ?? state.loadError}</span>
-            <button class={button} onClick={() => void load("poll")}>
+            <span>{state.error ?? state.loadError ?? state.dutyError}</span>
+            <button
+              class={button}
+              onClick={() => {
+                if (state.dutyError) setState("dutyRetry", (value) => value + 1)
+                void load("poll")
+              }}
+            >
               Retry
             </button>
           </div>
