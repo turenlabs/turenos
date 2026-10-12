@@ -73,6 +73,7 @@ export default function TeamPage() {
     error?: string
     loadError?: string
     dutyError?: string
+    dutyRetry: number
     loading: boolean
     busy: boolean
     text: string
@@ -93,6 +94,7 @@ export default function TeamPage() {
     createAvatar?: string[]
     createHandle: string
   }>({
+    dutyRetry: 0,
     loading: true,
     busy: false,
     text: "",
@@ -284,6 +286,7 @@ export default function TeamPage() {
 
   createEffect(() => {
     const client = serverSDK().client
+    state.dutyRetry
     let active = true
     let pending = false
     setState("dutyDefinitions", [])
@@ -1004,7 +1007,13 @@ export default function TeamPage() {
             class="flex items-center justify-between border-b border-v2-state-border-danger bg-v2-state-bg-danger px-4 py-2 text-[12px]"
           >
             <span>{state.error ?? state.loadError ?? state.dutyError}</span>
-            <button class={button} onClick={() => void load("poll")}>
+            <button
+              class={button}
+              onClick={() => {
+                if (state.dutyError) setState("dutyRetry", (value) => value + 1)
+                void load("poll")
+              }}
+            >
               Retry
             </button>
           </div>

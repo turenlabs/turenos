@@ -201,6 +201,20 @@ try {
   polls()
   await until(() => !host.textContent?.includes("History unavailable"), "History did not recover")
 
+  await until(() => !!host.textContent?.includes("Duties unavailable"), "Missing duty refresh error")
+  const dutyRequests = requests.filter((url) => url.pathname === "/api/loop").length
+  const beforeRetryScroll = log().scrollTop
+  failDuties = false
+  const retry = [...host.querySelectorAll("button")].find((button) => button.textContent?.trim() === "Retry")!
+  retry.click()
+  await until(
+    () => requests.filter((url) => url.pathname === "/api/loop").length > dutyRequests,
+    "Retry did not request duties before the next timer",
+  )
+  await until(() => !host.textContent?.includes("Duties unavailable"), "Duty Retry did not clear its error")
+  assert.equal(log().querySelector("article"), original, "Duty Retry remounted room history")
+  assert.equal(log().scrollTop, beforeRetryScroll, "Duty Retry reset scroll")
+
   const older = [...host.querySelectorAll("button")].find(
     (button) => button.textContent?.trim() === "Load older messages",
   )!
