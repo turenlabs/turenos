@@ -201,7 +201,7 @@ try {
   polls()
   await until(() => !host.textContent?.includes("History unavailable"), "History did not recover")
 
-  await until(() => !!host.textContent?.includes("Duties unavailable"), "Missing duty refresh error")
+  await until(() => !!host.textContent?.includes("Loop API returned no data"), "Missing duty refresh error")
   const dutyRequests = requests.filter((url) => url.pathname === "/api/loop").length
   const beforeRetryScroll = log().scrollTop
   failDuties = false
@@ -211,7 +211,7 @@ try {
     () => requests.filter((url) => url.pathname === "/api/loop").length > dutyRequests,
     "Retry did not request duties before the next timer",
   )
-  await until(() => !host.textContent?.includes("Duties unavailable"), "Duty Retry did not clear its error")
+  await until(() => !host.textContent?.includes("Loop API returned no data"), "Duty Retry did not clear its error")
   assert.equal(log().querySelector("article"), original, "Duty Retry remounted room history")
   assert.equal(log().scrollTop, beforeRetryScroll, "Duty Retry reset scroll")
 
