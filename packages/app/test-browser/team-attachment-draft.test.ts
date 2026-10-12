@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, spyOn, test } from "bun:test"
 import { createRoot } from "solid-js"
 import { createTeamAttachmentDraft } from "@/pages/team/attachment-draft"
 
@@ -172,6 +172,57 @@ describe("team attachment draft", () => {
       state.scope = "server-a\nroom-a"
       expect(draft.list().map((item) => item.name)).toEqual(["room-a-again.png"])
       dispose()
+    })
+  })
+
+  test.each(["server-a\nroom-b", "server-b\nroom-a"])(
+    "drops pending and queued clipboard reads after a scope round trip through %s",
+    async (otherScope) => {
+      await createRoot(async (dispose) => {
+        const read = Promise.withResolvers<File | null>()
+        const { state, draft } = setup({ readClipboardImage: () => read.promise })
+        const pending = draft.paste(clipboard([]))
+        const queued = draft.add([png("queued.png")])
+        state.scope = otherScope
+        draft.prune([])
+        state.scope = "server-a\nroom-a"
+        draft.prune([])
+        read.resolve(png("late.png"))
+        await Promise.all([pending, queued])
+        expect(draft.reading()).toBe(false)
+        expect(draft.list()).toEqual([])
+        expect(state.changes).toBe(0)
+        dispose()
+      })
+    },
+  )
+
+  test("drops an active FileReader after a room round trip", async () => {
+    await createRoot(async (dispose) => {
+      const { state, draft } = setup()
+      const started = Promise.withResolvers<void>()
+      const readers: FileReader[] = []
+      const read = FileReader.prototype.readAsDataURL
+      const spy = spyOn(FileReader.prototype, "readAsDataURL").mockImplementation(function (this: FileReader) {
+        readers.push(this)
+        started.resolve()
+      })
+      try {
+        const file = png("late-file.png")
+        const pending = draft.add([file])
+        await started.promise
+        state.scope = "server-a\nroom-b"
+        draft.prune([])
+        state.scope = "server-a\nroom-a"
+        draft.prune([])
+        read.call(readers[0]!, file)
+        await pending
+        expect(draft.list()).toEqual([])
+        expect(state.changes).toBe(0)
+      } finally {
+        spy.mockRestore()
+        dispose()
+      }
     })
   })
 

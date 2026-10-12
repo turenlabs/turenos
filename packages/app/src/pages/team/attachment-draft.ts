@@ -20,13 +20,14 @@ export function createTeamAttachmentDraft(input: {
   })
   // Reads run one at a time so two overlapping batches cannot both pass the limits.
   let queue = Promise.resolve()
+  let generation = 0
 
   const list = () => store.drafts[input.scope() ?? ""] ?? []
 
-  const read = async (scope: string, pending: File[] | Promise<File[]>) => {
+  const read = async (scope: string, admitted: number, pending: File[] | Promise<File[]>) => {
     for (const file of await pending) {
       // The room or server changed while this batch was being read. It must not land anywhere else.
-      if (input.scope() !== scope) return
+      if (input.scope() !== scope || admitted !== generation) return
       const problem = teamAttachmentProblem(store.drafts[scope] ?? [], file)
       if (problem) {
         input.onError(problem)
@@ -34,7 +35,7 @@ export function createTeamAttachmentDraft(input: {
       }
       const mime = teamAttachmentMime(await attachmentMime(file))
       const uri = await dataUrl(file, mime)
-      if (input.scope() !== scope) return
+      if (input.scope() !== scope || admitted !== generation) return
       // A File can declare more bytes than it carries. Never send a partial file as the whole one.
       if (teamAttachmentSize({ name: file.name, mime, uri }) !== file.size) {
         input.onError(`Could not read ${file.name}.`)
@@ -48,10 +49,11 @@ export function createTeamAttachmentDraft(input: {
   const add = (pending: File[] | Promise<File[]>) => {
     const scope = input.scope()
     if (!scope || (Array.isArray(pending) && pending.length === 0)) return Promise.resolve()
+    const admitted = generation
     setStore("reading", (count) => count + 1)
     input.onError(undefined)
     queue = queue
-      .then(() => read(scope, pending))
+      .then(() => read(scope, admitted, pending))
       .catch(() => input.onError("Could not read the attachment."))
       .finally(() => setStore("reading", (count) => count - 1))
     return queue
@@ -99,11 +101,14 @@ export function createTeamAttachmentDraft(input: {
     clear: (scope: string, ids: readonly string[]) =>
       setStore("drafts", scope, (items = []) => items.filter((item) => !ids.includes(item.id))),
     /** Frees every draft except the listed scopes. */
-    prune: (keep: readonly (string | undefined)[]) =>
+    prune: (keep: readonly (string | undefined)[]) => {
+      // Invalidate reads even if navigation returns to the same room before they finish.
+      generation += 1
       batch(() =>
         Object.keys(store.drafts)
           .filter((scope) => !keep.includes(scope))
           .forEach((scope) => setStore("drafts", scope, undefined!)),
-      ),
+      )
+    },
   }
 }

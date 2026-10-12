@@ -373,6 +373,17 @@ try {
   await room("room-a", "First")
   assert.deepEqual(drafts(), [], "Abandoned room draft was not cleaned up")
 
+  const roundTrip = Promise.withResolvers<File | null>()
+  nativeClipboard = () => roundTrip.promise
+  paste([])
+  await room("room-b", "Second")
+  await room("room-a", "First")
+  roundTrip.resolve(png("round-trip.png"))
+  await flush()
+  await flush()
+  assert.deepEqual(drafts(), [], "Abandoned clipboard read returned after a room round trip")
+  assert.equal(sendButton().disabled, true)
+
   // The same room on another server starts clean, including reads still in flight.
   select([png("server-a.png")])
   await until(() => drafts().length === 1, "Server A draft did not attach")
