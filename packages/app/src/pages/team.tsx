@@ -725,14 +725,25 @@ export default function TeamPage() {
               {(room) => (
                 <div class="flex items-center">
                   <button
-                    class={`min-w-0 flex-1 rounded-md px-2 py-1.5 text-left text-[13px] ${state.value?.room.id === room.id ? "bg-v2-background-bg-layer-02" : "hover:bg-v2-overlay-simple-overlay-hover"}`}
+                    class={`flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] ${state.value?.room.id === room.id ? "bg-v2-background-bg-layer-02" : "hover:bg-v2-overlay-simple-overlay-hover"}`}
                     onClick={() => {
                       navigate(`/team/${room.id}`)
                       setState("mobilePanel", undefined)
                     }}
                   >
-                    # {room.name}
-                    {room.archived ? " · Archived" : ""}
+                    <span class="min-w-0 flex-1 truncate">
+                      # {room.name}
+                      {room.archived ? " · Archived" : ""}
+                    </span>
+                    <Show when={state.value?.activeRoomIDs?.includes(room.id)}>
+                      <span
+                        data-slot="room-active"
+                        role="img"
+                        aria-label="Working"
+                        title="Teammates are working in this room"
+                        class="size-2 shrink-0 rounded-full bg-icon-success-base motion-safe:animate-pulse"
+                      />
+                    </Show>
                   </button>
                   {roomMenu(() => room)}
                 </div>

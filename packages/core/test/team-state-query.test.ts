@@ -42,6 +42,11 @@ describe("Team state query plans", () => {
       expect(recentTaskPlan.map((row) => row.detail).join(" ")).toContain("team_task_room_time_idx")
       expect(activeTaskPlan.map((row) => row.detail).join(" ")).toContain("team_task_active_room_time_idx")
       expect(factoryRunPlan.map((row) => row.detail).join(" ")).toContain("team_factory_run_room_time_idx")
+      const activeRoomsPlan = yield* db.all<{ detail: string }>(sql`
+        EXPLAIN QUERY PLAN
+        SELECT DISTINCT room_id FROM team_task WHERE status IN ('queued', 'claimed', 'running')
+      `)
+      expect(activeRoomsPlan.map((row) => row.detail).join(" ")).toContain("team_task_status_lease_idx")
       expect(recentTaskPlan.map((row) => row.detail).join(" ")).not.toContain("TEMP B-TREE")
       expect(activeTaskPlan.map((row) => row.detail).join(" ")).not.toContain("TEMP B-TREE")
       expect(factoryRunPlan.map((row) => row.detail).join(" ")).not.toContain("TEMP B-TREE")

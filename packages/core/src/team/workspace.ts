@@ -504,8 +504,21 @@ const layer = Layer.effect(
         const visibleTasks = [...new Map([...tasks, ...activeTasks].map((task) => [task.id, task])).values()].sort(
           (a, b) => b.time_created - a.time_created,
         )
+        const activeTaskRooms = yield* db
+          .selectDistinct({ room_id: TeamTaskTable.room_id })
+          .from(TeamTaskTable)
+          .where(inArray(TeamTaskTable.status, ["queued", "claimed", "running"]))
+          .all()
+          .pipe(Effect.orDie)
+        const activeFactoryRooms = yield* db
+          .selectDistinct({ room_id: TeamFactoryRunTable.room_id })
+          .from(TeamFactoryRunTable)
+          .where(eq(TeamFactoryRunTable.status, "running"))
+          .all()
+          .pipe(Effect.orDie)
         return {
           rooms: rooms.map(roomInfo),
+          activeRoomIDs: [...new Set([...activeTaskRooms, ...activeFactoryRooms].map((row) => row.room_id))],
           room: roomInfo(room),
           teammates: teammates.map(teammateInfo),
           messages: ordered.map((message) => {
