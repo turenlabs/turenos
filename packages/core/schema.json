@@ -1,9 +1,9 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "9ee96009-afd3-4dc1-8cfb-1994f79c7a21",
+  "id": "c842adb5-3a5e-4d7c-a37b-98a59bd8986b",
   "prevIds": [
-    "064bc7c5-e133-4cde-b9fe-9fb27f071538"
+    "9ee96009-afd3-4dc1-8cfb-1994f79c7a21"
   ],
   "ddl": [
     {
@@ -7883,6 +7883,24 @@
           "isExpression": false
         },
         {
+          "value": "time_created",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "team_factory_run_room_time_idx",
+      "entityType": "indexes",
+      "table": "team_factory_run"
+    },
+    {
+      "columns": [
+        {
+          "value": "room_id",
+          "isExpression": false
+        },
+        {
           "value": "seq",
           "isExpression": false
         }
@@ -7939,6 +7957,42 @@
       "name": "team_room_name_idx",
       "entityType": "indexes",
       "table": "team_room"
+    },
+    {
+      "columns": [
+        {
+          "value": "room_id",
+          "isExpression": false
+        },
+        {
+          "value": "time_created",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "team_task_room_time_idx",
+      "entityType": "indexes",
+      "table": "team_task"
+    },
+    {
+      "columns": [
+        {
+          "value": "room_id",
+          "isExpression": false
+        },
+        {
+          "value": "time_created",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": "\"team_task\".\"status\" IN ('claimed', 'running')",
+      "origin": "manual",
+      "name": "team_task_active_room_time_idx",
+      "entityType": "indexes",
+      "table": "team_task"
     },
     {
       "columns": [
