@@ -37,7 +37,11 @@ import {
   timeLabel,
   roomCoordinator,
   roomDeleteBlocker,
+  taskRequests,
+  type TaskRequest,
 } from "./team/model"
+import { permissionFromV2 } from "@/context/permission-request"
+import { cmp } from "@/context/global-sync/utils"
 import type { Team } from "@turenlabs/schema/team"
 import { factoryConfigProblem, teammateDraft } from "@turenlabs/client/team"
 
@@ -54,6 +58,7 @@ const statusLabel = {
   claimed: "Starting",
 }
 const phaseLabel = { plan: "Planning", work: "Working", check: "Checking", done: "Finished" }
+const taskSessionLink = { question: "Answer in Session", permission: "Review in Session", none: "Open Session" }
 const roomActionLabel = { edit: "Save", archive: "Archive", restore: "Restore", delete: "Delete permanently" }
 const roomActionTitle = {
   edit: "Edit room",
@@ -685,6 +690,55 @@ export default function TeamPage() {
   const activeTasks = () => state.value?.tasks.filter((task) => ["queued", "claimed", "running"].includes(task.status))
   const finishedTasks = () =>
     state.value?.tasks.filter((task) => !["queued", "claimed", "running"].includes(task.status))
+  // Task Sessions blocked on a question or permission prompt. The shared session store follows
+  // live prompt events for every directory, so this updates without waiting for a Team poll.
+  const waiting = () => {
+    const connection = server.current
+    const tasks = activeTasks()
+    if (!connection || !tasks?.length) return new Map<string, TaskRequest>()
+    const session = global.ensureServerCtx(connection).sync.session
+    return taskRequests(
+      tasks.map((task) => task.sessionID),
+      session.data,
+      (sessionID) => session.get(sessionID)?.parentID,
+    )
+  }
+
+  // Prompts raised before this page loaded are in the shared store only when their directory
+  // was bootstrapped, so read each active task Session's pending prompts once.
+  const hydrated = new Set<string>()
+  createEffect(() => {
+    const connection = server.current
+    const tasks = activeTasks()
+    if (!connection || !tasks) return
+    const session = global.ensureServerCtx(connection).sync.session
+    const client = serverSDK().client
+    for (const task of tasks) {
+      const key = JSON.stringify([server.key, task.sessionID])
+      if (hydrated.has(key)) continue
+      hydrated.add(key)
+      void Promise.all([
+        client.v2.session.question.list({ sessionID: task.sessionID }),
+        client.v2.session.permission.list({ sessionID: task.sessionID }),
+      ])
+        .then(([questions, permissions]) => {
+          // A live event that arrived meanwhile is newer than this snapshot.
+          if (questions.data && !session.data.question[task.sessionID])
+            session.set(
+              "question",
+              task.sessionID,
+              [...questions.data.data].sort((a, b) => cmp(a.id, b.id)),
+            )
+          if (permissions.data && !session.data.permission[task.sessionID])
+            session.set(
+              "permission",
+              task.sessionID,
+              permissions.data.data.map(permissionFromV2).sort((a, b) => cmp(a.id, b.id)),
+            )
+        })
+        .catch(() => hydrated.delete(key))
+    }
+  })
 
   return (
     <div
@@ -1201,15 +1255,21 @@ export default function TeamPage() {
             aria-atomic="true"
             class="mb-2 flex min-h-4 items-center gap-2 text-[11px] leading-4 text-v2-text-text-muted"
           >
-            <Show when={state.value && roomActivity(state.value.room.id, state.value.tasks, state.value.teammates)}>
+            <Show
+              when={
+                state.value && roomActivity(state.value.room.id, state.value.tasks, state.value.teammates, waiting())
+              }
+            >
               {(activity) => (
                 <>
-                  <span aria-hidden="true" class="flex shrink-0 gap-1 motion-safe:animate-pulse">
-                    <span class="size-1 rounded-full bg-current" />
-                    <span class="size-1 rounded-full bg-current" />
-                    <span class="size-1 rounded-full bg-current" />
-                  </span>
-                  <span class="min-w-0 truncate">{activity()}</span>
+                  <Show when={activity().working}>
+                    <span aria-hidden="true" class="flex shrink-0 gap-1 motion-safe:animate-pulse">
+                      <span class="size-1 rounded-full bg-current" />
+                      <span class="size-1 rounded-full bg-current" />
+                      <span class="size-1 rounded-full bg-current" />
+                    </span>
+                  </Show>
+                  <span class="min-w-0 truncate">{activity().text}</span>
                 </>
               )}
             </Show>
@@ -1473,11 +1533,13 @@ export default function TeamPage() {
             <div class="mt-3 border-b border-v2-border-border-base pb-3">
               <div class="text-[11px]">
                 {state.value?.teammates.find((item) => item.id === task.teammateID)?.handle ?? "Teammate"} ·{" "}
-                {statusLabel[task.status]}
+                <Show when={waiting().get(task.sessionID)} fallback={statusLabel[task.status]}>
+                  <span class="text-v2-state-fg-warning">{statusLabel.needs_input}</span>
+                </Show>
               </div>
               <div class="mt-2 flex gap-2">
                 <a class="text-[11px] underline" href={sessionHref(server.key, task.sessionID)}>
-                  Open Session
+                  {taskSessionLink[waiting().get(task.sessionID) ?? "none"]}
                 </a>
                 <Show when={!archived() && ["queued", "claimed", "running"].includes(task.status)}>
                   <button
