@@ -19,6 +19,7 @@ import { forwardInitializationFailure } from "./initialization"
 import { exportDebugLogs, initCrashReporter, initLogging, startNetLog, write as writeLog } from "./logging"
 import { parseMarkdown } from "./markdown"
 import { createMenu } from "./menu"
+import { ensureCliLinks } from "./path-links"
 import { createOnboarding } from "./onboarding"
 import { createReleaseNotesCoordinator } from "./release-notes"
 import { preferAppEnv, spawnLocalServer, type SidecarListener } from "./server"
@@ -292,6 +293,13 @@ const main = Effect.gen(function* () {
   app.setAsDefaultProtocolClient("forge")
   registerRendererProtocol()
   setDockIcon()
+  if (app.isPackaged && process.platform !== "win32") {
+    try {
+      ensureCliLinks(join(homedir(), ".local", "bin"), join(process.resourcesPath, "forge-cli"))
+    } catch (error) {
+      logger.warn("failed to link the bundled CLI into ~/.local/bin", { error })
+    }
+  }
   const storageRemote = createStorageRemote({ ready: awaitServerReady })
   const storage = createDesktopStorage({
     remote: storageRemote,
