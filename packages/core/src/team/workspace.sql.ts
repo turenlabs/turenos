@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm"
-import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core"
+import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core"
 import type { Team } from "@turenlabs/schema/team"
 import type { AgentV2 } from "../agent"
 import type { ModelV2 } from "../model"
@@ -92,6 +92,31 @@ export const TeamMessageTable = sqliteTable(
     uniqueIndex("team_message_room_seq_idx").on(table.room_id, table.seq),
     uniqueIndex("team_message_source_idx").on(table.source_key),
     index("team_message_room_time_idx").on(table.room_id, table.time_created),
+  ],
+)
+
+// Uploaded content is owned by the room: it is written in the same transaction as its message and
+// removed with the room. `content` holds the canonical base64 payload of the upload.
+export const TeamAttachmentTable = sqliteTable(
+  "team_attachment",
+  {
+    message_id: text()
+      .notNull()
+      .references(() => TeamMessageTable.id, { onDelete: "cascade" }),
+    position: integer().notNull(),
+    room_id: text()
+      .notNull()
+      .references(() => TeamRoomTable.id, { onDelete: "cascade" }),
+    name: text().notNull(),
+    mime: text().notNull(),
+    size: integer().notNull(),
+    digest: text().notNull(),
+    content: text().notNull(),
+    time_created: integer().notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.message_id, table.position] }),
+    index("team_attachment_room_idx").on(table.room_id),
   ],
 )
 

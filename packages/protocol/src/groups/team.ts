@@ -79,6 +79,16 @@ export const Group = HttpApiGroup.make("server.team")
     }).annotateMerge(OpenApi.annotations({ identifier: "v2.team.teammateStop", summary: "Stop teammate work" })),
   )
   .add(
+    HttpApiEndpoint.get("team.messageAttachments", "/api/team/message/:messageID/attachments", {
+      params: { messageID: Schema.String },
+      query: { roomID: Schema.String.pipe(Schema.check(Schema.isMinLength(1))) },
+      success: Schema.Array(Team.Attachment).pipe(Schema.check(Schema.isMaxLength(Team.MAX_ATTACHMENTS))),
+      error: errors,
+    }).annotateMerge(
+      OpenApi.annotations({ identifier: "v2.team.messageAttachments", summary: "Download Team message attachments" }),
+    ),
+  )
+  .add(
     HttpApiEndpoint.post("team.messagePost", "/api/team/message", {
       payload: Team.PostMessage,
       success: Team.Posted,

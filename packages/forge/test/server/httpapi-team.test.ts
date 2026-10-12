@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
-import { Context, Schema } from "effect"
+import { ConfigProvider, Context, Layer, Schema } from "effect"
 import { HttpRouter } from "effect/unstable/http"
 import { Team } from "@turenlabs/schema/team"
 import { HttpApiApp } from "../../src/server/routes/instance/httpapi/server"
@@ -31,6 +31,74 @@ afterEach(async () => {
 })
 
 describe("Team HttpApi", () => {
+  test("serves metadata-only history and scoped lazy downloads, including archived rooms", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const room = Schema.decodeUnknownSync(Team.Room)(
+      await (await request("/api/team/room", tmp.path, "POST", { name: "uploads" })).json(),
+    )
+    const other = Schema.decodeUnknownSync(Team.Room)(
+      await (await request("/api/team/room", tmp.path, "POST", { name: "other-uploads" })).json(),
+    )
+    const attachments = [
+      { name: "notes.txt", mime: "text/plain", uri: "data:text/plain;base64,aGVsbG8=" },
+      { name: "bundle.zip", mime: "application/zip", uri: "data:application/zip;base64,UEsDBA==" },
+    ]
+    const payload = { id: "msg_http_upload", roomID: room.id, text: "", attachments }
+    const posted = await request("/api/team/message", tmp.path, "POST", payload)
+    expect(posted.status).toBe(200)
+    expect(Schema.decodeUnknownSync(Team.Posted)(await posted.json()).message.attachments).toEqual(attachments)
+    const history = await request(`/api/team?roomID=${room.id}&attachments=true`, tmp.path)
+    const raw = await history.text()
+    expect(raw).not.toContain("base64")
+    const state = Schema.decodeUnknownSync(Team.State)(JSON.parse(raw))
+    expect(state.messages.find((message) => message.id === payload.id)).toMatchObject({
+      attachmentInfo: [
+        { name: "notes.txt", mime: "text/plain", size: 5 },
+        { name: "bundle.zip", mime: "application/zip", size: 4 },
+      ],
+    })
+    expect(state.messages.every((message) => message.attachments === undefined)).toBe(true)
+    const route = `/api/team/message/${payload.id}/attachments`
+    expect((await request(route, tmp.path)).status).toBe(400)
+    expect((await request(`${route}?roomID=`, tmp.path)).status).toBe(400)
+    expect((await request(`${route}?roomID=${other.id}`, tmp.path)).status).toBe(400)
+    expect((await request(`/api/team/message/msg_missing/attachments?roomID=${room.id}`, tmp.path)).status).toBe(400)
+    const downloaded = await request(`${route}?roomID=${room.id}`, tmp.path)
+    expect(downloaded.status).toBe(200)
+    expect(Schema.decodeUnknownSync(Schema.Array(Team.Attachment))(await downloaded.json())).toEqual(attachments)
+    expect((await request(`/api/team/room/${room.id}/archive`, tmp.path, "POST")).status).toBe(200)
+    expect(await (await request(`${route}?roomID=${room.id}`, tmp.path)).json()).toEqual(attachments)
+    const invalid = await request("/api/team/message", tmp.path, "POST", {
+      ...payload,
+      id: "msg_http_invalid",
+      roomID: other.id,
+      attachments: [{ ...attachments[0], uri: "https://example.com/file" }],
+    })
+    expect(invalid.status).toBe(400)
+    expect((await request(`/api/team/message/msg_http_invalid/attachments?roomID=${other.id}`, tmp.path)).status).toBe(
+      400,
+    )
+  })
+
+  test("authenticates lazy downloads before serving uploaded bytes", async () => {
+    await app.dispose()
+    app = HttpRouter.toWebHandler(
+      HttpApiApp.routes.pipe(
+        Layer.provide(
+          ConfigProvider.layer(ConfigProvider.fromUnknown({ FORGE_SERVER_PASSWORD: "team-download-test" })),
+        ),
+      ),
+      { disableLogger: true },
+    )
+    const route = "http://localhost/api/team/message/msg_missing/attachments?roomID=trm_team"
+    expect((await app.handler(new Request(route), context)).status).toBe(401)
+    expect(
+      (await app.handler(new Request(route, { headers: { authorization: "Basic invalid" } }), context)).status,
+    ).toBe(401)
+    const authorization = `Basic ${Buffer.from("forge:team-download-test").toString("base64")}`
+    expect((await app.handler(new Request(route, { headers: { authorization } }), context)).status).toBe(400)
+  })
+
   test("edits, archives, restores, and deletes an idle room", async () => {
     await using tmp = await tmpdir({ git: true })
     const created = await request("/api/team/room", tmp.path, "POST", { name: "room-lifecycle" })

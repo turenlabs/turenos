@@ -36,9 +36,10 @@ export function timeLabel(time: number) {
   return new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(time)
 }
 
-export function pendingMessage<Client>(
-  pending: { id: string; roomID: string; text: string; client: Client; generation: number } | undefined,
-  current: { roomID: string; text: string; client: Client; generation: number },
+// Generic so a retry keeps everything the first attempt captured, including its attachments.
+export function pendingMessage<Current extends { roomID: string; text: string; client: unknown; generation: number }>(
+  pending: (Current & { id: string }) | undefined,
+  current: Current,
   createID: () => string,
 ) {
   return pending ?? { id: createID(), ...current }

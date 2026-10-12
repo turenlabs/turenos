@@ -8,7 +8,7 @@ import { getCursorPosition } from "./editor-dom"
 import { attachmentMime } from "./files"
 import { normalizePaste, pasteMode } from "./paste"
 
-function dataUrl(file: File, mime: string) {
+export function dataUrl(file: File, mime: string) {
   return new Promise<string>((resolve) => {
     const reader = new FileReader()
     reader.addEventListener("error", () => resolve(""))

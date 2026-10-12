@@ -1395,44 +1395,56 @@ type Endpoint14_8Input = { readonly teammateID: Endpoint14_8Request["params"]["t
 const Endpoint14_8 = (raw: RawClient["server.team"]) => (input: Endpoint14_8Input) =>
   raw["team.teammateStop"]({ params: { teammateID: input["teammateID"] } }).pipe(Effect.mapError(mapClientError))
 
-type Endpoint14_9Request = Parameters<RawClient["server.team"]["team.messagePost"]>[0]
+type Endpoint14_9Request = Parameters<RawClient["server.team"]["team.messageAttachments"]>[0]
 type Endpoint14_9Input = {
-  readonly id: Endpoint14_9Request["payload"]["id"]
-  readonly roomID?: Endpoint14_9Request["payload"]["roomID"]
-  readonly text: Endpoint14_9Request["payload"]["text"]
+  readonly messageID: Endpoint14_9Request["params"]["messageID"]
+  readonly roomID: Endpoint14_9Request["query"]["roomID"]
 }
 const Endpoint14_9 = (raw: RawClient["server.team"]) => (input: Endpoint14_9Input) =>
-  raw["team.messagePost"]({ payload: { id: input["id"], roomID: input["roomID"], text: input["text"] } }).pipe(
-    Effect.mapError(mapClientError),
-  )
+  raw["team.messageAttachments"]({
+    params: { messageID: input["messageID"] },
+    query: { roomID: input["roomID"] },
+  }).pipe(Effect.mapError(mapClientError))
 
-type Endpoint14_10Request = Parameters<RawClient["server.team"]["team.dutyAttach"]>[0]
+type Endpoint14_10Request = Parameters<RawClient["server.team"]["team.messagePost"]>[0]
 type Endpoint14_10Input = {
-  readonly teammateID: Endpoint14_10Request["params"]["teammateID"]
-  readonly loopID: Endpoint14_10Request["payload"]["loopID"]
+  readonly id: Endpoint14_10Request["payload"]["id"]
+  readonly roomID?: Endpoint14_10Request["payload"]["roomID"]
+  readonly text: Endpoint14_10Request["payload"]["text"]
+  readonly attachments?: Endpoint14_10Request["payload"]["attachments"]
 }
 const Endpoint14_10 = (raw: RawClient["server.team"]) => (input: Endpoint14_10Input) =>
+  raw["team.messagePost"]({
+    payload: { id: input["id"], roomID: input["roomID"], text: input["text"], attachments: input["attachments"] },
+  }).pipe(Effect.mapError(mapClientError))
+
+type Endpoint14_11Request = Parameters<RawClient["server.team"]["team.dutyAttach"]>[0]
+type Endpoint14_11Input = {
+  readonly teammateID: Endpoint14_11Request["params"]["teammateID"]
+  readonly loopID: Endpoint14_11Request["payload"]["loopID"]
+}
+const Endpoint14_11 = (raw: RawClient["server.team"]) => (input: Endpoint14_11Input) =>
   raw["team.dutyAttach"]({ params: { teammateID: input["teammateID"] }, payload: { loopID: input["loopID"] } }).pipe(
     Effect.mapError(mapClientError),
   )
 
-type Endpoint14_11Request = Parameters<RawClient["server.team"]["team.taskCancel"]>[0]
-type Endpoint14_11Input = { readonly taskID: Endpoint14_11Request["params"]["taskID"] }
-const Endpoint14_11 = (raw: RawClient["server.team"]) => (input: Endpoint14_11Input) =>
+type Endpoint14_12Request = Parameters<RawClient["server.team"]["team.taskCancel"]>[0]
+type Endpoint14_12Input = { readonly taskID: Endpoint14_12Request["params"]["taskID"] }
+const Endpoint14_12 = (raw: RawClient["server.team"]) => (input: Endpoint14_12Input) =>
   raw["team.taskCancel"]({ params: { taskID: input["taskID"] } }).pipe(Effect.mapError(mapClientError))
 
-type Endpoint14_12Request = Parameters<RawClient["server.team"]["team.factoryConfigure"]>[0]
-type Endpoint14_12Input = {
-  readonly roomID: Endpoint14_12Request["params"]["roomID"]
-  readonly outcome: Endpoint14_12Request["payload"]["outcome"]
-  readonly parameters: Endpoint14_12Request["payload"]["parameters"]
-  readonly constraints: Endpoint14_12Request["payload"]["constraints"]
-  readonly acceptanceCriteria: Endpoint14_12Request["payload"]["acceptanceCriteria"]
-  readonly directory: Endpoint14_12Request["payload"]["directory"]
-  readonly coordinatorTeammateID: Endpoint14_12Request["payload"]["coordinatorTeammateID"]
-  readonly teammateIDs: Endpoint14_12Request["payload"]["teammateIDs"]
+type Endpoint14_13Request = Parameters<RawClient["server.team"]["team.factoryConfigure"]>[0]
+type Endpoint14_13Input = {
+  readonly roomID: Endpoint14_13Request["params"]["roomID"]
+  readonly outcome: Endpoint14_13Request["payload"]["outcome"]
+  readonly parameters: Endpoint14_13Request["payload"]["parameters"]
+  readonly constraints: Endpoint14_13Request["payload"]["constraints"]
+  readonly acceptanceCriteria: Endpoint14_13Request["payload"]["acceptanceCriteria"]
+  readonly directory: Endpoint14_13Request["payload"]["directory"]
+  readonly coordinatorTeammateID: Endpoint14_13Request["payload"]["coordinatorTeammateID"]
+  readonly teammateIDs: Endpoint14_13Request["payload"]["teammateIDs"]
 }
-const Endpoint14_12 = (raw: RawClient["server.team"]) => (input: Endpoint14_12Input) =>
+const Endpoint14_13 = (raw: RawClient["server.team"]) => (input: Endpoint14_13Input) =>
   raw["team.factoryConfigure"]({
     params: { roomID: input["roomID"] },
     payload: {
@@ -1446,26 +1458,26 @@ const Endpoint14_12 = (raw: RawClient["server.team"]) => (input: Endpoint14_12In
     },
   }).pipe(Effect.mapError(mapClientError))
 
-type Endpoint14_13Request = Parameters<RawClient["server.team"]["team.factoryRun"]>[0]
-type Endpoint14_13Input = {
-  readonly roomID: Endpoint14_13Request["params"]["roomID"]
-  readonly id: Endpoint14_13Request["payload"]["id"]
-  readonly request?: Endpoint14_13Request["payload"]["request"]
+type Endpoint14_14Request = Parameters<RawClient["server.team"]["team.factoryRun"]>[0]
+type Endpoint14_14Input = {
+  readonly roomID: Endpoint14_14Request["params"]["roomID"]
+  readonly id: Endpoint14_14Request["payload"]["id"]
+  readonly request?: Endpoint14_14Request["payload"]["request"]
 }
-const Endpoint14_13 = (raw: RawClient["server.team"]) => (input: Endpoint14_13Input) =>
+const Endpoint14_14 = (raw: RawClient["server.team"]) => (input: Endpoint14_14Input) =>
   raw["team.factoryRun"]({
     params: { roomID: input["roomID"] },
     payload: { id: input["id"], request: input["request"] },
   }).pipe(Effect.mapError(mapClientError))
 
-type Endpoint14_14Request = Parameters<RawClient["server.team"]["team.factoryRunGet"]>[0]
-type Endpoint14_14Input = { readonly runID: Endpoint14_14Request["params"]["runID"] }
-const Endpoint14_14 = (raw: RawClient["server.team"]) => (input: Endpoint14_14Input) =>
-  raw["team.factoryRunGet"]({ params: { runID: input["runID"] } }).pipe(Effect.mapError(mapClientError))
-
-type Endpoint14_15Request = Parameters<RawClient["server.team"]["team.factoryRunCancel"]>[0]
+type Endpoint14_15Request = Parameters<RawClient["server.team"]["team.factoryRunGet"]>[0]
 type Endpoint14_15Input = { readonly runID: Endpoint14_15Request["params"]["runID"] }
 const Endpoint14_15 = (raw: RawClient["server.team"]) => (input: Endpoint14_15Input) =>
+  raw["team.factoryRunGet"]({ params: { runID: input["runID"] } }).pipe(Effect.mapError(mapClientError))
+
+type Endpoint14_16Request = Parameters<RawClient["server.team"]["team.factoryRunCancel"]>[0]
+type Endpoint14_16Input = { readonly runID: Endpoint14_16Request["params"]["runID"] }
+const Endpoint14_16 = (raw: RawClient["server.team"]) => (input: Endpoint14_16Input) =>
   raw["team.factoryRunCancel"]({ params: { runID: input["runID"] } }).pipe(Effect.mapError(mapClientError))
 
 const adaptGroup14 = (raw: RawClient["server.team"]) => ({
@@ -1478,13 +1490,14 @@ const adaptGroup14 = (raw: RawClient["server.team"]) => ({
   teammateCreate: Endpoint14_6(raw),
   teammateEdit: Endpoint14_7(raw),
   teammateStop: Endpoint14_8(raw),
-  messagePost: Endpoint14_9(raw),
-  dutyAttach: Endpoint14_10(raw),
-  taskCancel: Endpoint14_11(raw),
-  factoryConfigure: Endpoint14_12(raw),
-  factoryRun: Endpoint14_13(raw),
-  factoryRunGet: Endpoint14_14(raw),
-  factoryRunCancel: Endpoint14_15(raw),
+  messageAttachments: Endpoint14_9(raw),
+  messagePost: Endpoint14_10(raw),
+  dutyAttach: Endpoint14_11(raw),
+  taskCancel: Endpoint14_12(raw),
+  factoryConfigure: Endpoint14_13(raw),
+  factoryRun: Endpoint14_14(raw),
+  factoryRunGet: Endpoint14_15(raw),
+  factoryRunCancel: Endpoint14_16(raw),
 })
 
 type Endpoint15_0Request = Parameters<RawClient["server.intel"]["intel.advisories"]>[0]

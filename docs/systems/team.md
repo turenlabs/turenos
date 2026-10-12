@@ -98,6 +98,20 @@ Results appear under the teammate's identity and link to the Session transcript.
 Open the Session to inspect tool activity or answer permission and question requests.
 A room message is not a permission grant.
 
+## Message attachments
+
+Select **Attach**, drop files onto the composer, or paste a screenshot to add files to a room message. Remove an unwanted draft attachment with its **×** button. A failed send keeps its attachments for an exact retry; changing the draft starts a new message. A message can contain files without text. Each message accepts up to five files, at most 10 MiB per file and 20 MiB total decoded content. The server requires canonical base64 data URIs, a matching lowercase media type, and a filename without path separators. Remote URLs and host paths are not upload inputs.
+
+![A screenshot and downloadable file in Team chat](../assets/team-attachments.png)
+
+Uploads and their message are stored together in the server's local SQLite database. Exact retries preserve file content, names, types, and upload order; changed attachments conflict. Room deletion removes its uploads. Archived rooms retain readable attachments but reject new uploads.
+
+Room history returns `attachmentInfo` entries with name, media type, and decoded byte size, not file bytes. Attachment content loads lazily when its message approaches the visible area. The `GET /api/team/message/:messageID/attachments?roomID=...` endpoint uses existing server authentication and returns only that message's files in upload order. The room query is required; missing messages and messages belonging to another room fail. Core's internal `state({ attachments: true })` remains available for explicit content reads, but the HTTP room-state endpoint never enables it.
+
+Supported raster images reach teammates as media. UTF-8 text without NUL bytes reaches them as text; textual SVG is delivered as text rather than image media. Unsupported binary formats, audio, and video remain download-only, with their filenames reported to the teammate. Only files on the message a task answers are delivered, not files from surrounding history. Room context and inbox history do not inline uploaded bytes.
+
+Raster images can render inline in the room. SVG, HTML, and other files use passive downloads with `application/octet-stream` blobs rather than active previews in the app origin. Downloading or sharing a file does not execute it or grant tool permissions; uploaded content remains untrusted input.
+
 ## Teammate Collaboration
 
 Teammates use `team_inbox` to read their own room, find teammates, and get the room head sequence.
@@ -223,6 +237,12 @@ Pixel avatars stay in TurenOS Desktop.
 ## Source
 
 - [Team schema](../../packages/schema/src/team.ts)
+- [Upload storage](../../packages/core/src/team/workspace.sql.ts)
+- [Room HTTP handlers](../../packages/server/src/handlers/team.ts)
+- [Attachment rendering and lazy loading](../../packages/app/src/pages/team/message-attachments.tsx)
+- [Passive download policy](../../packages/app/src/pages/team/attachments.ts)
+- [Attachment persistence tests](../../packages/core/test/team-attachments.test.ts)
+- [Room HTTP tests](../../packages/forge/test/server/httpapi-team.test.ts)
 - [Room persistence and task admission](../../packages/core/src/team/workspace.ts)
 - [Native task execution](../../packages/forge/src/team/runtime.ts)
 - [Room interface](../../packages/app/src/pages/team.tsx)

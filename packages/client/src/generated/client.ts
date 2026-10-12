@@ -207,6 +207,8 @@ import type {
   TeamTeammateEditOutput,
   TeamTeammateStopInput,
   TeamTeammateStopOutput,
+  TeamMessageAttachmentsInput,
+  TeamMessageAttachmentsOutput,
   TeamMessagePostInput,
   TeamMessagePostOutput,
   TeamDutyAttachInput,
@@ -1760,12 +1762,24 @@ export function make(options: ClientOptions) {
           },
           requestOptions,
         ),
+      messageAttachments: (input: TeamMessageAttachmentsInput, requestOptions?: RequestOptions) =>
+        request<TeamMessageAttachmentsOutput>(
+          {
+            method: "GET",
+            path: `/api/team/message/${encodeURIComponent(input.messageID)}/attachments`,
+            query: { roomID: input["roomID"] },
+            successStatus: 200,
+            declaredStatuses: [400, 409, 401],
+            empty: false,
+          },
+          requestOptions,
+        ),
       messagePost: (input: TeamMessagePostInput, requestOptions?: RequestOptions) =>
         request<TeamMessagePostOutput>(
           {
             method: "POST",
             path: `/api/team/message`,
-            body: { id: input["id"], roomID: input["roomID"], text: input["text"] },
+            body: { id: input["id"], roomID: input["roomID"], text: input["text"], attachments: input["attachments"] },
             successStatus: 200,
             declaredStatuses: [400, 409, 401],
             empty: false,
