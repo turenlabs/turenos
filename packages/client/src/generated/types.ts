@@ -8598,6 +8598,8 @@ export type TeamStateOutput = {
     readonly author: string
     readonly teammateID?: string
     readonly text: string
+    readonly attachments?: ReadonlyArray<{ readonly name: string; readonly mime: string; readonly uri: string }>
+    readonly attachmentInfo?: ReadonlyArray<{ readonly name: string; readonly mime: string; readonly size: number }>
     readonly replyTo?: string
     readonly sessionID?: string
     readonly sourceMessageIDs?: ReadonlyArray<string>
@@ -9001,10 +9003,42 @@ export type TeamTeammateStopInput = { readonly teammateID: { readonly teammateID
 
 export type TeamTeammateStopOutput = void
 
+export type TeamMessageAttachmentsInput = {
+  readonly messageID: { readonly messageID: string }["messageID"]
+  readonly roomID: { readonly roomID: string }["roomID"]
+}
+
+export type TeamMessageAttachmentsOutput = ReadonlyArray<{
+  readonly name: string
+  readonly mime: string
+  readonly uri: string
+}>
+
 export type TeamMessagePostInput = {
-  readonly id: { readonly id: string; readonly roomID?: string; readonly text: string }["id"]
-  readonly roomID?: { readonly id: string; readonly roomID?: string; readonly text: string }["roomID"]
-  readonly text: { readonly id: string; readonly roomID?: string; readonly text: string }["text"]
+  readonly id: {
+    readonly id: string
+    readonly roomID?: string
+    readonly text: string
+    readonly attachments?: ReadonlyArray<{ readonly name: string; readonly mime: string; readonly uri: string }>
+  }["id"]
+  readonly roomID?: {
+    readonly id: string
+    readonly roomID?: string
+    readonly text: string
+    readonly attachments?: ReadonlyArray<{ readonly name: string; readonly mime: string; readonly uri: string }>
+  }["roomID"]
+  readonly text: {
+    readonly id: string
+    readonly roomID?: string
+    readonly text: string
+    readonly attachments?: ReadonlyArray<{ readonly name: string; readonly mime: string; readonly uri: string }>
+  }["text"]
+  readonly attachments?: {
+    readonly id: string
+    readonly roomID?: string
+    readonly text: string
+    readonly attachments?: ReadonlyArray<{ readonly name: string; readonly mime: string; readonly uri: string }>
+  }["attachments"]
 }
 
 export type TeamMessagePostOutput = {
@@ -9016,6 +9050,8 @@ export type TeamMessagePostOutput = {
     readonly author: string
     readonly teammateID?: string
     readonly text: string
+    readonly attachments?: ReadonlyArray<{ readonly name: string; readonly mime: string; readonly uri: string }>
+    readonly attachmentInfo?: ReadonlyArray<{ readonly name: string; readonly mime: string; readonly size: number }>
     readonly replyTo?: string
     readonly sessionID?: string
     readonly sourceMessageIDs?: ReadonlyArray<string>

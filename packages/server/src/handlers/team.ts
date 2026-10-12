@@ -93,6 +93,15 @@ export const TeamHandler = HttpApiBuilder.group(Api, "server.team", (handlers) =
       }),
     )
     .handle(
+      "team.messageAttachments",
+      Effect.fn(function* (ctx) {
+        const team = yield* TeamWorkspace.Service
+        return yield* team
+          .messageAttachments({ messageID: ctx.params.messageID, roomID: ctx.query.roomID })
+          .pipe(Effect.mapError(teamError))
+      }),
+    )
+    .handle(
       "team.messagePost",
       Effect.fn(function* (ctx) {
         const team = yield* TeamWorkspace.Service

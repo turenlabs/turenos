@@ -9,7 +9,10 @@ import { LocationServiceMap } from "@turenlabs/core/location-service-map"
 import { AbsolutePath } from "@turenlabs/core/schema"
 import { SessionV2 } from "@turenlabs/core/session"
 import { SessionMessage } from "@turenlabs/core/session/message"
+
 import { SessionEvent } from "@turenlabs/schema/session-event"
+import { Team } from "@turenlabs/schema/team"
+import { isUtf8 } from "node:buffer"
 import { extractStepOutput } from "../loop/scheduler"
 import { Cause, Context, Duration, Effect, Exit, Layer, Stream } from "effect"
 
@@ -229,6 +232,9 @@ const layer = Layer.effect(
             ),
           )
           const messageID = SessionMessage.ID.make(`msg_team_${task.id}`)
+          const uploads = yield* team.taskAttachments(task.id)
+          const files = uploads.filter(deliverable)
+          const withheld = uploads.filter((upload) => !files.includes(upload))
           yield* sessions.prompt({
             id: messageID,
             sessionID: session.id,
@@ -246,7 +252,22 @@ Use team_wait with those taskIDs to wait for completed results without repeated 
 Do not start circular conversations, repeat acknowledgements, or assign the same work twice. When delegated work is needed for your answer, wait for its result before your final response.
 Your completed task response and later replies in this Session are published to the room automatically. Do not repeat your final answer with team_post.
 
-${task.execution.prompt}`,
+${task.execution.prompt}${
+                withheld.length
+                  ? `\n\nUploaded files not delivered to you because they are not text or images: ${withheld.map((upload) => `${upload.name} (${upload.mime})`).join(", ")}. Ask for a text or image version if you need their contents.`
+                  : ""
+              }`,
+              ...(files.length
+                ? {
+                    files: files.map((upload) => ({
+                      uri:
+                        upload.mime.startsWith("image/") && !rasterMimes.has(upload.mime)
+                          ? `data:text/plain;base64,${Team.attachmentPayload(upload)}`
+                          : upload.uri,
+                      name: upload.name,
+                    })),
+                  }
+                : {}),
             },
             owner: "automation",
             resume: false,
@@ -373,6 +394,20 @@ export function teamTaskIDForResponse(
         taskIDs.has(message.id.slice("msg_team_".length)),
     )
   return taskPrompt?.id.slice("msg_team_".length)
+}
+
+/**
+ * The Session attachment pipeline sends images as media and inlines everything else as decoded
+ * text, so a binary upload would reach the model as mojibake. Audio and video are held back too:
+ * providers that do not accept them reject the whole turn, and the part would stay in the transcript.
+ */
+const rasterMimes = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"])
+
+function deliverable(upload: Team.Attachment) {
+  if (rasterMimes.has(upload.mime)) return true
+  if (/^(audio|video)\//.test(upload.mime)) return false
+  const bytes = Buffer.from(Team.attachmentPayload(upload) ?? "", "base64")
+  return isUtf8(bytes) && !bytes.includes(0)
 }
 
 function causeMessage(cause: Cause.Cause<unknown>) {

@@ -1,9 +1,9 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "c842adb5-3a5e-4d7c-a37b-98a59bd8986b",
+  "id": "ab3d8082-f4e6-4ea1-9705-5a75507ca3ff",
   "prevIds": [
-    "9ee96009-afd3-4dc1-8cfb-1994f79c7a21"
+    "c842adb5-3a5e-4d7c-a37b-98a59bd8986b"
   ],
   "ddl": [
     {
@@ -48,6 +48,10 @@
     },
     {
       "name": "swarm_room",
+      "entityType": "tables"
+    },
+    {
+      "name": "team_attachment",
       "entityType": "tables"
     },
     {
@@ -1577,6 +1581,96 @@
       "name": "time_updated",
       "entityType": "columns",
       "table": "swarm_room"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "message_id",
+      "entityType": "columns",
+      "table": "team_attachment"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "position",
+      "entityType": "columns",
+      "table": "team_attachment"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "room_id",
+      "entityType": "columns",
+      "table": "team_attachment"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "name",
+      "entityType": "columns",
+      "table": "team_attachment"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "mime",
+      "entityType": "columns",
+      "table": "team_attachment"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "size",
+      "entityType": "columns",
+      "table": "team_attachment"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "digest",
+      "entityType": "columns",
+      "table": "team_attachment"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "content",
+      "entityType": "columns",
+      "table": "team_attachment"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "time_created",
+      "entityType": "columns",
+      "table": "team_attachment"
     },
     {
       "type": "text",
@@ -6135,6 +6229,36 @@
     },
     {
       "columns": [
+        "message_id"
+      ],
+      "tableTo": "team_message",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_team_attachment_message_id_team_message_id_fk",
+      "entityType": "fks",
+      "table": "team_attachment"
+    },
+    {
+      "columns": [
+        "room_id"
+      ],
+      "tableTo": "team_room",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_team_attachment_room_id_team_room_id_fk",
+      "entityType": "fks",
+      "table": "team_attachment"
+    },
+    {
+      "columns": [
         "run_id"
       ],
       "tableTo": "loop_run",
@@ -6912,6 +7036,16 @@
       "name": "fk_session_share_session_id_session_id_fk",
       "entityType": "fks",
       "table": "session_share"
+    },
+    {
+      "columns": [
+        "message_id",
+        "position"
+      ],
+      "nameExplicit": false,
+      "name": "team_attachment_pk",
+      "entityType": "pks",
+      "table": "team_attachment"
     },
     {
       "columns": [
@@ -7843,6 +7977,20 @@
       "name": "swarm_room_root_idx",
       "entityType": "indexes",
       "table": "swarm_room"
+    },
+    {
+      "columns": [
+        {
+          "value": "room_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "team_attachment_room_idx",
+      "entityType": "indexes",
+      "table": "team_attachment"
     },
     {
       "columns": [

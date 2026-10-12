@@ -516,6 +516,8 @@ import type {
   V2TeamFactoryRunGetErrors,
   V2TeamFactoryRunGetResponses,
   V2TeamFactoryRunResponses,
+  V2TeamMessageAttachmentsErrors,
+  V2TeamMessageAttachmentsResponses,
   V2TeamMessagePostErrors,
   V2TeamMessagePostResponses,
   V2TeamRoomArchiveErrors,
@@ -8270,6 +8272,38 @@ export class Team extends HeyApiClient {
     const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "teammateID" }] }])
     return (options?.client ?? this.client).post<V2TeamTeammateStopResponses, V2TeamTeammateStopErrors, ThrowOnError>({
       url: "/api/team/teammate/{teammateID}/stop",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Download Team message attachments
+   */
+  public messageAttachments<ThrowOnError extends boolean = false>(
+    parameters: {
+      messageID: string
+      roomID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "messageID" },
+            { in: "query", key: "roomID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      V2TeamMessageAttachmentsResponses,
+      V2TeamMessageAttachmentsErrors,
+      ThrowOnError
+    >({
+      url: "/api/team/message/{messageID}/attachments",
       ...options,
       ...params,
     })

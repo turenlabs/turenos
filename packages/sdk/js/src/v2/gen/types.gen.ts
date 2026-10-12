@@ -7947,6 +7947,18 @@ export type TeamTeammate = {
   }
 }
 
+export type TeamAttachment = {
+  name: string
+  mime: string
+  uri: string
+}
+
+export type TeamAttachmentInfo = {
+  name: string
+  mime: string
+  size: number
+}
+
 export type TeamMessage = {
   id: string
   roomID: string
@@ -7955,6 +7967,8 @@ export type TeamMessage = {
   author: string
   teammateID?: string
   text: string
+  attachments?: Array<TeamAttachment>
+  attachmentInfo?: Array<TeamAttachmentInfo>
   replyTo?: string
   sessionID?: string
   sourceMessageIDs?: Array<string>
@@ -8046,6 +8060,7 @@ export type TeamPostMessage = {
   id: string
   roomID?: string
   text: string
+  attachments?: Array<TeamAttachment>
 }
 
 export type TeamPosted = {
@@ -17689,6 +17704,44 @@ export type V2TeamTeammateStopResponses = {
 }
 
 export type V2TeamTeammateStopResponse = V2TeamTeammateStopResponses[keyof V2TeamTeammateStopResponses]
+
+export type V2TeamMessageAttachmentsData = {
+  body?: never
+  path: {
+    messageID: string
+  }
+  query: {
+    roomID: string
+  }
+  url: "/api/team/message/{messageID}/attachments"
+}
+
+export type V2TeamMessageAttachmentsErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * ConflictError
+   */
+  409: ConflictError
+}
+
+export type V2TeamMessageAttachmentsError = V2TeamMessageAttachmentsErrors[keyof V2TeamMessageAttachmentsErrors]
+
+export type V2TeamMessageAttachmentsResponses = {
+  /**
+   * Success
+   */
+  200: Array<TeamAttachment>
+}
+
+export type V2TeamMessageAttachmentsResponse =
+  V2TeamMessageAttachmentsResponses[keyof V2TeamMessageAttachmentsResponses]
 
 export type V2TeamMessagePostData = {
   body: TeamPostMessage

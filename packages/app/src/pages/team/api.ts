@@ -12,6 +12,7 @@ export type TeamApi = {
   teammateEdit: (input: { teammateID: string; edit: Team.EditTeammate }) => Promise<Team.Teammate>
   teammateStop: (input: { teammateID: string }) => Promise<unknown>
   messagePost: (input: Team.PostMessage) => Promise<Team.Posted>
+  messageAttachments: (input: { messageID: string; roomID: string }) => Promise<readonly Team.Attachment[]>
   dutyAttach: (input: { teammateID: string; loopID: string }) => Promise<Team.Duty>
   taskCancel: (input: { taskID: string }) => Promise<Team.Task>
   factoryConfigure: (input: { roomID: string; config: Team.FactoryConfig }) => Promise<Team.Room>
@@ -64,7 +65,13 @@ export function teamApi(client: unknown): TeamApi {
         }),
       ),
     teammateStop: async (input) => decode<unknown>(raw.teammateStop(input)),
-    messagePost: async (input) => decode<Team.Posted>(raw.messagePost({ teamPostMessage: input })),
+    messagePost: async (input) =>
+      decode<Team.Posted>(
+        raw.messagePost({
+          teamPostMessage: { ...input, attachments: input.attachments?.map((file) => ({ ...file })) },
+        }),
+      ),
+    messageAttachments: async (input) => decode<readonly Team.Attachment[]>(raw.messageAttachments(input)),
     dutyAttach: async (input) => decode<Team.Duty>(raw.dutyAttach(input)),
     taskCancel: async (input) => decode<Team.Task>(raw.taskCancel(input)),
     factoryConfigure: async (input) =>

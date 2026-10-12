@@ -9,13 +9,19 @@ import { useNavigate, useParams } from "@solidjs/router"
 import { useServerSDK } from "@/context/server-sdk"
 import { useServer } from "@/context/server"
 import { useGlobal } from "@/context/global"
+import { usePlatform } from "@/context/platform"
 import { useNavRail } from "@/components/nav-rail"
+import { AttachmentCardV2 } from "@turenlabs/session-ui/v2/attachment-card-v2"
+import { typeLabel } from "@turenlabs/session-ui/message-file"
 import { sessionHref } from "@/utils/session-route"
 import { Persist, persisted } from "@/utils/persist"
 import { loopApi, loopCatalog, responseData, type LoopInfo, type LoopModel } from "./loops/api"
 import { teamApi } from "./team/api"
 import { TeamMentionInput } from "./team/mention-input"
 import { TeamMessageContent } from "./team/message-content"
+import { TeamMessageAttachments } from "./team/message-attachments"
+import { createTeamAttachmentDraft } from "./team/attachment-draft"
+import { teamAttachmentInline, type TeamAttachment } from "./team/attachments"
 import { createTeamScroll } from "./team/scroll"
 import { PixelAvatar, PixelAvatarEditor, generatePixelAvatar } from "./team/pixel-avatar"
 import {
@@ -77,6 +83,8 @@ export default function TeamPage() {
     loading: boolean
     busy: boolean
     text: string
+    attachmentError?: string
+    dragging: boolean
     selected?: string
     createOpen: boolean
     roomOpen: boolean
@@ -98,6 +106,7 @@ export default function TeamPage() {
     loading: true,
     busy: false,
     text: "",
+    dragging: false,
     createOpen: false,
     roomOpen: false,
     archivedOpen: false,
@@ -138,13 +147,35 @@ export default function TeamPage() {
   const loadingKeys = new Set<string>()
   const scroll = createTeamScroll()
   let pendingPost:
-    | { id: string; roomID: string; text: string; client: ReturnType<typeof serverSDK>["client"]; generation: number }
+    | {
+        id: string
+        roomID: string
+        text: string
+        scope: string
+        attachments: TeamAttachment[]
+        attachmentIDs: string[]
+        client: ReturnType<typeof serverSDK>["client"]
+        generation: number
+      }
     | undefined
   let pendingFactoryRun:
     | { id: string; roomID: string; client: ReturnType<typeof serverSDK>["client"]; generation: number }
     | undefined
+  let fileInput: HTMLInputElement | undefined
   const global = useGlobal()
   const server = useServer()
+  const platform = usePlatform()
+  // Attachment drafts belong to one room on one server; the same room ID can exist on two servers.
+  const draftScope = (roomID: string) => JSON.stringify([serverSDK().url, serverSDK().scope, roomID])
+  const draft = createTeamAttachmentDraft({
+    scope: () => (state.value && !archived() ? draftScope(state.value.room.id) : undefined),
+    // A changed draft is a new message, so it must not reuse the failed message's ID.
+    onChange: () => {
+      pendingPost = undefined
+    },
+    onError: (message) => setState("attachmentError", message),
+    readClipboardImage: platform.readClipboardImage,
+  })
 
   const load = async (mode: "initial" | "poll" | "older" = "initial") => {
     const current = generation
@@ -224,6 +255,10 @@ export default function TeamPage() {
     setState("factoryOpen", false)
     setState("selected", undefined)
     setState("error", undefined)
+    setState("attachmentError", undefined)
+    setState("dragging", false)
+    // Leaving a room frees its attachment draft. Only a failed send keeps its draft, for the exact retry.
+    untrack(() => draft.prune([pendingPost?.scope]))
     setState("busy", false)
     setState("olderLoading", false)
     setState("factoryConfig", {
@@ -312,21 +347,34 @@ export default function TeamPage() {
   })
 
   const send = async () => {
-    if (state.busy || !state.text.trim() || !state.value || archived()) return
+    if (state.busy || draft.reading() || !state.value || archived()) return
+    if (!state.text.trim() && draft.list().length === 0) return
     const sendGeneration = generation
     const roomID = state.value.room.id
-    const text = state.text.trim()
-    pendingPost = pendingMessage(pendingPost, { roomID, text, client: serverSDK().client, generation }, () =>
-      crypto.randomUUID(),
+    pendingPost = pendingMessage(
+      pendingPost,
+      {
+        roomID,
+        text: state.text.trim(),
+        scope: draftScope(roomID),
+        attachments: draft.attachments(),
+        attachmentIDs: draft.list().map((item) => item.id),
+        client: serverSDK().client,
+        generation,
+      },
+      () => crypto.randomUUID(),
     )
     const submitted = pendingPost
     setState("busy", true)
+    setState("error", undefined)
     try {
       const posted = await teamApi(submitted.client).messagePost({
         id: submitted.id,
         roomID: submitted.roomID,
         text: submitted.text,
+        ...(submitted.attachments.length ? { attachments: submitted.attachments } : {}),
       })
+      draft.clear(submitted.scope, submitted.attachmentIDs)
       if (
         ownsTeamResponse(
           { client: submitted.client, roomID: submitted.roomID, generation: sendGeneration },
@@ -1104,6 +1152,11 @@ export default function TeamPage() {
                       </div>
                     </Show>
                     <TeamMessageContent message={message} />
+                    <Show
+                      when={message.kind === "human" && (message.attachments?.length || message.attachmentInfo?.length)}
+                    >
+                      <TeamMessageAttachments message={message} />
+                    </Show>
                     <Show when={message.kind === "system"}>
                       <span class="text-v2-text-text-muted"> · update</span>
                     </Show>
@@ -1121,7 +1174,27 @@ export default function TeamPage() {
             </For>
           </div>
         </div>
-        <div class="border-t border-v2-border-border-base px-5 py-3 max-sm:px-4">
+        <div
+          data-component="team-composer"
+          class="border-t border-v2-border-border-base px-5 py-3 max-sm:px-4"
+          classList={{ "bg-v2-overlay-simple-overlay-hover": state.dragging }}
+          onPaste={(event) => void draft.paste(event)}
+          onDragOver={(event) => {
+            // Text drags keep the field's own behavior. Only file drags become attachments.
+            if (!event.dataTransfer?.types.includes("Files")) return
+            event.preventDefault()
+            setState("dragging", !!state.value && !archived())
+          }}
+          onDragLeave={(event) => {
+            if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return
+            setState("dragging", false)
+          }}
+          onDrop={(event) => {
+            if (!event.dataTransfer?.types.includes("Files")) return
+            setState("dragging", false)
+            void draft.drop(event)
+          }}
+        >
           <div
             role="status"
             aria-live="polite"
@@ -1154,6 +1227,46 @@ export default function TeamPage() {
             }}
             onSend={() => void send()}
           />
+          <Show when={draft.list().length > 0}>
+            <ul aria-label="Draft attachments" class="mt-3 flex flex-wrap items-end gap-2">
+              <For each={draft.list()}>
+                {(attachment) => (
+                  <li data-slot="team-draft-attachment" title={attachment.name} class="relative">
+                    <Show
+                      when={teamAttachmentInline(attachment)}
+                      fallback={
+                        <AttachmentCardV2 title={attachment.name}>
+                          {typeLabel(attachment.name, attachment.mime)}
+                        </AttachmentCardV2>
+                      }
+                    >
+                      {(src) => (
+                        <img
+                          src={src()}
+                          alt={attachment.name}
+                          class="h-[46px] w-[58px] rounded-[6px] border border-v2-border-border-base object-cover"
+                        />
+                      )}
+                    </Show>
+                    <button
+                      type="button"
+                      class="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-v2-icon-icon-muted outline-solid outline-1 outline-v2-icon-icon-contrast"
+                      aria-label={`Remove ${attachment.name}`}
+                      disabled={state.busy}
+                      onClick={() => draft.remove(attachment.id)}
+                    >
+                      <Icon name="outline-xmark" class="text-v2-icon-icon-contrast" />
+                    </button>
+                  </li>
+                )}
+              </For>
+            </ul>
+          </Show>
+          <Show when={state.attachmentError}>
+            <p role="alert" class="mt-2 text-[12px] text-v2-state-fg-danger">
+              {state.attachmentError}
+            </p>
+          </Show>
           <div class="mt-2 flex items-end gap-3 text-[11px] leading-4 text-v2-text-text-muted">
             <div id="team-message-hint" class="min-w-0 flex-1">
               <p>
@@ -1173,12 +1286,43 @@ export default function TeamPage() {
                             ? "The configured coordinator is unavailable. Mention an active teammate for a direct task."
                             : "The coordinator handles messages without a mention. Add an active teammate to start work. Mention @handle for a direct task."}
               </p>
-              <p class="mt-1 text-v2-text-text-faint">Enter to send · Shift+Enter for a new line</p>
+              <p class="mt-1 text-v2-text-text-faint">
+                Enter to send · Shift+Enter for a new line · Attach, drop, or paste up to 5 files, 10 MiB each
+              </p>
             </div>
+            {/* The browser file input reads whole files. The native picker can hand back a sampled head. */}
+            <input
+              ref={fileInput}
+              type="file"
+              multiple
+              hidden
+              tabIndex={-1}
+              disabled={!state.value || archived()}
+              onChange={(event) => {
+                void draft.add(Array.from(event.currentTarget.files ?? []))
+                event.currentTarget.value = ""
+              }}
+            />
             <ButtonV2
               class="shrink-0"
               size="small"
-              disabled={state.busy || !state.text.trim() || !state.value || archived()}
+              variant="neutral"
+              aria-label="Attach files"
+              disabled={state.busy || !state.value || archived()}
+              onClick={() => fileInput?.click()}
+            >
+              Attach
+            </ButtonV2>
+            <ButtonV2
+              class="shrink-0"
+              size="small"
+              disabled={
+                state.busy ||
+                draft.reading() ||
+                (!state.text.trim() && draft.list().length === 0) ||
+                !state.value ||
+                archived()
+              }
               onClick={send}
             >
               {state.busy ? "Sending..." : "Send"}

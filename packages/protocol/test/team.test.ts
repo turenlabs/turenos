@@ -13,6 +13,9 @@ describe("Team Protocol", () => {
     expect(document.paths["/api/team/room/{roomID}"]?.delete?.operationId).toBe("v2.team.roomDelete")
     expect(document.paths["/api/team/room/{roomID}/archive"]?.post?.operationId).toBe("v2.team.roomArchive")
     expect(document.paths["/api/team/room/{roomID}/restore"]?.post?.operationId).toBe("v2.team.roomRestore")
+    expect(document.paths["/api/team/message/{messageID}/attachments"]?.get?.operationId).toBe(
+      "v2.team.messageAttachments",
+    )
     expect(document.paths["/api/team/message"]?.post?.operationId).toBe("v2.team.messagePost")
     expect(document.paths["/api/team/teammate/{teammateID}"]?.patch?.operationId).toBe("v2.team.teammateEdit")
     expect(document.paths["/api/team/task/{taskID}/cancel"]?.post?.operationId).toBe("v2.team.taskCancel")
@@ -25,6 +28,7 @@ describe("Team Protocol", () => {
   test("includes authorization failures on Team endpoints", () => {
     const document = OpenApi.fromApi(api)
     expect(document.paths["/api/team"]?.get?.responses["401"]).toBeDefined()
+    expect(document.paths["/api/team/message/{messageID}/attachments"]?.get?.responses["401"]).toBeDefined()
     expect(document.paths["/api/team/message"]?.post?.responses["401"]).toBeDefined()
     expect(document.paths["/api/team/room/{roomID}"]?.delete?.responses["401"]).toBeDefined()
     expect(document.paths["/api/team/room/{roomID}/archive"]?.post?.responses["401"]).toBeDefined()

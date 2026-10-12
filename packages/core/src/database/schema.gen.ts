@@ -196,6 +196,22 @@ export default {
         );
       `)
       yield* tx.run(`
+        CREATE TABLE \`team_attachment\` (
+          \`message_id\` text NOT NULL,
+          \`position\` integer NOT NULL,
+          \`room_id\` text NOT NULL,
+          \`name\` text NOT NULL,
+          \`mime\` text NOT NULL,
+          \`size\` integer NOT NULL,
+          \`digest\` text NOT NULL,
+          \`content\` text NOT NULL,
+          \`time_created\` integer NOT NULL,
+          CONSTRAINT \`team_attachment_pk\` PRIMARY KEY(\`message_id\`, \`position\`),
+          CONSTRAINT \`fk_team_attachment_message_id_team_message_id_fk\` FOREIGN KEY (\`message_id\`) REFERENCES \`team_message\`(\`id\`) ON DELETE CASCADE,
+          CONSTRAINT \`fk_team_attachment_room_id_team_room_id_fk\` FOREIGN KEY (\`room_id\`) REFERENCES \`team_room\`(\`id\`) ON DELETE CASCADE
+        );
+      `)
+      yield* tx.run(`
         CREATE TABLE \`team_duty_run\` (
           \`run_id\` text PRIMARY KEY,
           \`loop_id\` text NOT NULL,
@@ -936,6 +952,7 @@ export default {
         `CREATE UNIQUE INDEX \`swarm_room_member_name_idx\` ON \`swarm_room_member\` (\`room_id\`,\`name\`);`,
       )
       yield* tx.run(`CREATE UNIQUE INDEX \`swarm_room_root_idx\` ON \`swarm_room\` (\`root_session_id\`);`)
+      yield* tx.run(`CREATE INDEX \`team_attachment_room_idx\` ON \`team_attachment\` (\`room_id\`);`)
       yield* tx.run(`CREATE INDEX \`team_duty_teammate_idx\` ON \`team_duty\` (\`teammate_id\`);`)
       yield* tx.run(
         `CREATE INDEX \`team_factory_run_room_status_idx\` ON \`team_factory_run\` (\`room_id\`,\`status\`);`,

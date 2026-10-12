@@ -110,6 +110,52 @@ export const Teammate = Schema.Struct({
 }).annotate({ identifier: "Team.Teammate" })
 export interface Teammate extends Schema.Schema.Type<typeof Teammate> {}
 
+export const MAX_ATTACHMENTS = 5
+export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
+export const MAX_ATTACHMENT_TOTAL_BYTES = 20 * 1024 * 1024
+
+const attachmentMime = "[a-z0-9][a-z0-9!#$&^_.+-]*/[a-z0-9][a-z0-9!#$&^_.+-]*"
+const attachmentPrefix = new RegExp(`^data:${attachmentMime};base64,`)
+const attachmentMimeOnly = new RegExp(`^${attachmentMime}$`)
+
+export const Attachment = Schema.Struct({
+  name: requiredText(255),
+  mime: requiredText(255),
+  // Only the prefix is a schema pattern, so decoding never backtracks over megabytes of payload.
+  // The server checks the payload with `attachmentPayload`.
+  uri: requiredText(`data:;base64,`.length + 255 + Math.ceil(MAX_ATTACHMENT_BYTES / 3) * 4).pipe(
+    Schema.check(Schema.isPattern(attachmentPrefix)),
+  ),
+}).annotate({
+  identifier: "Team.Attachment",
+  description:
+    "A file uploaded to a Team room message. The uri is a base64 data URI whose lowercase, parameter-free media type equals mime. Remote URLs and host paths are not accepted.",
+})
+export interface Attachment extends Schema.Schema.Type<typeof Attachment> {}
+
+export const AttachmentInfo = Schema.Struct({
+  name: requiredText(255),
+  mime: requiredText(255),
+  size: Schema.Int.pipe(
+    Schema.check(Schema.isGreaterThanOrEqualTo(0)),
+    Schema.check(Schema.isLessThanOrEqualTo(MAX_ATTACHMENT_BYTES)),
+  ),
+}).annotate({ identifier: "Team.AttachmentInfo" })
+export interface AttachmentInfo extends Schema.Schema.Type<typeof AttachmentInfo> {}
+
+const Attachments = Schema.Array(Attachment).pipe(Schema.check(Schema.isMaxLength(MAX_ATTACHMENTS)))
+
+/**
+ * The base64 payload of an attachment whose data URI names exactly the declared mime. The payload
+ * itself is not checked here; the server requires it to be canonical base64.
+ */
+export const attachmentPayload = (attachment: Attachment) => {
+  const prefix = `data:${attachment.mime};base64,`
+  return attachmentMimeOnly.test(attachment.mime) && attachment.uri.startsWith(prefix)
+    ? attachment.uri.slice(prefix.length)
+    : undefined
+}
+
 export const Message = Schema.Struct({
   id: Schema.String,
   roomID: Schema.String,
@@ -118,6 +164,8 @@ export const Message = Schema.Struct({
   author: Schema.String,
   teammateID: Schema.String.pipe(optional),
   text: Schema.String,
+  attachments: Attachments.pipe(optional),
+  attachmentInfo: Schema.Array(AttachmentInfo).pipe(Schema.check(Schema.isMaxLength(MAX_ATTACHMENTS)), optional),
   replyTo: Schema.String.pipe(optional),
   sessionID: Schema.String.pipe(optional),
   sourceMessageIDs: Schema.Array(requiredText(256)).pipe(Schema.check(Schema.isMaxLength(256)), optional),
@@ -199,6 +247,7 @@ export const PostMessage = Schema.Struct({
   id: Schema.String,
   roomID: Schema.String.pipe(optional),
   text: Schema.String,
+  attachments: Attachments.pipe(optional),
 }).annotate({ identifier: "Team.PostMessage" })
 export interface PostMessage extends Schema.Schema.Type<typeof PostMessage> {}
 

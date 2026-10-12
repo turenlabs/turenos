@@ -33,7 +33,7 @@ function state(directory: string, roomID?: string) {
   )
 }
 
-function setup(llmURL: string, tools = false) {
+function setup(llmURL: string, tools = false, input = ["text"]) {
   return Effect.gen(function* () {
     const tmp = yield* Effect.acquireRelease(
       Effect.promise(() => tmpdir({ git: true, config: { model: "team-fixture/chat" } })),
@@ -68,7 +68,7 @@ function setup(llmURL: string, tools = false) {
                       url: llmURL,
                       settings: { apiKey: "fixture-key" },
                     },
-                    capabilities: { tools, input: ["text"], output: ["text"] },
+                    capabilities: { tools, input, output: ["text"] },
                     limit: { context: 32_000, output: 2_000 },
                   },
                 },
@@ -208,6 +208,124 @@ describe("TeamRuntime dispatch", () => {
       expect(inputs).toContain("Hey team")
       expect(inputs).toContain("What would you like the team to do?")
       expect(yield* llm.calls).toBe(2)
+    }))
+
+  it("delivers uploaded room attachments to the teammate prompt as file and image parts", () =>
+    Effect.gen(function* () {
+      const llm = yield* TestLLMServer
+      const tmp = yield* setup(llm.url, false, ["text", "image"])
+      const created = yield* Effect.promise(() =>
+        request("/api/team/room", tmp.path, "POST", { name: "attachment-runtime-room" }),
+      )
+      const room = Schema.decodeUnknownSync(Team.Room)(yield* Effect.promise(() => created.json()))
+      const teammate = yield* Effect.promise(() =>
+        request("/api/team/teammate", tmp.path, "POST", {
+          roomID: room.id,
+          name: "reviewer",
+          handle: "reviewer",
+          role: "Teammate",
+          mission: "Review uploaded files.",
+          directory: tmp.path,
+          model: { id: "chat", providerID: "team-fixture" },
+        }),
+      )
+      expect(teammate.status).toBe(200)
+      const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+      const attachments = [
+        {
+          name: "findings.md",
+          mime: "text/markdown",
+          uri: `data:text/markdown;base64,${Buffer.from("# Findings\nuploaded-marker-7f3a").toString("base64")}`,
+        },
+        { name: "pixel.png", mime: "image/png", uri: `data:image/png;base64,${png}` },
+        {
+          name: "bundle.zip",
+          mime: "application/zip",
+          uri: `data:application/zip;base64,${Buffer.from([80, 75, 3, 4, 0, 255, 254, 0]).toString("base64")}`,
+        },
+        {
+          name: "vector.svg",
+          mime: "image/svg+xml",
+          uri: `data:image/svg+xml;base64,${Buffer.from("<svg xmlns='http://www.w3.org/2000/svg'/>").toString("base64")}`,
+        },
+      ]
+      const body = { id: "tmsg_runtime_attachments", roomID: room.id, text: "", attachments }
+      yield* llm.text("I reviewed the uploaded files.")
+      const response = yield* Effect.promise(() => request("/api/team/message", tmp.path, "POST", body))
+      expect(response.status).toBe(200)
+      const posted = Schema.decodeUnknownSync(Team.Posted)(yield* Effect.promise(() => response.json()))
+      expect(posted.message.attachments).toEqual(attachments)
+      expect(posted.tasks).toHaveLength(1)
+      const finished = yield* pollWithTimeout(
+        state(tmp.path, room.id).pipe(
+          Effect.map((current) =>
+            current.tasks.find((task) => task.id === posted.tasks[0]!.id)?.status === "succeeded" ? current : undefined,
+          ),
+        ),
+        "Attachment task did not finish",
+        "20 seconds",
+      )
+      expect(finished.messages.find((message) => message.id === body.id)?.attachments).toBeUndefined()
+      expect(finished.messages.find((message) => message.id === body.id)?.attachmentInfo).toEqual(
+        attachments.map((file) => ({
+          name: file.name,
+          mime: file.mime,
+          size: Buffer.from(Team.attachmentPayload(file)!, "base64").length,
+        })),
+      )
+      expect(finished.messages.some((message) => message.text.includes("I reviewed the uploaded files."))).toBe(true)
+
+      const [hit] = yield* llm.inputs
+      const user = Schema.decodeUnknownSync(
+        Schema.Array(Schema.Struct({ role: Schema.String, content: Schema.Unknown })),
+      )(hit!.messages).findLast((message) => message.role === "user")
+      const parts = Schema.decodeUnknownSync(
+        Schema.Array(
+          Schema.Struct({
+            type: Schema.String,
+            text: Schema.optional(Schema.String),
+            image_url: Schema.optional(Schema.Struct({ url: Schema.String })),
+          }),
+        ),
+      )(user?.content)
+      expect(parts.filter((part) => part.type === "image_url").map((part) => part.image_url?.url)).toEqual([
+        `data:image/png;base64,${png}`,
+      ])
+      const texts = parts.flatMap((part) => (part.text === undefined ? [] : [part.text]))
+      expect(
+        texts.some(
+          (text) =>
+            text.includes('<file path="findings.md" mime="text/markdown">') && text.includes("uploaded-marker-7f3a"),
+        ),
+      ).toBe(true)
+      // Binary uploads stay downloadable from the room but are named, not inlined, for the model.
+      expect(texts.some((text) => text.includes('<file path="bundle.zip"'))).toBe(false)
+      expect(texts.join("\n")).toContain("bundle.zip")
+      expect(texts.some((text) => text.includes('<file path="vector.svg" mime="text/plain">'))).toBe(true)
+
+      const retried = yield* Effect.promise(() => request("/api/team/message", tmp.path, "POST", body))
+      expect(retried.status).toBe(200)
+      const again = Schema.decodeUnknownSync(Team.Posted)(yield* Effect.promise(() => retried.json()))
+      expect(again.message).toEqual(posted.message)
+      expect(again.tasks.map((task) => task.id)).toEqual(posted.tasks.map((task) => task.id))
+      const conflict = yield* Effect.promise(() =>
+        request("/api/team/message", tmp.path, "POST", { ...body, attachments: attachments.toReversed() }),
+      )
+      expect(conflict.status).toBe(409)
+      const remote = yield* Effect.promise(() =>
+        request("/api/team/message", tmp.path, "POST", {
+          id: "tmsg_runtime_remote",
+          roomID: room.id,
+          text: "Fetch this",
+          attachments: [{ name: "remote.txt", mime: "text/plain", uri: `${llm.url}/remote.txt` }],
+        }),
+      )
+      expect(remote.status).toBe(400)
+      expect((yield* state(tmp.path, room.id)).messages.map((message) => message.id)).not.toContain(
+        "tmsg_runtime_remote",
+      )
+      // Neither the retry nor the rejected sends started more work or reached the remote host.
+      expect(yield* llm.calls).toBe(1)
     }))
 
   it("runs a delegated task in a second native Session and publishes both results", () =>
