@@ -268,6 +268,31 @@ const teamScenarios: Scenario[] = [
       check(posted.tasks.length === 1, "message to an active teammate should create one task")
     }),
   http.protected
+    .get("/api/team/message/{messageID}/attachments", "v2.team.messageAttachments")
+    .mutating()
+    .seeded((ctx) =>
+      Effect.gen(function* () {
+        const room = yield* createTeamRoom(ctx, "httpapi-message-attachments")
+        const attachments = [{ name: "notes.txt", mime: "text/plain", uri: "data:text/plain;base64,aGVsbG8=" }]
+        const response = yield* teamPost(ctx, "/api/team/message", {
+          id: "tmsg_httpapi_attachments",
+          roomID: room.id,
+          text: "",
+          attachments,
+        })
+        check(response.status === 200, `Attachment message seed should succeed, got ${response.status}`)
+        return { roomID: room.id, messageID: "tmsg_httpapi_attachments", attachments }
+      }),
+    )
+    .at((ctx) => ({
+      path: `/api/team/message/${ctx.state.messageID}/attachments?roomID=${ctx.state.roomID}`,
+      headers: ctx.headers(),
+    }))
+    .json(200, (body, ctx) => {
+      const attachments = Schema.decodeUnknownSync(Schema.Array(Team.Attachment))(body)
+      check(stable(attachments) === stable(ctx.state.attachments), "attachment download should preserve uploaded bytes")
+    }),
+  http.protected
     .post("/api/team/teammate/{teammateID}/duty", "v2.team.dutyAttach")
     .mutating()
     .seeded((ctx) =>
