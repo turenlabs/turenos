@@ -70,6 +70,13 @@ It also sets Claude Code variables that no flag expresses, overriding any inheri
 When TurenOS disables tools for a turn, such as after the maximum agent step, it does not register or configure an MCP
 server. Claude still receives `--tools ""`, so the no-tools policy remains effective.
 
+On a turn that configures the private server, that server is the model's only source of tools. When Claude Code cannot
+connect to it, the CLI still runs the whole turn, with no tools, and reports the failure only in its `system/init`
+envelope. TurenOS reads that envelope: if the `forge` server is listed with any status other than `connected`, or is
+missing from a reported server list, it stops the CLI before the turn runs and emits a retryable provider error naming
+the status. The Session then retries the turn with a new CLI and a new connection under the normal provider retry
+policy, and shows the error if every attempt fails. An `init` envelope without a server list is not checked.
+
 ## Mid-turn steering
 
 One TurenOS provider turn is one `claude -p` run, which can make many model requests and tool calls. So that a steer
@@ -202,7 +209,8 @@ The bridge depends on several boundaries that are easy to miss:
 
 Protocol tests exercise authenticated listing and calls, policy-filtered definitions, annotated results, and rejection
 without the turn capability. Transport tests exercise CLI arguments, temporary configuration, stream normalization,
-private-envelope suppression, malformed and bounded output, terminal-result handling, and process teardown.
+private-envelope suppression, malformed and bounded output, terminal-result handling, the private-server status check,
+and process teardown.
 
 Run the focused tests from the Core package:
 
