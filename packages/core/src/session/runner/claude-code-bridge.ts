@@ -53,7 +53,8 @@ const TERMINAL_EXIT_GRACE = 1_000
 const STEER_CAPABILITIES = ["msg_lifecycle_v1", "interrupt_cancel_queued_v1"]
 
 const API_ERROR_PREFIX = "API Error:"
-const MCP_TOOL_PREFIX = "mcp__forge__"
+const MCP_SERVER = "forge"
+const MCP_TOOL_PREFIX = `mcp__${MCP_SERVER}__`
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
 const TRUNCATED = "\n[truncated by TurenOS]"
@@ -795,6 +796,29 @@ export const exitError = (input: {
   })
 }
 
+/**
+ * Built-in tools are disabled, so the private MCP server is the model's only source of tools. When the CLI cannot
+ * connect to it, `system/init` reports the server as failed and the CLI still runs the whole turn with no tools.
+ * Returns the reported status in that case, and `undefined` when the server connected or the CLI reports no
+ * server list.
+ */
+const unavailableBridge = (message: Record<string, unknown>): string | undefined => {
+  if (message.type !== "system" || message.subtype !== "init" || !Array.isArray(message.mcp_servers)) return undefined
+  const server = message.mcp_servers.map(record).find((entry) => entry?.name === MCP_SERVER)
+  if (server?.status === "connected") return undefined
+  return typeof server?.status === "string" ? server.status : "missing"
+}
+
+/**
+ * Retryable: a new CLI connects to the bridge afresh. The child is torn down before it can start a turn that would
+ * run, and answer, without any tool.
+ */
+const bridgeError = (status: string) =>
+  LLMEvent.providerError({
+    message: `Claude Code could not connect to TurenOS's tools (MCP server status: ${status}), so the turn was stopped before it ran without them.`,
+    retryable: true,
+  })
+
 // ---------------------------------------------------------------------------
 // Child process lifecycle
 // ---------------------------------------------------------------------------
@@ -919,7 +943,7 @@ const promptFiles = (
               config,
               JSON.stringify({
                 mcpServers: {
-                  forge: {
+                  [MCP_SERVER]: {
                     type: "http",
                     url: mcp.url,
                     headers: { Authorization: mcp.authorization },
@@ -1065,6 +1089,7 @@ const pump = (
   child: Child,
   promptText: string,
   queue: Queue.Queue<LLMEvent, LLMError | Cause.Done>,
+  bridged: boolean,
   steering?: ClaudeCodeMcp.Steering,
 ) => {
   const state = adapterState()
@@ -1146,9 +1171,11 @@ const pump = (
     Queue.endUnsafe(queue)
   }
   const consume = (line: string) => {
-    if (state.finished) return
+    if (closed || state.finished) return
     const parsed = record(safeParse(line))
     if (!parsed) throw new Error("Claude Code returned malformed stream-json output")
+    const unavailable = bridged ? unavailableBridge(parsed) : undefined
+    if (unavailable) return finish(bridgeError(unavailable))
     if (steering) steer(parsed)
     const events = toEvents(state, parsed)
     if (state.finished) {
@@ -1257,7 +1284,7 @@ const transport = (input: {
           (child) => Effect.promise(() => terminate(child)),
         )
         const steering = token ? ClaudeCodeMcp.steering(token) : undefined
-        yield* Effect.sync(() => pump(child, stdinEnvelope(prepared.request), queue, steering))
+        yield* Effect.sync(() => pump(child, stdinEnvelope(prepared.request), queue, mcp !== undefined, steering))
       }).pipe(
         // `Stream.callback` forks this register effect and discards its exit: a
         // failure (or defect) that escapes here never reaches the consumer, and

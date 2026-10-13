@@ -1795,6 +1795,89 @@ describe("SessionRunner claude-code transport", () => {
   )
 })
 
+/** Streams one turn through the private MCP bridge, as the runner does for every tool-enabled turn. */
+const bridged = (executable: string) =>
+  Effect.gen(function* () {
+    const token = yield* ClaudeCodeMcp.register({
+      definitions: [],
+      execute: () => Effect.succeed({ type: "text", value: "unused" }),
+    })
+    const model = yield* SessionRunnerModel.fromCatalogModel(catalogModel(executable))
+    return yield* LLM.stream(
+      LLM.request({
+        model,
+        system: "system context",
+        messages: [{ role: "user", content: [{ type: "text", text: "hello" }] }],
+        metadata: ClaudeCodeMcp.requestMetadata(token),
+      }),
+    ).pipe(
+      Stream.runCollect,
+      Effect.map((events) => Array.from(events)),
+    )
+  }).pipe(Effect.provide(layer))
+
+/**
+ * Reports the MCP servers the way `claude -p` does in `system/init`, then answers after a pause, as the real CLI
+ * does when its only MCP server failed: it still runs the turn, with no tools.
+ */
+const reportingCLI = (servers: ReadonlyArray<unknown>) =>
+  fakeCLI(
+    [
+      `echo ${envelope({ type: "system", subtype: "init", session_id: "s", tools: [], mcp_servers: servers })}`,
+      "sleep 3",
+      `echo ${envelope({ ...successResult, result: "Hello! What would you like to work on?" })}`,
+    ].join("\n"),
+  )
+
+const answered = (events: ReadonlyArray<LLMEvent>) =>
+  events.some((event) => event.type === "text-delta" || event.type === "finish")
+
+describe("SessionRunner claude-code MCP bridge status", () => {
+  it.live("stops a turn the CLI would run without TurenOS's tools and tears the CLI down", () =>
+    Effect.gen(function* () {
+      const executable = reportingCLI([{ name: "forge", status: "failed", source: "dynamic" }])
+      const started = Date.now()
+      const events = yield* bridged(executable)
+      expect(Date.now() - started).toBeLessThan(2_500)
+      expect(answered(events)).toBe(false)
+      expect(events.filter((event) => event.type === "provider-error")).toEqual([
+        expect.objectContaining({
+          retryable: true,
+          message: expect.stringContaining("MCP server status: failed"),
+        }),
+      ])
+      expect(survivors(executable)).toEqual([])
+    }),
+  )
+
+  it.live("treats a server list without the private server as unavailable", () =>
+    Effect.gen(function* () {
+      const events = yield* bridged(reportingCLI([]))
+      expect(answered(events)).toBe(false)
+      expect(events.find((event) => event.type === "provider-error")).toMatchObject({
+        retryable: true,
+        message: expect.stringContaining("MCP server status: missing"),
+      })
+    }),
+  )
+
+  it.live("runs the turn when the private server connected", () =>
+    Effect.gen(function* () {
+      const events = yield* bridged(reportingCLI([{ name: "forge", status: "connected", source: "dynamic" }]))
+      expect(events.some((event) => event.type === "provider-error")).toBe(false)
+      expect(answered(events)).toBe(true)
+    }),
+  )
+
+  it.live("leaves turns without the bridge alone", () =>
+    Effect.gen(function* () {
+      const events = Array.from(yield* collect(reportingCLI([])))
+      expect(events.some((event) => event.type === "provider-error")).toBe(false)
+      expect(answered(events)).toBe(true)
+    }),
+  )
+})
+
 /**
  * A scripted stand-in for `claude -p` that keeps reading stdin, so a test can drive the mid-turn
  * steering handshake. `script` runs as a module body with `next()` (the next stdin line), `out()`
