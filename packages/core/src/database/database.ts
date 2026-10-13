@@ -49,11 +49,18 @@ export function layerFromPath(filename: string) {
           new Error("A persistent server's database opens only inside that server, which holds its owner lock"),
         )
       // The SQLite write connection enables WAL on open. Authenticate an existing file through
-      // a read-only connection before that PRAGMA, migrations, or identity/owner writes run.
+      // a query-only connection before that PRAGMA, migrations, or identity/owner writes run.
+      // A read-only connection cannot create a missing -shm file, so a WAL database whose side
+      // files were removed on a clean close fails with SQLITE_CANTOPEN. Only use a read-write
+      // inspector when no WAL or rollback journal needs recovery: closing it can checkpoint WAL
+      // even with query_only enabled, including after owner or key validation fails.
       const existing = filename !== ":memory:" && existsSync(filename)
       const inspected = existing
         ? yield* Effect.gen(function* () {
-            const reader = yield* openReadonly(filename)
+            const reader = ["-shm", "-wal", "-journal"].some((suffix) => existsSync(`${filename}${suffix}`))
+              ? yield* openReadonly(filename)
+              : yield* openDatabase({ filename, create: false, disableWAL: true })
+            yield* reader.run("PRAGMA query_only = ON")
             yield* ServerOwner.validate(reader, ownerContext ?? ServerOwner.environmentContext())
             if (!ownerContext?.key) return undefined
             const vault = SecretVault.make(ownerContext.key)
