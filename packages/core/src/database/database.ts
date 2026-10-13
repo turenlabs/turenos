@@ -51,12 +51,13 @@ export function layerFromPath(filename: string) {
       // The SQLite write connection enables WAL on open. Authenticate an existing file through
       // a query-only connection before that PRAGMA, migrations, or identity/owner writes run.
       // A read-only connection cannot create a missing -shm file, so a WAL database whose side
-      // files were removed on a clean close fails with SQLITE_CANTOPEN. Inspect that file through
-      // a read-write connection that keeps its journal mode and refuses writes instead.
+      // files were removed on a clean close fails with SQLITE_CANTOPEN. Only use a read-write
+      // inspector when no WAL or rollback journal needs recovery: closing it can checkpoint WAL
+      // even with query_only enabled, including after owner or key validation fails.
       const existing = filename !== ":memory:" && existsSync(filename)
       const inspected = existing
         ? yield* Effect.gen(function* () {
-            const reader = existsSync(`${filename}-shm`)
+            const reader = ["-shm", "-wal", "-journal"].some((suffix) => existsSync(`${filename}${suffix}`))
               ? yield* openReadonly(filename)
               : yield* openDatabase({ filename, create: false, disableWAL: true })
             yield* reader.run("PRAGMA query_only = ON")
