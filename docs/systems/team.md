@@ -100,6 +100,8 @@ New tasks receive recent room messages, including messages directed to other tea
 New room messages do not interrupt active tasks.
 Results appear under the teammate's identity and link to the Session transcript.
 Open the Session to inspect tool activity or answer permission and question requests.
+While a task's Session or one of its subagent Sessions waits on such a request, the room shows the teammate as needing your input, and **Active work** links to the Session with **Answer in Session** or **Review in Session**.
+The link opens the Session that owns the request. Pending requests load from each task's stored Location, including its workspace. Descendant requests appear before their Directory is opened. Live requests load missing ancestor metadata. Live replies and rejections take precedence over pending-request snapshots.
 A room message is not a permission grant.
 
 ## Message attachments
