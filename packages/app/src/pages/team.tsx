@@ -38,10 +38,10 @@ import {
   roomCoordinator,
   roomDeleteBlocker,
   taskRequests,
+  hydrateTaskRequests,
   type TaskRequest,
 } from "./team/model"
 import { permissionFromV2 } from "@/context/permission-request"
-import { cmp } from "@/context/global-sync/utils"
 import type { Team } from "@turenlabs/schema/team"
 import { factoryConfigProblem, teammateDraft } from "@turenlabs/client/team"
 
@@ -704,40 +704,26 @@ export default function TeamPage() {
     )
   }
 
-  // Prompts raised before this page loaded are in the shared store only when their directory
-  // was bootstrapped, so read each active task Session's pending prompts once.
+  // Global pending lists include descendants without a bootstrapped Directory.
   const hydrated = new Set<string>()
   createEffect(() => {
     const connection = server.current
     const tasks = activeTasks()
-    if (!connection || !tasks) return
+    if (!connection || !tasks?.length) return
     const session = global.ensureServerCtx(connection).sync.session
     const client = serverSDK().client
-    for (const task of tasks) {
-      const key = JSON.stringify([server.key, task.sessionID])
-      if (hydrated.has(key)) continue
-      hydrated.add(key)
-      void Promise.all([
-        client.v2.session.question.list({ sessionID: task.sessionID }),
-        client.v2.session.permission.list({ sessionID: task.sessionID }),
-      ])
-        .then(([questions, permissions]) => {
-          // A live event that arrived meanwhile is newer than this snapshot.
-          if (questions.data && !session.data.question[task.sessionID])
-            session.set(
-              "question",
-              task.sessionID,
-              [...questions.data.data].sort((a, b) => cmp(a.id, b.id)),
-            )
-          if (permissions.data && !session.data.permission[task.sessionID])
-            session.set(
-              "permission",
-              task.sessionID,
-              permissions.data.data.map(permissionFromV2).sort((a, b) => cmp(a.id, b.id)),
-            )
+    const ids = tasks.map((task) => task.sessionID)
+    const key = JSON.stringify([server.key, [...ids].sort()])
+    if (hydrated.has(key)) return
+    hydrated.add(key)
+    void Promise.all([client.v2.question.request.list(), client.v2.permission.request.list()])
+      .then(([questions, permissions]) => {
+        return hydrateTaskRequests(ids, session, {
+          question: questions.data?.data ?? [],
+          permission: (permissions.data?.data ?? []).map(permissionFromV2),
         })
-        .catch(() => hydrated.delete(key))
-    }
+      })
+      .catch(() => hydrated.delete(key))
   })
 
   return (
@@ -1538,8 +1524,11 @@ export default function TeamPage() {
                 </Show>
               </div>
               <div class="mt-2 flex gap-2">
-                <a class="text-[11px] underline" href={sessionHref(server.key, task.sessionID)}>
-                  {taskSessionLink[waiting().get(task.sessionID) ?? "none"]}
+                <a
+                  class="text-[11px] underline"
+                  href={sessionHref(server.key, waiting().get(task.sessionID)?.sessionID ?? task.sessionID)}
+                >
+                  {taskSessionLink[waiting().get(task.sessionID)?.kind ?? "none"]}
                 </a>
                 <Show when={!archived() && ["queued", "claimed", "running"].includes(task.status)}>
                   <button

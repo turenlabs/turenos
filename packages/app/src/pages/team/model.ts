@@ -1,4 +1,8 @@
 import type { Team } from "@turenlabs/schema/team"
+import type { QuestionRequest } from "@turenlabs/sdk/v2/client"
+import type { createServerSession } from "@/context/server-session"
+import type { SessionPermissionRequest } from "@/context/permission-request"
+import { cmp } from "@/context/global-sync/utils"
 
 export {
   assignedHandles,
@@ -10,7 +14,7 @@ export {
   selectFactoryTeammate,
 } from "@turenlabs/client/team"
 
-export type TaskRequest = "question" | "permission"
+export type TaskRequest = { kind: "question" | "permission"; sessionID: string }
 
 // `waiting` maps a task Session ID to the prompt it is blocked on (see `taskRequests`).
 export function roomActivity(
@@ -68,10 +72,47 @@ export function taskRequests(
   return (["question", "permission"] as const).reduce((result, kind) => {
     for (const [sessionID, items] of Object.entries(pending[kind])) {
       const id = items?.length ? owner(sessionID) : undefined
-      if (id && !result.has(id)) result.set(id, kind)
+      if (id && !result.has(id)) result.set(id, { kind, sessionID })
     }
     return result
   }, new Map<string, TaskRequest>())
+}
+
+// Load ancestor metadata before assigning pre-existing prompts to active tasks.
+export async function hydrateTaskRequests(
+  sessionIDs: readonly string[],
+  session: ReturnType<typeof createServerSession>,
+  pending: { question: QuestionRequest[]; permission: SessionPermissionRequest[] },
+) {
+  const ids = [...new Set([...pending.question, ...pending.permission].map((request) => request.sessionID))]
+  await Promise.all(ids.map((id) => session.lineage.resolve(id).catch(() => undefined)))
+  const grouped = {
+    question: Object.groupBy(pending.question, (request) => request.sessionID),
+    permission: Object.groupBy(pending.permission, (request) => request.sessionID),
+  }
+  for (const id of ids) {
+    if (
+      !taskRequests(
+        sessionIDs,
+        { question: { [id]: grouped.question[id] ?? grouped.permission[id] }, permission: {} },
+        (id) => session.get(id)?.parentID,
+      ).size
+    )
+      continue
+    // Empty buckets record live replies and rejections. Do not overwrite them with a stale snapshot.
+    if (grouped.question[id] && session.data.question[id] === undefined)
+      session.set(
+        "question",
+        id,
+        [...grouped.question[id]].sort((a, b) => cmp(a.id, b.id)),
+      )
+    if (grouped.permission[id] && session.data.permission[id] === undefined)
+      session.set(
+        "permission",
+        id,
+        [...grouped.permission[id]].sort((a, b) => cmp(a.id, b.id)),
+      )
+  }
 }
 
 export function ownsTeamResponse<Client>(

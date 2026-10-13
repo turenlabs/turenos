@@ -39,7 +39,9 @@ describe("team room model", () => {
     const tasks = mates.map(
       (mate) => ({ roomID: "room", teammateID: mate.id, sessionID: `ses-${mate.id}`, status: "running" }) as Team.Task,
     )
-    expect(roomActivity("room", [tasks[0]!], mates, new Map([["ses-Moss", "question"]]))).toEqual({
+    expect(
+      roomActivity("room", [tasks[0]!], mates, new Map([["ses-Moss", { kind: "question", sessionID: "ses-Moss" }]])),
+    ).toEqual({
       text: "Moss needs your input",
       working: false,
     })
@@ -49,14 +51,15 @@ describe("team room model", () => {
         tasks,
         mates,
         new Map([
-          ["ses-Moss", "question"],
-          ["ses-Iris", "permission"],
+          ["ses-Moss", { kind: "question", sessionID: "ses-Moss" }],
+          ["ses-Iris", { kind: "permission", sessionID: "ses-Iris" }],
         ]),
       ),
     ).toEqual({ text: "Moss and Iris need your input · Rae is working...", working: true })
-    expect(roomActivity("room", [tasks[0]!], mates, new Map([["ses-Iris", "question"]]))?.text).toBe(
-      "Moss is working...",
-    )
+    expect(
+      roomActivity("room", [tasks[0]!], mates, new Map([["ses-Iris", { kind: "question", sessionID: "ses-Iris" }]]))
+        ?.text,
+    ).toBe("Moss is working...")
   })
 
   test("attributes pending Session prompts, including subagent prompts, to their Team task", () => {
@@ -70,19 +73,19 @@ describe("team room model", () => {
       ),
     ).toEqual(
       new Map([
-        ["task-a", "question"],
-        ["task-b", "permission"],
+        ["task-a", { kind: "question", sessionID: "task-a" }],
+        ["task-b", { kind: "permission", sessionID: "task-b" }],
       ]),
     )
     expect(taskRequests(["task-a"], { question: { grandchild: [{}] }, permission: {} }, parentID)).toEqual(
-      new Map([["task-a", "question"]]),
+      new Map([["task-a", { kind: "question", sessionID: "grandchild" }]]),
     )
     expect(taskRequests(["task-a"], { question: { stray: [{}], loop: [{}] }, permission: {} }, parentID)).toEqual(
       new Map(),
     )
     expect(
       taskRequests(["task-a"], { question: { "task-a": [{}] }, permission: { "task-a": [{}] } }, parentID),
-    ).toEqual(new Map([["task-a", "question"]]))
+    ).toEqual(new Map([["task-a", { kind: "question", sessionID: "task-a" }]]))
   })
 
   test("keeps an exact message retry target if the selected room changes", () => {
