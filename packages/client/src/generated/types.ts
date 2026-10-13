@@ -8554,6 +8554,7 @@ export type TeamStateOutput = {
       readonly revision: number
     }
   }>
+  readonly activeRoomIDs?: ReadonlyArray<string>
   readonly room: {
     readonly id: string
     readonly name: string

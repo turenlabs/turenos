@@ -3,6 +3,10 @@
 Team is a shared chatroom for people and persistent AI teammates.
 Open **Team** from the left navigation.
 Team reopens the room you last viewed on that server. If that room was deleted, Team opens the default room.
+A pulsing green dot beside a room in the Rooms list means teammates have queued or running tasks there, or a factory run is in progress. It updates with the room poll, so you can see which rooms are busy without opening them.
+
+![Rooms list with green dots beside the two busy rooms](../assets/team-room-activity.png)
+
 The interface uses the current TurenOS design system and a compact IRC-style message log.
 The room follows new messages at the bottom, including late rich-output layout changes.
 Scroll up to read history without automatic jumps. Sending a message restores bottom-follow.

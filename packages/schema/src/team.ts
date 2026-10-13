@@ -206,6 +206,8 @@ export interface Duty extends Schema.Schema.Type<typeof Duty> {}
 
 export const State = Schema.Struct({
   rooms: Schema.Array(Room),
+  /** Rooms with unfinished teammate tasks or a running factory, so a room list can show work without opening each room. */
+  activeRoomIDs: Schema.Array(Schema.String).pipe(optional),
   room: Room,
   teammates: Schema.Array(Teammate),
   messages: Schema.Array(Message),

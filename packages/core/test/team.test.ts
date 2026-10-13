@@ -761,6 +761,24 @@ describe("TeamWorkspace", () => {
     }),
   )
 
+  it.effect("reports which rooms have unfinished work from any room's state", () =>
+    Effect.gen(function* () {
+      const team = yield* TeamWorkspace.Service
+      const busy = yield* team.createRoom({ name: "busy" })
+      const quiet = yield* team.createRoom({ name: "quiet" })
+      yield* team.createTeammate({ roomID: busy.id, name: "Ada", handle: "ada", role: "Worker", mission: "Work" })
+      yield* team.createTeammate({ roomID: quiet.id, name: "Bo", handle: "bo", role: "Worker", mission: "Work" })
+      expect((yield* team.state({ roomID: quiet.id })).activeRoomIDs).toEqual([])
+      const [{ id }] = (yield* team.postMessage({ roomID: busy.id, id: "msg_busy", text: "@ada start" })).tasks
+      expect((yield* team.state({ roomID: quiet.id })).activeRoomIDs).toEqual([busy.id])
+      yield* team.claimTasks({ owner: "owner", leaseMs: 60_000 })
+      yield* team.startTask({ id, owner: "owner" })
+      expect((yield* team.state({ roomID: busy.id })).activeRoomIDs).toEqual([busy.id])
+      yield* team.finishTask({ id, owner: "owner", status: "succeeded" })
+      expect((yield* team.state({ roomID: quiet.id })).activeRoomIDs).toEqual([])
+    }),
+  )
+
   it.effect("keeps an older running task visible beyond the recent task page", () =>
     Effect.gen(function* () {
       const team = yield* TeamWorkspace.Service
