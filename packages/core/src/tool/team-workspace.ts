@@ -241,10 +241,11 @@ const layer = Layer.effectDiscard(
               yield* assert(collaborateName, "own-room", location.directory, context)
               const sender = yield* team.teammateForSession(context.sessionID).pipe(Effect.mapError(toolFailure))
               const state = yield* team.state({ roomID: sender.roomID }).pipe(Effect.mapError(toolFailure))
-              const target = state.teammates.find((mate) => mate.handle === input.targetHandle)
-              if (!target)
-                return yield* new ToolFailure({ message: `Teammate @${input.targetHandle} not found in your room` })
-              yield* assert(collaborateName, input.targetHandle, target.directory, context)
+              // Models write the handle the way room messages mention it; stored handles are lowercase without `@`.
+              const handle = input.targetHandle.replace(/^@/, "").toLowerCase()
+              const target = state.teammates.find((mate) => mate.handle === handle)
+              if (!target) return yield* new ToolFailure({ message: `Teammate @${handle} not found in your room` })
+              yield* assert(collaborateName, handle, target.directory, context)
               const directory = yield* resolveDirectory(target.directory, context)
               const id = `msg_tool_${createHash("sha256")
                 .update(JSON.stringify([context.sessionID, context.assistantMessageID, context.toolCallID]))
@@ -252,6 +253,7 @@ const layer = Layer.effectDiscard(
               return yield* team
                 .collaborate({
                   ...input,
+                  targetHandle: handle,
                   assistantMessageID: context.assistantMessageID,
                   directory,
                   id,
