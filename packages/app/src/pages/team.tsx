@@ -38,10 +38,10 @@ import {
   roomCoordinator,
   roomDeleteBlocker,
   taskRequests,
-  hydrateTaskRequests,
+  loadTaskRequests,
+  hydratePendingTaskLineage,
   type TaskRequest,
 } from "./team/model"
-import { permissionFromV2 } from "@/context/permission-request"
 import type { Team } from "@turenlabs/schema/team"
 import { factoryConfigProblem, teammateDraft } from "@turenlabs/client/team"
 
@@ -704,7 +704,7 @@ export default function TeamPage() {
     )
   }
 
-  // Global pending lists include descendants without a bootstrapped Directory.
+  // Pending lists are Location-scoped, including descendants outside an opened Directory.
   const hydrated = new Set<string>()
   createEffect(() => {
     const connection = server.current
@@ -716,14 +716,13 @@ export default function TeamPage() {
     const key = JSON.stringify([server.key, [...ids].sort()])
     if (hydrated.has(key)) return
     hydrated.add(key)
-    void Promise.all([client.v2.question.request.list(), client.v2.permission.request.list()])
-      .then(([questions, permissions]) => {
-        return hydrateTaskRequests(ids, session, {
-          question: questions.data?.data ?? [],
-          permission: (permissions.data?.data ?? []).map(permissionFromV2),
-        })
-      })
-      .catch(() => hydrated.delete(key))
+    void loadTaskRequests(ids, session, client).catch(() => hydrated.delete(key))
+  })
+
+  createEffect(() => {
+    const connection = server.current
+    if (!connection || !activeTasks()?.length) return
+    void hydratePendingTaskLineage(global.ensureServerCtx(connection).sync.session)
   })
 
   return (

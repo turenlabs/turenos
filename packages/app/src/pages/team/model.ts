@@ -1,7 +1,7 @@
 import type { Team } from "@turenlabs/schema/team"
-import type { QuestionRequest } from "@turenlabs/sdk/v2/client"
+import type { ForgeClient, QuestionRequest } from "@turenlabs/sdk/v2/client"
 import type { createServerSession } from "@/context/server-session"
-import type { SessionPermissionRequest } from "@/context/permission-request"
+import { permissionFromV2, type SessionPermissionRequest } from "@/context/permission-request"
 import { cmp } from "@/context/global-sync/utils"
 
 export {
@@ -76,6 +76,44 @@ export function taskRequests(
     }
     return result
   }, new Map<string, TaskRequest>())
+}
+
+export async function loadTaskRequests(
+  sessionIDs: readonly string[],
+  session: ReturnType<typeof createServerSession>,
+  client: ForgeClient,
+) {
+  const locations = await Promise.all(
+    sessionIDs.map(async (sessionID) => {
+      const response = await client.v2.session.get({ sessionID }, { throwOnError: true })
+      const location = response.data?.data.location
+      if (!location) throw new Error(`Missing task Location: ${sessionID}`)
+      return { directory: location.directory, workspace: location.workspaceID }
+    }),
+  )
+  await Promise.all(
+    [...new Map(locations.map((location) => [JSON.stringify(location), location])).values()].map(async (location) => {
+      const [questions, permissions] = await Promise.all([
+        client.v2.question.request.list({ location }, { throwOnError: true }),
+        client.v2.permission.request.list({ location }, { throwOnError: true }),
+      ])
+      await hydrateTaskRequests(sessionIDs, session, {
+        question: questions.data?.data ?? [],
+        permission: (permissions.data?.data ?? []).map(permissionFromV2),
+      })
+    }),
+  )
+}
+
+export async function hydratePendingTaskLineage(session: ReturnType<typeof createServerSession>) {
+  const ids = [
+    ...new Set(
+      [session.data.question, session.data.permission].flatMap((pending) =>
+        Object.entries(pending).flatMap(([id, requests]) => (requests?.length ? [id] : [])),
+      ),
+    ),
+  ].filter((id) => !session.lineage.peek(id))
+  await Promise.all(ids.map((id) => session.lineage.resolve(id).catch(() => undefined)))
 }
 
 // Load ancestor metadata before assigning pre-existing prompts to active tasks.

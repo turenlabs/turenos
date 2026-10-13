@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test"
 import type { ForgeClient, QuestionRequest, Session } from "@turenlabs/sdk/v2/client"
+import { createForgeClient } from "@turenlabs/sdk/v2/client"
 import { createServerSession } from "@/context/server-session"
 import { permissionFromV2 } from "@/context/permission-request"
 import { sessionPermissionRequest, sessionQuestionRequest } from "../session/composer/session-request-tree"
-import { hydrateTaskRequests, taskRequests } from "./model"
+import { hydratePendingTaskLineage, hydrateTaskRequests, loadTaskRequests, taskRequests } from "./model"
 
 const info = (id: string, parentID?: string): Session => ({
   id,
@@ -37,6 +38,84 @@ const setup = (wait: Promise<void> = Promise.resolve()) => {
 }
 
 describe("Team pending request hydration", () => {
+  test("fetches pending lists once per stored task Location, not the server default", async () => {
+    const requests: URL[] = []
+    const client = createForgeClient({
+      baseUrl: "http://localhost:4096",
+      directory: "/server-cwd",
+      fetch: (async (request: Request) => {
+        const url = new URL(request.url)
+        requests.push(url)
+        if (url.pathname.startsWith("/api/session/"))
+          return Response.json({ data: { location: { directory: "/task-repo", workspaceID: "wrk_task" } } })
+        if (url.pathname === "/api/question/request" || url.pathname === "/api/permission/request") {
+          const scoped =
+            url.searchParams.get("location[directory]") === "/task-repo" &&
+            url.searchParams.get("location[workspace]") === "wrk_task"
+          return Response.json({
+            data: scoped
+              ? url.pathname === "/api/question/request"
+                ? [question("grandchild")]
+                : [
+                    {
+                      id: "per-child",
+                      sessionID: "child",
+                      action: "read",
+                      resources: ["file"],
+                      save: [],
+                    },
+                  ]
+              : [],
+          })
+        }
+        return Response.json(
+          info(
+            url.pathname.split("/").at(-1)!,
+            {
+              child: "root",
+              grandchild: "child",
+            }[url.pathname.split("/").at(-1)!],
+          ),
+        )
+      }) as typeof fetch,
+    })
+    const store = createServerSession(client)
+    await loadTaskRequests(["root", "root-sibling"], store, client)
+    const pendingCalls = requests.filter((url) => url.pathname.endsWith("/request"))
+    expect(pendingCalls).toHaveLength(2)
+    expect(
+      pendingCalls.map((url) => [
+        url.searchParams.get("location[directory]"),
+        url.searchParams.get("location[workspace]"),
+      ]),
+    ).toEqual([
+      ["/task-repo", "wrk_task"],
+      ["/task-repo", "wrk_task"],
+    ])
+    expect(taskRequests(["root"], store.data, (id) => store.get(id)?.parentID).get("root")).toEqual({
+      kind: "question",
+      sessionID: "grandchild",
+    })
+    expect(store.data.permission.child).toEqual([permission("child")])
+  })
+
+  test("loads missing ancestors for a live grandchild ask after empty hydration", async () => {
+    const store = setup()
+    await hydrateTaskRequests(["root"], store, { question: [], permission: [] })
+    expect(store.get("root")).toBeUndefined()
+    expect(store.get("child")).toBeUndefined()
+    store.apply({ type: "question.v2.asked", properties: question("grandchild") })
+    await store.resolve("grandchild")
+    expect(store.get("child")).toBeUndefined()
+    expect(taskRequests(["root"], store.data, (id) => store.get(id)?.parentID).size).toBe(0)
+    await hydratePendingTaskLineage(store)
+    expect(store.get("child")?.parentID).toBe("root")
+    expect(taskRequests(["root"], store.data, (id) => store.get(id)?.parentID).get("root")).toEqual({
+      kind: "question",
+      sessionID: "grandchild",
+    })
+  })
+
   test("loads descendants without Directory bootstrap and links to the request dock", async () => {
     const store = setup()
     await hydrateTaskRequests(["root"], store, {
