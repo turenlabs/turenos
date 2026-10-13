@@ -328,6 +328,28 @@ describe("TeamWorkspaceTool", () => {
     }),
   )
 
+  it.effect("accepts a mention-style target handle and authorizes the stored handle", () =>
+    Effect.gen(function* () {
+      const registry = yield* ToolRegistry.Service
+      const team = yield* TeamWorkspace.Service
+      yield* setup(registry, team)
+      const [{ id }] = (yield* team.postMessage({ id: "msg_tool_mention_sender", text: "@rae start" })).tasks
+      yield* team.claimTasks({ owner: "tool-mention" })
+      const running = yield* team.startTask({ id, owner: "tool-mention" })
+      assertions.length = 0
+      const sam = (yield* team.state()).teammates.find((mate) => mate.handle === "sam")!
+      expect(
+        yield* executeTool(registry, {
+          ...call(TeamWorkspaceTool.collaborateName, { targetHandle: "@Sam", text: "Check this item" }, "call-mention"),
+          sessionID: SessionV2.ID.make(running.sessionID),
+        }),
+      ).toMatchObject({ type: "json", value: { tasks: [{ teammateID: sam.id, status: "queued" }] } })
+      expect(assertions).toContainEqual(
+        expect.objectContaining({ action: TeamWorkspaceTool.collaborateName, resources: ["sam", directory] }),
+      )
+    }),
+  )
+
   it.effect("explicitly queues one planning task and reconciles exact retries", () =>
     Effect.gen(function* () {
       const registry = yield* ToolRegistry.Service
