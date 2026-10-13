@@ -3,8 +3,13 @@ import type { ForgeClient, QuestionRequest, Session } from "@turenlabs/sdk/v2/cl
 import { createForgeClient } from "@turenlabs/sdk/v2/client"
 import { createServerSession } from "@/context/server-session"
 import { permissionFromV2 } from "@/context/permission-request"
-import { sessionPermissionRequest, sessionQuestionRequest } from "../session/composer/session-request-tree"
-import { hydratePendingTaskLineage, hydrateTaskRequests, loadTaskRequests, taskRequests } from "./model"
+import { sessionPermissionRequest, sessionQuestionRequest } from "../src/pages/session/composer/session-request-tree"
+import {
+  hydratePendingTaskLineage,
+  hydrateTaskRequests,
+  loadTaskRequests,
+  taskRequests,
+} from "../src/pages/team/model"
 
 const info = (id: string, parentID?: string): Session => ({
   id,
