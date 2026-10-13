@@ -791,6 +791,10 @@ export function createServerSession(client: ForgeClient) {
       case "permission.replied":
       case "permission.v2.replied": {
         const props = event.properties as { sessionID: string; requestID: string }
+        if (!data.permission[props.sessionID]) {
+          setData("permission", props.sessionID, [])
+          return
+        }
         setData(
           "permission",
           props.sessionID,
@@ -822,6 +826,10 @@ export function createServerSession(client: ForgeClient) {
       case "question.v2.replied":
       case "question.v2.rejected": {
         const props = event.properties as { sessionID: string; requestID: string }
+        if (!data.question[props.sessionID]) {
+          setData("question", props.sessionID, [])
+          return
+        }
         setData(
           "question",
           props.sessionID,
