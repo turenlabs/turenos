@@ -86,7 +86,6 @@ export function createTranscript(renderer: CliRenderer, main: BoxRenderable, sti
   const content = new TextRenderable(renderer, {
     content: "Connecting to the server…",
     fg: color.text,
-    width: "100%",
     wrapMode: "word",
   })
   detail.add(content)
@@ -105,6 +104,12 @@ export function createTranscript(renderer: CliRenderer, main: BoxRenderable, sti
     anvil.play()
   }
   detail.viewport.on("resize", fitAnvil)
+  // A percentage width lets Yoga measure the wrapped text at one width and lay it out at another when the scrollbar
+  // appears, so the transcript reports rows the text does not have and scrolls past its end. The width is the viewport's
+  // less the content's right padding.
+  detail.viewport.on("resize", () => {
+    content.width = Math.max(1, detail.viewport.width - 2)
+  })
 
   function renderContent(value: string, rich = false, welcome = false) {
     welcomeRows = welcome ? value.split("\n").length : undefined
