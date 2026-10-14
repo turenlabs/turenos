@@ -455,7 +455,7 @@ describe("TeamWorkspace", () => {
     }),
   )
 
-  it.effect("cancels linked factory work when one worker fails", () =>
+  it.effect("cancels only the dependents of a failed factory worker", () =>
     Effect.gen(function* () {
       const team = yield* TeamWorkspace.Service
       const room = yield* team.createRoom({ name: "factory-failure" })
@@ -502,20 +502,153 @@ describe("TeamWorkspace", () => {
         text: JSON.stringify({
           assignments: [
             { teammateID: left.id, prompt: "Left" },
-            { teammateID: right.id, prompt: "Right" },
+            { teammateID: right.id, prompt: "Right", dependsOn: [left.id] },
           ],
         }),
       })
       yield* team.syncFactoryRuns()
       const work = yield* team.claimTasks({ owner: "work-owner", limit: 2 })
+      expect(work).toHaveLength(1)
       yield* Effect.forEach(work, (task) => team.startTask({ id: task.id, owner: "work-owner" }), { discard: true })
       yield* team.finishTask({ id: work[0]!.id, owner: "work-owner", status: "failed", error: "Worker failed" })
       yield* team.syncFactoryRuns()
       expect((yield* team.getFactoryRun(run.id)).status).toBe("failed")
-      expect((yield* team.getTask(work[1]!.id)).status).toBe("cancelled")
-      expect(yield* team.startTask({ id: work[1]!.id, owner: "work-owner" }).pipe(Effect.flip)).toBeInstanceOf(
+      const dependent = (yield* team.getFactoryRun(run.id)).taskIDs[2]!
+      expect((yield* team.getTask(dependent)).status).toBe("cancelled")
+      expect(yield* team.startTask({ id: dependent, owner: "work-owner" }).pipe(Effect.flip)).toBeInstanceOf(
         TeamWorkspace.ConflictError,
       )
+    }),
+  )
+
+  it.effect("cancels multihop dependents while independent factory work finishes", () =>
+    Effect.gen(function* () {
+      const team = yield* TeamWorkspace.Service
+      const room = yield* team.createRoom({ name: "factory-independent-failure" })
+      const members = yield* Effect.forEach(["lead", "fails", "blocked", "independent", "transitive"], (handle) =>
+        team.createTeammate({ roomID: room.id, name: handle, handle, role: "Builder", mission: "Build" }),
+      )
+      yield* team.configureFactory({
+        roomID: room.id,
+        config: {
+          outcome: "Build independent artifacts",
+          parameters: {},
+          constraints: "Keep independent work isolated",
+          acceptanceCriteria: "Independent work completes",
+          directory: "/tmp/factory",
+          coordinatorTeammateID: members[0]!.id,
+          teammateIDs: members.map((member) => member.id),
+        },
+      })
+      const run = yield* team.startFactoryRun({ id: "frun_independent_failure", roomID: room.id })
+      const [plan] = yield* team.claimTasks({ owner: "plan" })
+      yield* team.startTask({ id: plan!.id, owner: "plan" })
+      yield* team.finishTask({
+        id: plan!.id,
+        owner: "plan",
+        status: "succeeded",
+        text: JSON.stringify({
+          assignments: [
+            { teammateID: members[1]!.id, prompt: "Call a provider that fails" },
+            { teammateID: members[2]!.id, prompt: "Use the failed result", dependsOn: [members[1]!.id] },
+            { teammateID: members[3]!.id, prompt: "Complete unrelated work" },
+            { teammateID: members[4]!.id, prompt: "Use the blocked result", dependsOn: [members[2]!.id] },
+          ],
+        }),
+      })
+      yield* team.syncFactoryRuns()
+
+      const firstWave = yield* team.claimTasks({ owner: "workers", limit: 2 })
+      const failing = firstWave.find((task) => task.teammateID === members[1]!.id)!
+      const independent = firstWave.find((task) => task.teammateID === members[3]!.id)!
+      const dependents = (yield* team.getFactoryRun(run.id)).taskIDs.filter(
+        (id) => id !== plan!.id && id !== failing.id && id !== independent.id,
+      )
+      expect(dependents).toHaveLength(2)
+      yield* Effect.forEach(firstWave, (task) => team.startTask({ id: task.id, owner: "workers" }), {
+        discard: true,
+      })
+      yield* team.finishTask({
+        id: failing.id,
+        owner: "workers",
+        status: "failed",
+        error: "Synthetic provider failure",
+      })
+      yield* team.syncFactoryRuns()
+
+      expect((yield* team.getTask(independent.id)).status).toBe("running")
+      yield* Effect.forEach(dependents, (id) =>
+        Effect.gen(function* () {
+          expect((yield* team.getTask(id)).status).toBe("cancelled")
+          expect(yield* team.startTask({ id, owner: "workers" }).pipe(Effect.flip)).toBeInstanceOf(
+            TeamWorkspace.ConflictError,
+          )
+        }),
+      )
+      expect((yield* team.getFactoryRun(run.id)).status).toBe("running")
+
+      yield* team.finishTask({ id: independent.id, owner: "workers", status: "succeeded", text: "Unrelated work done" })
+      yield* team.syncFactoryRuns()
+
+      expect((yield* team.getTask(independent.id)).status).toBe("succeeded")
+      const settled = yield* team.getFactoryRun(run.id)
+      expect(settled.status).toBe("failed")
+      expect(settled.error).toBe("Synthetic provider failure")
+    }),
+  )
+
+  it.effect("reports failure ahead of an earlier cancelled factory task", () =>
+    Effect.gen(function* () {
+      const team = yield* TeamWorkspace.Service
+      const room = yield* team.createRoom({ name: "factory-mixed-failure" })
+      const members = yield* Effect.forEach(["lead", "cancelled", "failed", "independent"], (handle) =>
+        team.createTeammate({ roomID: room.id, name: handle, handle, role: "Builder", mission: "Build" }),
+      )
+      yield* team.configureFactory({
+        roomID: room.id,
+        config: {
+          outcome: "Build independent artifacts",
+          parameters: {},
+          constraints: "Keep independent work isolated",
+          acceptanceCriteria: "Report the worker failure",
+          directory: "/tmp/factory",
+          coordinatorTeammateID: members[0]!.id,
+          teammateIDs: members.map((member) => member.id),
+        },
+      })
+      const run = yield* team.startFactoryRun({ id: "frun_mixed_failure", roomID: room.id })
+      const [plan] = yield* team.claimTasks({ owner: "plan" })
+      yield* team.startTask({ id: plan!.id, owner: "plan" })
+      yield* team.finishTask({
+        id: plan!.id,
+        owner: "plan",
+        status: "succeeded",
+        text: JSON.stringify({
+          assignments: members.slice(1).map((member) => ({ teammateID: member.id, prompt: member.handle })),
+        }),
+      })
+      yield* team.syncFactoryRuns()
+      const work = yield* team.claimTasks({ owner: "workers", limit: 3 })
+      expect(work).toHaveLength(3)
+      yield* Effect.forEach(work, (task) => team.startTask({ id: task.id, owner: "workers" }), { discard: true })
+      const cancelled = work.find((task) => task.teammateID === members[1]!.id)!
+      const failed = work.find((task) => task.teammateID === members[2]!.id)!
+      const independent = work.find((task) => task.teammateID === members[3]!.id)!
+      yield* team.cancelTask(cancelled.id)
+      yield* team.finishTask({ id: failed.id, owner: "workers", status: "failed", error: "Worker failure wins" })
+      yield* team.syncFactoryRuns()
+      expect((yield* team.getFactoryRun(run.id)).status).toBe("running")
+      expect((yield* team.getTask(independent.id)).status).toBe("running")
+      yield* team.finishTask({ id: independent.id, owner: "workers", status: "succeeded", text: "Done" })
+      yield* team.syncFactoryRuns()
+      expect(yield* team.getFactoryRun(run.id)).toMatchObject({
+        status: "failed",
+        phase: "done",
+        error: "Worker failure wins",
+      })
+      expect((yield* team.getTask(cancelled.id)).status).toBe("cancelled")
+      expect((yield* team.getTask(failed.id)).status).toBe("failed")
+      expect((yield* team.getTask(independent.id)).status).toBe("succeeded")
     }),
   )
 
