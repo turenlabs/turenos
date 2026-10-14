@@ -1,6 +1,7 @@
 export * as TeamWorkspace from "./workspace"
 
 import { Team } from "@turenlabs/schema/team"
+import { parseFactoryOutput } from "@turenlabs/schema/team-output"
 import { createHash } from "node:crypto"
 import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lt, lte, notInArray, or, sql } from "drizzle-orm"
 import { Context, Effect, Layer, Schema } from "effect"
@@ -1187,11 +1188,7 @@ const layer = Layer.effect(
                 .all()
               if (run.phase === "plan") {
                 const output = outputs.find((message) => message.source_key === `task:${tasks[0]?.id}`)?.text ?? ""
-                const json = Schema.decodeUnknownOption(Schema.UnknownFromJsonString)(output)
-                const plan =
-                  json._tag === "Some"
-                    ? Schema.decodeUnknownOption(Team.FactoryPlan)(json.value)
-                    : { _tag: "None" as const }
+                const plan = Schema.decodeUnknownOption(Team.FactoryPlan)(parseFactoryOutput(output))
                 const assignments = plan._tag === "Some" ? plan.value.assignments : []
                 const assignmentIDs = new Set(assignments.map((item) => item.teammateID))
                 const dependenciesValid = assignments.every((item) => {
@@ -1427,11 +1424,7 @@ const layer = Layer.effect(
               if (run.phase === "check") {
                 const task = tasks.at(-1)
                 const output = outputs.find((message) => message.source_key === `task:${task?.id}`)?.text ?? ""
-                const json = Schema.decodeUnknownOption(Schema.UnknownFromJsonString)(output)
-                const check =
-                  json._tag === "Some"
-                    ? Schema.decodeUnknownOption(Team.FactoryCheck)(json.value)
-                    : { _tag: "None" as const }
+                const check = Schema.decodeUnknownOption(Team.FactoryCheck)(parseFactoryOutput(output))
                 const status: "succeeded" | "needs_input" | "failed" =
                   check._tag === "Some" && check.value.status === "accepted"
                     ? "succeeded"

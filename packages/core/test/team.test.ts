@@ -358,6 +358,68 @@ describe("TeamWorkspace", () => {
     }),
   )
 
+  it.effect("reads a factory plan and check wrapped in code fences, and rejects prose around them", () =>
+    Effect.gen(function* () {
+      const team = yield* TeamWorkspace.Service
+      const room = yield* team.createRoom({ name: "factory-fenced" })
+      const coordinator = yield* team.createTeammate({
+        roomID: room.id,
+        name: "Lead",
+        handle: "lead",
+        role: "Lead",
+        mission: "Coordinate",
+      })
+      const worker = yield* team.createTeammate({
+        roomID: room.id,
+        name: "Worker",
+        handle: "worker",
+        role: "Builder",
+        mission: "Build",
+      })
+      yield* team.configureFactory({
+        roomID: room.id,
+        config: {
+          outcome: "Build",
+          parameters: {},
+          constraints: "Safe",
+          acceptanceCriteria: "Pass",
+          directory: "/tmp/factory",
+          coordinatorTeammateID: coordinator.id,
+          teammateIDs: [coordinator.id, worker.id],
+        },
+      })
+      const plan = JSON.stringify({ assignments: [{ teammateID: worker.id, prompt: "Build it" }] })
+      const finish = (id: string, phase: string, text: string) =>
+        Effect.gen(function* () {
+          yield* team.startTask({ id, owner: phase })
+          yield* team.finishTask({ id, owner: phase, status: "succeeded", text })
+          yield* team.syncFactoryRuns()
+        })
+      const advance = (runID: string, check: string) =>
+        Effect.gen(function* () {
+          yield* team.startFactoryRun({ id: runID, roomID: room.id })
+          const [planTask] = yield* team.claimTasks({ owner: "fenced-plan" })
+          yield* finish(planTask!.id, "fenced-plan", "```json\n" + plan + "\n```")
+          expect((yield* team.getFactoryRun(runID)).phase).toBe("work")
+          const [workTask] = yield* team.claimTasks({ owner: "fenced-work" })
+          yield* finish(workTask!.id, "fenced-work", "Built")
+          const [checkTask] = yield* team.claimTasks({ owner: "fenced-check" })
+          yield* finish(checkTask!.id, "fenced-check", check)
+          return yield* team.getFactoryRun(runID)
+        })
+      const verdict = JSON.stringify({ status: "accepted", summary: "All criteria pass" })
+
+      expect(yield* advance("frun_fenced", "```json\n" + verdict + "\n```")).toMatchObject({
+        status: "succeeded",
+        phase: "done",
+        result: "All criteria pass",
+      })
+      expect(yield* advance("frun_prose", "Here is the verdict:\n```json\n" + verdict + "\n```")).toMatchObject({
+        status: "failed",
+      })
+    }),
+  )
+
   it.effect("persists large valid factory plan output before parsing", () =>
     Effect.gen(function* () {
       const team = yield* TeamWorkspace.Service

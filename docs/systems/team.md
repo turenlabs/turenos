@@ -38,6 +38,7 @@ Each successor receives the predecessor result text and its task, teammate, Sess
 Assignment notices and progress messages do not count as delivered results.
 The first claim saves these inputs once. Reclaims preserve the same prompt.
 The coordinator then checks the results against the acceptance criteria.
+The plan and the check are JSON. A reply that is only that JSON, bare or inside one Markdown code block, is read; JSON with prose around it is invalid.
 An accepted check completes the run. A rejected or invalid check fails the run.
 A check that requires your answer reports `needs_input`.
 
