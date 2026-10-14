@@ -1,5 +1,6 @@
 import type { CliRenderer } from "@opentui/core"
 import type { Dialogs } from "./dialogs"
+import { lastReplyModel } from "./models/effective"
 import { openPanel } from "./panel"
 import { object } from "./response-validation"
 import type { Connection } from "./server"
@@ -28,7 +29,7 @@ export function createInspect(
   function tools() {
     const session = selected()
     if (!session || !dialogs.navigate()) return
-    const model = session.model ?? lastModel(state, session.id)
+    const model = session.model ?? lastReplyModel(state, session)
     if (!model) return say("No model is known for this session yet. Send a message first, or choose one with m.")
     return openTools(
       renderer,
@@ -58,10 +59,4 @@ export function createInspect(
   }
 
   return { tools, trace }
-}
-
-/** A session on the server default model carries none; its latest reply says which one ran. */
-function lastModel(state: DashboardState, sessionID: string) {
-  if (state.detail?.sessionID !== sessionID) return undefined
-  return state.detail.messages.findLast((message) => message.type === "assistant")?.model
 }

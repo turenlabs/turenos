@@ -23,16 +23,32 @@ export function session(value: unknown, expectedID?: string) {
   const item = object(value)
   const id = identifier(item.id, "ses_")
   if (expectedID !== undefined && id !== expectedID) invalid("session identity")
+  optional(item.projectID, identifier)
   optional(item.parentID, (value) => identifier(value, "ses_"))
   string(item.title, 64000)
   location(item.location)
+  optional(item.subpath, (value) => string(value, 4096))
   const time = object(item.time)
   numeric(time.created)
   numeric(time.updated)
   if (Object.hasOwn(time, "archived")) numeric(time.archived)
+  optional(item.cost, numeric)
+  optional(item.tokens, tokenCounts)
   optional(item.agent, name)
   optional(item.model, modelRef)
   optional(item.revert, (value) => revert(value))
+}
+
+function tokenCounts(value: unknown) {
+  const tokens = object(value)
+  for (const count of [
+    tokens.input,
+    tokens.output,
+    tokens.reasoning,
+    object(tokens.cache).read,
+    object(tokens.cache).write,
+  ])
+    if (numeric(count) < 0) invalid("token count")
 }
 
 export function revert(value: unknown, expectedMessageID?: string) {
@@ -108,17 +124,7 @@ function assistantMessage(item: Record<string, unknown>) {
   modelRef(item.model)
   optional(item.error, (value) => clip(object(value), "message"))
   // The context meter adds these up.
-  optional(item.tokens, (value) => {
-    const tokens = object(value)
-    for (const count of [
-      tokens.input,
-      tokens.output,
-      tokens.reasoning,
-      object(tokens.cache).read,
-      object(tokens.cache).write,
-    ])
-      if (numeric(count) < 0) invalid("token count")
-  })
+  optional(item.tokens, tokenCounts)
   // The Changes view lists the files a turn touched.
   optional(item.snapshot, (value) =>
     optional(object(value).files, (files) => array(files, 5000).forEach((file) => string(file, 4096))),

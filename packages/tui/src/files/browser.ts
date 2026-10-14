@@ -16,7 +16,7 @@ const hints = (entry: Entry | undefined) => [
   "↑↓ choose",
   ...(entry?.type === "directory" ? ["→/Enter open folder"] : []),
   "←/Backspace up",
-  "@ mention in reply",
+  ...(entry?.type === "file" ? ["@ mention in reply"] : []),
   "PgUp/PgDn scroll",
   "Ctrl+R refresh",
 ]

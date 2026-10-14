@@ -87,6 +87,11 @@ export function location(value: unknown) {
   const item = object(value)
   checkDirectory(item.directory)
   optional(item.workspaceID, identifier)
+  optional(item.project, (value) => {
+    const project = object(value)
+    identifier(project.id)
+    checkDirectory(project.directory)
+  })
 }
 
 export function modelRef(value: unknown) {

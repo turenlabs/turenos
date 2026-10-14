@@ -81,8 +81,7 @@ export function sidebarTitle(state: DashboardState, count: number, drawer = fals
  * The footer's left side. It never repeats the line above the transcript (view, Working, Needs input);
  * it names the stream, the pane that has the keys, and the agent and model.
  */
-export function statusline(state: DashboardState, snapshot: Snapshot | undefined, width: number, _armed = "") {
-  // `_armed` stays for the dashboard's call: an armed quit is said once, by the status line's notice, not here.
+export function statusline(state: DashboardState, snapshot: Snapshot | undefined, width: number) {
   const narrow = width < layout.narrowBreakpoint
   const hidden = state.sidebarHidden ?? narrow
   const names = { sessions: "Sessions", terminals: "Terminals", automations: "Automations", team: "Team" }

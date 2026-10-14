@@ -1,4 +1,5 @@
 import type { Team } from "@turenlabs/schema/team"
+import { parseFactoryOutput } from "@turenlabs/schema/team-output"
 import { mentionedHandles, teammateHandle } from "@turenlabs/schema/team-mention"
 
 export { mentionedHandles, teammateHandle }
@@ -163,7 +164,7 @@ export function factoryConfigProblem(
  * work. Anything else, including JSON of another shape, is an ordinary message.
  */
 export function factoryOutput(text: string) {
-  const value = parseJson(text)
+  const value = parseFactoryOutput(text)
   if (!value || typeof value !== "object" || Array.isArray(value)) return
   const output = value as { assignments?: unknown; status?: unknown; summary?: unknown }
   // The same shapes and limits as Team.FactoryPlan and Team.FactoryCheck, checked without Schema so this module

@@ -74,12 +74,8 @@ export type Runtime = {
   renderingList: boolean
   /** Until this time a second quit key confirms the quit. */
   quitArmedUntil: number
-  /** Whether the armed quit also discards unsent drafts, so the footer can say so. */
-  quitDiscards: boolean
   /** What the footer shortcuts were last painted for, so `renderStatus` repaints them when it changes. */
   shortcutsFor: string
-  /** Repaints the footer when the armed quit expires. */
-  quitTimer: ReturnType<typeof setTimeout> | undefined
   disposed: boolean
   /** The selection and search of each tab, restored when switching back. */
   views: Map<Tab, { selected: string; query: string }>

@@ -38,6 +38,7 @@ export function createFiles(
       request: 0,
       preview: 0,
     }
+    panel.dialog.box.once("destroyed", () => browser.reading?.abort())
     panel.list.on("selectionChanged", () => void preview(browser, true))
     panel.dialog.key = (key) => {
       const bindings: [boolean, () => unknown][] = [
@@ -46,7 +47,10 @@ export function createFiles(
         [matchesKey(key, "left") || matchesKey(key, "backspace"), () => up(browser)],
         [
           key.sequence === "@",
-          () => mentionInReply(panel, dialogs, session, browser.entries[panel.list.getSelectedIndex()]?.path, drafts),
+          () => {
+            const entry = browser.entries[panel.list.getSelectedIndex()]
+            if (entry?.type === "file") mentionInReply(panel, dialogs, session, entry.path, drafts)
+          },
         ],
       ]
       const action = bindings.find((binding) => binding[0])?.[1]
