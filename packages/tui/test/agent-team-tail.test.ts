@@ -105,13 +105,18 @@ test("--wait times out with exit 4 and still prints one document", async () => {
   expect(text.stdout).toContain("--after 3 --wait")
 })
 
-test("a room deleted while waiting fails with one JSON error document", async () => {
+test.each([400, 404])("a room deleted while waiting fails with one JSON error document (HTTP %i)", async (status) => {
   const reads = { count: 0 }
   const server = team({
     "GET /api/team": () =>
       ++reads.count === 1
         ? { ...state(null), messages: [] }
-        : Response.json({ _tag: "NotFoundError", message: "Room not found" }, { status: 404 }),
+        : Response.json(
+            status === 400
+              ? { _tag: "InvalidRequestError", kind: "Team.NotFoundError", message: "Room not found" }
+              : { _tag: "Team.NotFoundError", message: "Room not found" },
+            { status },
+          ),
   })
   const result = await agent(["team", "show", "--after", "2", "--wait", "--timeout", "5", "--json"], {
     url: server.url,
@@ -119,4 +124,31 @@ test("a room deleted while waiting fails with one JSON error document", async ()
   expect(result.code).toBe(1)
   expect(document(result)).toEqual({ error: { message: "Room trm_team was deleted while waiting." } })
   expect(reads.count).toBe(2)
+})
+
+test("a missing Team route on the first wait read keeps the older-server guidance", async () => {
+  const server = team({ "GET /api/team": () => new Response(null, { status: 404 }) })
+  const result = await agent(["team", "show", "--after", "2", "--wait", "--json"], { url: server.url })
+  expect(result.code).toBe(1)
+  expect(document(result)).toEqual({
+    error: { message: "This server has no Team rooms; they need TurenOS 1.0.43 or later." },
+  })
+})
+
+test("a temporary server failure during a room wait retries before returning new messages", async () => {
+  const reads = { count: 0 }
+  const server = team({
+    "GET /api/team": () => {
+      reads.count++
+      if (reads.count === 1) return { ...state(null), messages: [] }
+      if (reads.count === 2) return new Response(null, { status: 503 })
+      return { ...state(null), messages: [message(3, "recovered reply")] }
+    },
+  })
+  const result = await agent(["team", "show", "--after", "2", "--wait", "--timeout", "8", "--json"], {
+    url: server.url,
+  })
+  expect(result.code).toBe(0)
+  expect(seqs(document(result))).toEqual([3])
+  expect(reads.count).toBe(3)
 })

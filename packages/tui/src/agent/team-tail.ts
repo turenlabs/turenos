@@ -1,5 +1,7 @@
 import { type Run } from "./context"
-import { usage } from "./errors"
+import { checked } from "../team/load"
+import { isRecord } from "../response-validation"
+import { AgentError, usage } from "./errors"
 import { sequence, whole } from "./options"
 import { roomState } from "./team-room"
 import { defaultTimeout, patiently, poll } from "./wait"
@@ -20,11 +22,20 @@ export async function readPage(run: Run, given: string | undefined, limit: numbe
   const timeout = whole("timeout", run.values.timeout, defaultTimeout, 0, 31_536_000)
   const first = await patiently(timeout, () => roomState(run, given, limit, cursor))
   if (first.messages.length) return { state: first }
-  // Named once: later passes read the room by ID and skip the room list.
+  // The room already existed. Keep missing-item errors intact so poll reports deletion, not an old server.
   const found = await poll(
     run.connection,
     timeout,
-    () => roomState(run, first.room.id, limit, cursor).then((latest) => (latest.messages.length ? latest : undefined)),
+    () =>
+      run.connection.client.team
+        .state({ roomID: first.room.id, limit, ...cursor })
+        .catch((error: unknown) => {
+          if (isRecord(error) && error._tag === "InvalidRequestError" && error.kind === "Team.NotFoundError")
+            throw new AgentError(`Room ${first.room.id} was deleted while waiting.`)
+          throw error
+        })
+        .then(checked)
+        .then((latest) => (latest.messages.length ? latest : undefined)),
     `Room ${first.room.id} was deleted while waiting.`,
   )
   return found ? { state: found } : { state: first, timedOut: timeout }
