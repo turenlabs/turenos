@@ -71,9 +71,15 @@ function plain(text: TextRenderable) {
   return text.content.chunks.map((chunk) => chunk.text).join("")
 }
 
-/** The message the shared submit path shows after a failed attempt. */
+/** The message the shared submit or paste path shows after a rejected attempt. */
 function failed(text: TextRenderable) {
-  return plain(text).includes("Ctrl+S retry")
+  const content = plain(text)
+  return content.includes("Ctrl+S retry") || content.startsWith("Task is limited to 32,000 characters.")
+}
+
+export function rememberHint(dialog: ModalState) {
+  if (!hints.has(dialog) && !failed(dialog.error))
+    hints.set(dialog, { content: plain(dialog.error), height: dialog.error.height })
 }
 
 function clearFailure(ctx: DialogContext, dialog: ModalState) {
@@ -82,6 +88,7 @@ function clearFailure(ctx: DialogContext, dialog: ModalState) {
   dialog.error.content = hint.content
   dialog.error.height = hint.height
   dialog.error.fg = color.muted
+  dialog.refresh?.()
   ctx.ui.resize()
 }
 
@@ -93,10 +100,7 @@ export function clearFailureOf(dialog: ModalState) {
 
 /** Editing a field drops a failure message and brings back the hint the dialog started with. */
 function clearStaleError(ctx: DialogContext, dialog: ModalState, field: InputRenderable | TextareaRenderable) {
-  const remember = () => {
-    if (!hints.has(dialog) && !failed(dialog.error))
-      hints.set(dialog, { content: plain(dialog.error), height: dialog.error.height })
-  }
+  const remember = () => rememberHint(dialog)
   field.on("focused", remember)
   const edited = () => {
     remember()
@@ -182,12 +186,21 @@ export function prompt(
     marginBottom: 1,
     initialValue: value,
   })
+  field.on("focused", () => rememberHint(dialog))
+  const cut = { text: "" }
   field.onContentChange = () => {
-    if (field.plainText.length <= 32000) return
+    if (field.plainText.length <= 32000) {
+      // The cut below fires a change of its own; the limit message stays until the next edit.
+      if (field.plainText !== cut.text) clearFailure(ctx, dialog)
+      return
+    }
+    rememberHint(dialog)
     const kept = field.plainText.slice(0, 32000)
     // A cut inside a surrogate pair would leave a lone high surrogate, which JSON bodies reject.
-    field.setText(/[\ud800-\udbff]$/.test(kept) ? kept.slice(0, -1) : kept)
+    cut.text = /[\ud800-\udbff]$/.test(kept) ? kept.slice(0, -1) : kept
+    field.setText(cut.text)
     dialog.error.content = "Task is limited to 32,000 characters."
+    dialog.error.fg = color.error
   }
   dialog.form.add(field)
   field.cursorOffset = Math.max(0, Math.min(cursor, value.length))
