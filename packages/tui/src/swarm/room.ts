@@ -112,10 +112,12 @@ export async function send(v: SwarmView, sent: (text: string) => void) {
   v.panel.dialog.error.content = `Posting…\n${KEYS}`
   try {
     await v.connection.client.sessions.swarmRoomPost({ sessionID: v.session.id, text })
-    v.post.value = ""
     sent(text)
+    if (v.state.modal !== v.panel.dialog) return
+    v.post.value = ""
     await load(v, true)
   } catch (error) {
+    if (v.state.modal !== v.panel.dialog) return
     v.panel.dialog.error.content = `! ${errorText(error)}\n${KEYS}`
   } finally {
     v.sending = false
