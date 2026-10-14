@@ -86,8 +86,15 @@ export async function importDesktop(state: State, endpoint: Endpoint) {
     redirect: "error",
     signal: AbortSignal.timeout(5000),
   }).catch(() => undefined)
-  if (!response?.ok) return
+  if (!response?.ok) {
+    void response?.body?.cancel().catch(() => {})
+    return
+  }
   const body = parseJSON((await boundedText(response, IMPORT_BYTES)) ?? "")
+  if (isRecord(body) && body.state === null) {
+    state.imported = []
+    return
+  }
   const stored = isRecord(body) && isRecord(body.state) ? body.state : undefined
   const list = typeof stored?.value === "string" ? parseJSON(stored.value) : undefined
   if (!Array.isArray(list)) return

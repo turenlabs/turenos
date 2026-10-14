@@ -1071,6 +1071,10 @@ describe("TeamWorkspace", () => {
       }
       const published = yield* team.publishSessionOutput(output)
       expect(yield* team.publishSessionOutput(output)).toEqual(published)
+      // Recovery leaves a published reply as stored, though an earlier version joined its text differently.
+      const rejoined = { ...output, text: "A later\n\nanswer" }
+      expect(yield* team.publishSessionOutput({ ...rejoined, recovery: true })).toEqual(published)
+      expect(yield* team.publishSessionOutput(rejoined).pipe(Effect.flip)).toBeInstanceOf(TeamWorkspace.ConflictError)
       expect(published).toMatchObject({
         author: mate.name,
         teammateID: mate.id,
