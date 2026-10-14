@@ -1,6 +1,7 @@
 import { label } from "../state"
 import type { Conversation } from "../conversation/context"
 import { atBottom, commitPrepend } from "../conversation/position"
+import { markSeen, waitingOnYou } from "./attention"
 import { roomContext, roomLog } from "./format"
 import { viewOf } from "./types"
 
@@ -27,7 +28,7 @@ export function showRoom(c: Conversation, id: string) {
     return ui.renderContent("Loading room…")
   }
   ui.sessionTitle.content = `# ${label(view.room.name, 150)}`
-  ui.context.content = roomContext(view)
+  ui.context.content = roomContext(view, waitingOnYou(view, state.snapshot?.needsInput))
   ui.context.visible = true
   paint(c, id, roomLog(view))
 }
@@ -41,6 +42,9 @@ function paint(c: Conversation, room: string, text: string) {
   const follow =
     view.follow || last?.room !== room || c.position?.scroll === Number.MAX_SAFE_INTEGER || (!c.position && atBottom(c))
   view.follow = false
+  view.following = follow
+  // Following the tail means the newest message is on screen.
+  if (follow && view.room) markSeen(view, view.room)
   if (follow) c.position = { sessionID: room, history: false, scroll: Number.MAX_SAFE_INTEGER }
   else if (last?.first !== undefined && last.first !== first && view.messages.some((m) => m.id === last.first)) {
     // Messages arrived above the reader (older ones loaded): keep the same line in view.
