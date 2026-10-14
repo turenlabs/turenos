@@ -76,7 +76,7 @@ Interrupt the running session and its unfinished subagent tasks through the serv
 An idle parent is not interrupted unless --tasks is given; that also cancels its unfinished
 subagent tasks. --json with --tasks reports tasks.status as cancelled, without per-task counts.`,
   team: `Usage: turen-tui team rooms [--all]
-       turen-tui team show [<room>] [--limit N]
+       turen-tui team show [<room>] [--limit N] [--after SEQ [--wait] [--timeout S] | --before SEQ]
        turen-tui team post <room> [text | -] [--id msg_...]
        turen-tui team run <room> [request | -] [--id <run-id>]
        turen-tui team cancel <run-id>
@@ -85,7 +85,10 @@ subagent tasks. --json with --tasks reports tasks.status as cancelled, without p
 Read and write Team rooms. <room> is a room ID (trm_...) or an exact room name in any case; show
 without a room reads the server's default room.
   rooms    List rooms: id, name and topic (--all includes archived rooms, marked archived)
-  show     Teammates, the latest N messages (1-100, default 30), active tasks and the factory's latest run
+  show     Teammates, the latest N messages (1-100, default 30), active tasks and the factory's latest run.
+           --after SEQ shows the messages after that sequence number, oldest first; --before SEQ the N just
+           before it. Page on with the last message's seq (--json: truncated says more exist). --wait with
+           --after blocks until a message arrives: exit 0, or 4 on timeout (default 600 s, 0 for no limit)
   post     Post a message; a mention creates a task for that teammate, else the coordinator replies.
            Prints each task with the command that waits for its session
   run      Start one factory run (the request is optional, at most 4,000 characters)
