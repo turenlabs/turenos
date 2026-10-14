@@ -242,6 +242,55 @@ describe("RequestExecutor", () => {
     ),
   )
 
+  it.effect("retries a 429 that only mentions quota in its wording", () =>
+    Effect.gen(function* () {
+      const attempts = yield* Ref.make(0)
+      const error = yield* Effect.gen(function* () {
+        const executor = yield* RequestExecutor.Service
+        return yield* executor.execute(request).pipe(Effect.flip)
+      }).pipe(
+        Effect.provide(
+          countedResponsesLayer(
+            attempts,
+            Array.from(
+              { length: 3 },
+              () =>
+                new Response(
+                  JSON.stringify({ error: { message: "Quota exceeded for requests per minute. Please retry." } }),
+                  { status: 429, headers: { "retry-after-ms": "0" } },
+                ),
+            ),
+          ),
+        ),
+      )
+
+      expectLLMError(error)
+      expect(error.reason).toMatchObject({ _tag: "RateLimit" })
+      expect(error.retryable).toBe(true)
+      expect(yield* Ref.get(attempts)).toBe(3)
+    }),
+  )
+
+  it.effect("keeps a 429 with an insufficient_quota code terminal", () =>
+    Effect.gen(function* () {
+      const executor = yield* RequestExecutor.Service
+      const error = yield* executor.execute(request).pipe(Effect.flip)
+
+      expectLLMError(error)
+      expect(error.reason).toMatchObject({ _tag: "QuotaExceeded" })
+      expect(error.retryable).toBe(false)
+    }).pipe(
+      Effect.provide(
+        responsesLayer([
+          new Response(
+            JSON.stringify({ error: { code: "insufficient_quota", message: "You exceeded your current quota." } }),
+            { status: 429, headers: { "retry-after-ms": "0" } },
+          ),
+        ]),
+      ),
+    ),
+  )
+
   it.effect("does not retry a quota envelope mislabeled as a server error", () =>
     Effect.gen(function* () {
       const executor = yield* RequestExecutor.Service
