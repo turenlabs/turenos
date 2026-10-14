@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test"
-import { open, task, world } from "./team-fixture"
+import { answer, message, open, room, task, world } from "./team-fixture"
 import { permission } from "./agent-fixture"
+import { waitForFrame } from "./dashboard-fixture"
 
 const ops = { id: "trm_ops", name: "ops", topic: "Incidents", head: 5 }
 const run = {
@@ -55,6 +56,33 @@ test("new messages in another room are counted until you open it and follow", as
   await Bun.sleep(300)
   await view.renderOnce()
   expect(row(view.captureCharFrame(), "ops")).not.toContain("new")
+})
+
+test("new messages keep a scrolled reader's position until End follows and clears the mark", async () => {
+  const messages = Array.from({ length: 60 }, (_, index) => message(index + 1, `entry ${index + 1}`))
+  const { view, screen } = await open({
+    "GET /api/team": (_, url) => {
+      const current = { ...room, head: messages.at(-1)!.seq }
+      return answer(messages.filter((item) => item.seq > Number(url.searchParams.get("after") ?? 0)), {
+        room: current,
+        rooms: [current],
+      })
+    },
+  })
+  await screen("entry 60")
+  view.mockInput.pressKey("\x1b[5~")
+  const scrolled = await waitForFrame(view, (frame) => /entry \d+/.test(frame) && !frame.includes("entry 60"))
+  const first = /entry \d+/.exec(scrolled)?.[0]
+  expect(first).toBeDefined()
+  messages.push(message(61, "entry 61"))
+  view.mockInput.pressKey("r")
+  const unread = await screen("1 new")
+  expect(/entry \d+/.exec(unread)?.[0]).toBe(first)
+  expect(unread).not.toContain("entry 61")
+  view.mockInput.pressKey("END")
+  await screen("entry 61")
+  view.mockInput.pressKey("r")
+  await waitForFrame(view, (frame) => frame.includes("entry 61") && !row(frame, "team").includes("new"))
 })
 
 test("a factory run that needs input is waiting on you in the context line and the room row", async () => {
