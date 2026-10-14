@@ -11,7 +11,7 @@ import { sidebarColumns } from "../layout/resize"
 
 export function resize(d: DashboardContext) {
   d.run.shortcutsFor = shortcutsKey(d)
-  d.ui.resize(quitArmed(d))
+  d.ui.resize()
   // The editor's hint row fits the width, so a resize repaints it.
   if (d.state.modal?.composer) d.state.modal.refresh?.()
   renderTabs(d)
@@ -50,7 +50,7 @@ export function renderStatus(d: DashboardContext) {
   renderServer(d)
   renderAttention(d)
   dropStaleNotice(d)
-  d.ui.footer.content = statusline(d.state, d.state.snapshot, d.renderer.width, quitPrompt(d))
+  d.ui.footer.content = statusline(d.state, d.state.snapshot, d.renderer.width)
   d.ui.status.visible = !d.state.connected
   if (d.state.connected) return
   if (d.state.snapshot && d.state.tab === "sessions" && !d.state.selected && !d.state.query && !d.state.modal?.inline)
@@ -209,20 +209,10 @@ function dropStaleNotice(d: DashboardContext) {
   if (d.run.noticeMessage === sentNotice && !scope.running && selectedRunning(d)) say(d, "")
 }
 
-/** What the next quit key does while a quit is armed, so the footer says it as well as the status line. */
-export function quitPrompt(d: DashboardContext) {
-  if (!quitArmed(d)) return ""
-  return `${d.state.modal ? "Ctrl+C" : "q"} again quits${d.run.quitDiscards ? " and discards" : ""}`
-}
-
-function quitArmed(d: DashboardContext) {
-  return Date.now() < d.run.quitArmedUntil
-}
-
-/** What the footer shortcuts depend on besides the layout: an armed quit, whether Enter can return to typing and, on a narrow row, the status text beside them. */
+/** What the footer shortcuts depend on besides the layout: whether Enter can return to typing and, on a narrow row, the status text beside them. */
 function shortcutsKey(d: DashboardContext) {
   const narrow = d.renderer.width < layout.narrowBreakpoint
-  return `${quitArmed(d)}:${canType(d.state)}:${requestPanel(d.state)}:${narrow ? statusline(d.state, d.state.snapshot, d.renderer.width).length : 0}`
+  return `${canType(d.state)}:${requestPanel(d.state)}:${narrow ? statusline(d.state, d.state.snapshot, d.renderer.width).length : 0}`
 }
 
 export function renderTabs(d: DashboardContext) {

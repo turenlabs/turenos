@@ -1,4 +1,5 @@
 import { SelectRenderable, TextRenderable } from "@opentui/core"
+import type { LoopsRunListOutput } from "@turenlabs/client"
 import { matchesKey } from "../keys"
 import { errorText } from "../server"
 import { label } from "../state"
@@ -28,10 +29,7 @@ export function runs(ctx: AutomationsContext, loop: Loop, back: () => void, note
       items = result.slice(0, 50)
       const summary = items.length ? `${items.length} recent run${items.length === 1 ? "" : "s"}` : "No runs yet."
       text.content = note ? `${note} ${summary}` : summary
-      list.options = items.map((run) => ({
-        name: `${label(run.status, 20)} · ${typeof run.time?.created === "number" ? stamp(run.time.created) : label(run.id)} · ${label(run.trigger ?? "", 40)}`,
-        description: run.error ? label(run.error, 200) : "",
-      }))
+      list.options = runOptions(items)
       dialog.error.content = keys
     },
     (error: unknown) => {
@@ -60,13 +58,24 @@ export function runs(ctx: AutomationsContext, loop: Loop, back: () => void, note
       dialog.error.content = `${note}\n${keys}`
     }
     void connection.client.loops.runCancel({ loopID: loop.id, runID: run.id }).then(
-      () => done("Run cancelled."),
+      () => {
+        items = items.map((item) => (item.id === run.id ? { ...item, status: "cancelled" as const } : item))
+        if (state.modal === dialog) list.options = runOptions(items)
+        done("Run cancelled.")
+      },
       (error: unknown) => done(`! ${errorText(error)}`),
     )
     return true
   }
   dialog.error.content = "Esc back"
   list.focus()
+}
+
+function runOptions(items: LoopsRunListOutput) {
+  return items.map((run) => ({
+    name: `${label(run.status, 20)} · ${typeof run.time?.created === "number" ? stamp(run.time.created) : label(run.id)} · ${label(run.trigger ?? "", 40)}`,
+    description: run.error ? label(run.error, 200) : "",
+  }))
 }
 
 function runList(ctx: AutomationsContext) {

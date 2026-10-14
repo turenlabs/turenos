@@ -1,5 +1,5 @@
 import { startHeadless } from "./headless"
-import { envRefusal } from "./listener"
+import { envRefusal, loopbackRefusal } from "./listener"
 import { desktopRecord, persistentRecord, shimRecord, trustedRecord, username } from "./records"
 import { connectSsh } from "./ssh"
 import { verified } from "./verify"
@@ -41,7 +41,9 @@ export async function resolve(ctx: Context, state: State, target: Target, input:
 }
 
 async function resolveUrl(ctx: Context, state: State, target: Extract<Target, { kind: "url" }>, signal: AbortSignal) {
-  const password = state.passwords.get(target.id) ?? (target.passwordEnv ? ctx.env[target.passwordEnv] : undefined)
+  const typed = state.passwords.get(target.id)
+  const envPassword = typed === undefined && target.passwordEnv ? ctx.env[target.passwordEnv] : undefined
+  const password = typed ?? envPassword
   const url = new URL(target.url)
   // The URL names a server whose owner published a record this client already trusts, so it gets that record's
   // credentials. An exported FORGE_SERVER_PASSWORD, even an empty one, is the caller's own choice and wins.
@@ -50,8 +52,14 @@ async function resolveUrl(ctx: Context, state: State, target: Extract<Target, { 
       ? await trustedRecord(ctx, url.origin)
       : undefined
   if (record) return verified(target, record, signal, `${target.name} is not reachable at ${url.origin}.`)
-  if (password && url.protocol !== "https:" && !["127.0.0.1", "[::1]"].includes(url.hostname))
+  const loopback = url.hostname === "127.0.0.1" || url.hostname === "[::1]"
+  if (password && url.protocol !== "https:" && !loopback)
     throw new Error("Server credentials require HTTPS, or HTTP on 127.0.0.1 or [::1] for an SSH tunnel.")
+  if (envPassword && url.protocol === "http:" && loopback && target.passwordEnv) {
+    const host = url.hostname === "[::1]" ? "[::1]" : "127.0.0.1"
+    const refusal = loopbackRefusal(ctx, Number(url.port || 80), host, target.passwordEnv)
+    if (refusal) throw new Error(refusal)
+  }
   return verified(
     target,
     { url: url.origin, username: target.username ?? username(ctx), password: password ?? "" },
