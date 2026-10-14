@@ -44,12 +44,14 @@ test("local directory mistakes make no requests and retain distinct server valid
 test("invalid local agent and model choices stay editable before admission", async () => {
   const server = fixture({
     "/api/session": async (request: Request) => {
-      const body = (await request.json()) as { id: string; location: unknown; agent?: string }
+      const body = (await request.json()) as { id: string; location: unknown; agent?: string; model?: unknown }
       server.routes.set(`/api/session/${body.id}/prompt`, async (request: Request) => {
         const prompt = (await request.json()) as { id: string }
         return Response.json({ data: { id: prompt.id, sessionID: body.id } })
       })
-      return Response.json({ data: { ...session(body.id), location: body.location, agent: body.agent } })
+      return Response.json({
+        data: { ...session(body.id), location: body.location, agent: body.agent, model: body.model },
+      })
     },
   })
   const launch = server.connection.launch()

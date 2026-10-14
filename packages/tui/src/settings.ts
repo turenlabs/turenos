@@ -24,7 +24,8 @@ export function createSettings(
     connection,
     dialogs,
     say: (message, error) => {
-      ctx.notice = error ? "" : message
+      // Reopening a menu clears the status line, so the menu it reopens repeats an error as well as a success.
+      ctx.notice = error && message ? `! ${message}` : message
       say(message, error)
     },
     hooks,

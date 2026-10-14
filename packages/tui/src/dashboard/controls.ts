@@ -127,12 +127,17 @@ function createInputControls(d: DashboardContext) {
     d.c.dialogs.resize,
   )
   const mentions = createMentions(d.renderer, d.state, d.connection, d.c.dialogs.resize)
+  // An empty notice from the requests (an armed Esc that ran out) clears only their own, while it is still showing.
+  const said = { notice: "" }
   const requests = createRequests(
     d.renderer,
     d.state,
     d.connection,
     d.c.dialogs,
-    d.say,
+    (message) => {
+      if (message) said.notice = message
+      if (message || d.run.noticeMessage === said.notice) d.say(message)
+    },
     d.openSession,
     slash,
     mentions,
