@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test"
-import { until } from "./support"
+import { ScrollBoxRenderable } from "@opentui/core"
+import { descendants, until } from "./support"
 import { answer, message, open } from "./team-fixture"
 
 const all = Array.from({ length: 2000 }, (_, index) =>
@@ -24,4 +25,31 @@ test.each([
   view.resize(to, rows)
   await until(() => view.captureCharFrame().includes("entry 2000"))
   expect(view.captureCharFrame().match(/entry \d+/g)?.length ?? 0).toBeGreaterThan(3)
+})
+
+test("a shorter Team transcript keeps the reader's position through refresh", async () => {
+  const { view, screen, server } = await open(routes, 120, 56)
+  await screen("entry 2000")
+  const detail = descendants(view.renderer.root).find(
+    (node) => node instanceof ScrollBoxRenderable && node.scrollHeight > node.viewport.height,
+  ) as ScrollBoxRenderable
+  view.mockInput.pressKey("\x1b[5~")
+  view.mockInput.pressKey("\x1b[5~")
+  await until(() => !view.captureCharFrame().includes("entry 2000"))
+  const before = detail.scrollTop
+  const marker = view.captureCharFrame().match(/entry \d+/)![0]
+  view.resize(120, 32)
+  await view.renderOnce()
+  await view.renderOnce()
+  expect(detail.scrollTop).toBe(before)
+  expect(view.captureCharFrame()).toContain(marker)
+  expect(view.captureCharFrame()).not.toContain("entry 2000")
+  const requests = server.requests.filter((item) => item.path === "/api/team").length
+  view.mockInput.pressKey("r")
+  await until(() => server.requests.filter((item) => item.path === "/api/team").length > requests)
+  await Bun.sleep(100)
+  await view.renderOnce()
+  expect(detail.scrollTop).toBe(before)
+  expect(view.captureCharFrame()).toContain(marker)
+  expect(view.captureCharFrame()).not.toContain("entry 2000")
 })

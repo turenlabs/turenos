@@ -124,6 +124,8 @@ Task-owned subagent sessions cannot accept direct replies. When ownership is kno
 
 Reply editors size themselves from wrapped display rows, between three and six rows. Long paragraphs can scroll inside the editor, while Send and draft controls remain visible. Terminal resizing preserves the editable text and focus. Transcript and form content reserve the scrollbar column so it does not hide the final character of a line.
 
+When the terminal gets shorter, the Team transcript keeps the latest message visible if you were following it. If you scrolled away, a height change and refresh keep your reading position instead.
+
 ## Mention files and run commands
 
 Type `@` in any message or task editor to search the server's files. `Up`/`Down` choose a result, `Tab` or `Enter` completes it, and `Esc` closes the list without changing your draft. Completing a folder keeps the list open so you can search its next segment; completing a file ends the mention and separates it from following prose while preserving a line-range suffix. While discovery is pending, Enter, Ctrl+Enter, Ctrl+S and the Send button do not send the message. Complete the path after results arrive, or press Esc to dismiss the list before sending a manually typed path.
