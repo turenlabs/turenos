@@ -38,11 +38,17 @@ export type TeamView = {
   tasks: readonly Task[]
   duties: Answer["duties"]
   factoryRuns: Readonly<NonNullable<Answer["factoryRuns"]>>
+  /** Rooms with unfinished teammate tasks or a running factory, from the latest answer. */
+  activeRoomIDs: readonly string[]
+  /** The newest message seq the reader has seen per room, in this process only. */
+  seen: Map<string, number>
   /** Older messages exist than the log holds. */
   hasMore: boolean
   /** Why the tab cannot show a room: a server without the route, or a failed request. */
   error?: string
   showArchived: boolean
+  /** The open room's last paint followed its newest message; the sidebar is drawn before the room, so it reads this. */
+  following?: boolean
   /** Set when this client posted, so the next paint follows the tail. */
   follow?: boolean
   /** Factory runs being started, by room: the ID survives an uncertain failure so a retry cannot start a second run. */
@@ -79,6 +85,8 @@ export function emptyView(): TeamView {
     tasks: [],
     duties: [],
     factoryRuns: [],
+    activeRoomIDs: [],
+    seen: new Map(),
     hasMore: false,
     showArchived: false,
     pendingRuns: new Map(),

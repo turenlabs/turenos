@@ -1,4 +1,5 @@
 import { openPicker } from "../picker"
+import { errorText } from "../server"
 import { label } from "../state"
 import { confirm, directory, section, trail, type SettingsContext } from "./shared"
 
@@ -22,7 +23,10 @@ export function providers(ctx: SettingsContext) {
         {
           name: "Refresh providers",
           description: "Re-run discovery on the server",
-          run: () => change(ctx, where, "Providers refreshed.", async () => true).then(() => providers(ctx)),
+          run: () =>
+            change(ctx, where, "Providers refreshed.", async () => true)
+              .catch((error) => ctx.say(errorText(error), true))
+              .then(() => providers(ctx)),
         },
         ...catalog.providers
           .filter((provider) => provider.connected || !ctx.removed.has(provider.id))

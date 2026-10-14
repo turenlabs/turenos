@@ -1,6 +1,7 @@
 import { StyledText, fg, type InputRenderable } from "@opentui/core"
 import type { SessionsSwarmRoomEntriesOutput, SessionsSwarmRoomOutput } from "@turenlabs/client"
 import { fitHeading, panelWidth } from "../changes/heading"
+import { clock } from "../menus/stamp"
 import { display } from "../messages"
 import type { Panel } from "../panel"
 import { errorText, httpStatus, type Connection, type Session } from "../server"
@@ -96,7 +97,7 @@ function paint(v: SwarmView, room: Room) {
 function entryText(entries: Entry[]) {
   return new StyledText(
     entries.flatMap((entry) => [
-      fg(color.muted)(`#${entry.seq} ${new Date(entry.timeCreated).toLocaleTimeString()} ${label(entry.kind, 32)} · `),
+      fg(color.muted)(`#${entry.seq} ${clock(entry.timeCreated)} ${label(entry.kind, 32)} · `),
       fg(entry.actor.type === "human" ? color.accent : color.text)(`${label(entry.actor.name, 60)}\n`),
       fg((Object.hasOwn(KIND, entry.kind) ? KIND[entry.kind] : undefined) ?? color.text)(
         `${display(entry.text, 4000)}\n\n`,
