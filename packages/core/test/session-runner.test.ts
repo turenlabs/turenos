@@ -7310,6 +7310,26 @@ describe("SessionRunnerLLM provider retry", () => {
     }),
   )
 
+  for (const kind of ["text", "tool input"] as const)
+    it.effect(`does not refresh a ChatGPT 401 after partial ${kind}`, () =>
+      Effect.gen(function* () {
+        yield* setup
+        const session = yield* SessionV2.Service
+        signIn = { access: `synthetic-access-${"a".repeat(16)}`, refreshed: `synthetic-access-${"b".repeat(16)}` }
+        const failure = yield* tokenExpired()
+        responseStream = Stream.concat(
+          Stream.fromIterable(fragmentFixture(kind, fragmentID(kind, "before-401"), ["Partial"]).partialEvents),
+          Stream.fail(failure),
+        )
+        yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Do not replay partial output" }), resume: false })
+
+        expect(yield* session.resume(sessionID).pipe(Effect.flip)).toBe(failure)
+        expect(refreshResolves).toBe(0)
+        expect(requests).toHaveLength(1)
+        expect(yield* retriedEvents(sessionID)).toEqual([])
+      }),
+    )
+
   it.effect("does not retry a 401 for a credential that cannot be refreshed", () =>
     Effect.gen(function* () {
       yield* setup
