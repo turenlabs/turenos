@@ -211,6 +211,8 @@ function terminalEntries(d: DashboardContext): Entry[] {
     { name: "Automations", description: "Show automations", key: "3", run: () => changeTab(d, "automations") },
     { name: "New automation", description: "In the Automations tab", key: "a", run: c.automations.create },
     { name: "Manage automation", description: "Run, pause, edit, runs", key: "Enter", run: c.automations.manage },
+    { name: "Edit automation", description: "In the Automations tab", key: "E", run: c.automations.edit },
+    { name: "Delete automation", description: "In the Automations tab", key: "d", run: c.automations.remove },
   ]
 }
 

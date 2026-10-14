@@ -46,7 +46,7 @@ function paint(c: Conversation, room: string, text: string) {
   // Following the tail means the newest message is on screen.
   if (follow && view.room) markSeen(view, view.room)
   if (follow) c.position = { sessionID: room, history: false, scroll: Number.MAX_SAFE_INTEGER }
-  else if (last.first !== first) {
+  else if (last?.first !== undefined && last.first !== first && view.messages.some((m) => m.id === last.first)) {
     // Messages arrived above the reader (older ones loaded): keep the same line in view.
     c.prepend = { height: ui.detail.scrollHeight, scroll: ui.detail.scrollTop }
     c.position = { sessionID: room, history: false, scroll: ui.detail.scrollTop }
