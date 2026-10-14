@@ -7,6 +7,7 @@ const NEW_OUTPUT_CUE = "↓ new output below"
 const jumpKey = (c: Conversation) => (c.state.modal?.composer ? "PgDn" : "End")
 const cue = (c: Conversation) => `${NEW_OUTPUT_CUE} · ${jumpKey(c)}`
 const SCROLLED_CUE = / · ↑ scrolled up · (?:End|PgDn) for latest/
+const UNREAD_CUE = / · ↓ new output below · (?:End|PgDn)/
 
 /** The reader just sent a message: the newest one is this client's own send and the cached window has not seen it. */
 export function sentByReader(c: Conversation, messages: MessagesListOutput["data"]) {
@@ -26,27 +27,32 @@ export function markUnread(c: Conversation, content: string) {
   c.drawn = content
   if (c.position?.scroll === Number.MAX_SAFE_INTEGER || atBottom(c)) return clearUnread(c)
   if (changed) c.unread = true
-  if (c.unread && !c.ui.context.full.includes(NEW_OUTPUT_CUE))
-    c.ui.context.content = `${c.ui.context.full.replace(SCROLLED_CUE, "")} · ${cue(c)}`
+  if (c.unread && !c.ui.context.full.endsWith(` · ${cue(c)}`))
+    c.ui.context.content = `${c.ui.context.full.replace(SCROLLED_CUE, "").replace(UNREAD_CUE, "")} · ${cue(c)}`
 }
 
 /** A calm cue on the context line while the reader is above the latest output; the new-output cue takes its place. */
 export function syncScrolledCue(c: Conversation) {
   const context = c.ui.context
-  const away =
+  const active =
     context.visible &&
-    !c.unread &&
     c.state.tab === "sessions" &&
     c.state.detail?.sessionID === c.state.selected &&
     c.position?.scroll !== Number.MAX_SAFE_INTEGER &&
     !atBottom(c)
+  if (active && c.unread && !context.full.endsWith(` · ${cue(c)}`)) {
+    context.content = `${context.full.replace(SCROLLED_CUE, "").replace(UNREAD_CUE, "")} · ${cue(c)}`
+    return
+  }
+  const away = active && !c.unread
+  const wanted = ` · ↑ scrolled up · ${jumpKey(c)} for latest`
   const shown = SCROLLED_CUE.test(context.full)
-  if (away && !shown) context.content = `${context.full} · ↑ scrolled up · ${jumpKey(c)} for latest`
+  if (away && !context.full.endsWith(wanted)) context.content = `${context.full.replace(SCROLLED_CUE, "")}${wanted}`
   if (!away && shown) context.content = context.full.replace(SCROLLED_CUE, "")
 }
 
 export function clearUnread(c: Conversation) {
   if (!c.unread) return
   c.unread = false
-  c.ui.context.content = c.ui.context.full.replace(/ · ↓ new output below · (End|PgDn)/, "")
+  c.ui.context.content = c.ui.context.full.replace(UNREAD_CUE, "")
 }

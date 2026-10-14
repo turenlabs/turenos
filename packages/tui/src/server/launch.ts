@@ -92,7 +92,7 @@ function foreignSession(state: LaunchState) {
   state.routing = undefined
   state.prompt = undefined
   return new Error(
-    `Session ${state.sessionID} already exists with another directory or agent than requested. Nothing was sent.`,
+    `Session ${state.sessionID} already exists with another directory, agent or model than requested. Nothing was sent.`,
   )
 }
 
@@ -112,7 +112,11 @@ async function write(
   if (state.admitted.id !== state.sessionID) invalid("launch session identity")
   // Core creates idempotently per ID, so an existing session comes back unchanged: refuse it before the prompt goes in.
   const directory = pathKey(state.admitted.location.directory) !== pathKey(input.directory)
-  if (directory || (input.agent && state.admitted.agent !== input.agent)) throw foreignSession(state)
+  // Core stores the requested model at creation, so a session without one was not created by this launch.
+  const wrongModel =
+    model !== undefined &&
+    (state.admitted.model?.providerID !== model.providerID || state.admitted.model?.id !== model.id)
+  if (directory || (input.agent && state.admitted.agent !== input.agent) || wrongModel) throw foreignSession(state)
   state.created ??= { ...input }
   if (command) {
     await ctx.client.sessions.command({
