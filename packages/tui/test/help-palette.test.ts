@@ -102,6 +102,12 @@ test("every palette row reads Name  · Description (key) with one key style", as
   for (const name of names) expect(name, name).toMatch(/^[^·]+  · [A-Z][^·/]+( \([^)]+\))?$/)
 })
 
+test("the palette lists Edit and Delete automation beside their keys", async () => {
+  const { names } = await options(120, 36)
+  expect(names.find((name) => name.startsWith("Edit automation"))).toEndWith("(E)")
+  expect(names.find((name) => name.startsWith("Delete automation"))).toEndWith("(d)")
+})
+
 test("at 60 columns palette descriptions are cut with an ellipsis, never mid-word, and keys survive", async () => {
   const { frame, names } = await options(60, 24)
   const row = frame.split("\n").find((line) => line.includes("Archive / restore session"))!
