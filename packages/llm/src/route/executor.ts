@@ -69,6 +69,8 @@ const redactHeaders = (headers: Headers.Headers, redactedNames: ReadonlyArray<st
 export const redactUrl = (value: string) => {
   if (!URL.canParse(value)) return REDACTED
   const url = new URL(value)
+  if (url.username) url.username = REDACTED
+  if (url.password) url.password = REDACTED
   url.searchParams.forEach((_, key) => {
     if (isSensitiveQueryName(key)) url.searchParams.set(key, REDACTED)
   })
