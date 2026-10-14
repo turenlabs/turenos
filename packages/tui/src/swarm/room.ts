@@ -105,7 +105,7 @@ function entryText(entries: Entry[]) {
   )
 }
 
-export async function send(v: SwarmView) {
+export async function send(v: SwarmView, sent: () => void) {
   const text = v.post.value.trim()
   if (!text || v.sending) return
   v.sending = true
@@ -113,6 +113,7 @@ export async function send(v: SwarmView) {
   try {
     await v.connection.client.sessions.swarmRoomPost({ sessionID: v.session.id, text })
     v.post.value = ""
+    sent()
     await load(v, true)
   } catch (error) {
     v.panel.dialog.error.content = `! ${errorText(error)}\n${KEYS}`
