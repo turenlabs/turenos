@@ -87,7 +87,8 @@ without a room reads the server's default room.
   rooms    List rooms: id, name and topic (--all includes archived rooms, marked archived)
   show     Teammates, the latest N messages (1-100, default 30), active tasks and the factory's latest run.
            --after SEQ shows the messages after that sequence number, oldest first; --before SEQ the N just
-           before it. Page on with the last message's seq (--json: truncated says more exist). --wait with
+           before it. Page on with the last message's seq for --after, or the first for --before.
+           --json: truncated says more exist. --wait with
            --after blocks until a message arrives: exit 0, or 4 on timeout (default 600 s, 0 for no limit)
   post     Post a message; a mention creates a task for that teammate, else the coordinator replies.
            Prints each task with the command that waits for its session

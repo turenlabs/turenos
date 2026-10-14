@@ -46,6 +46,12 @@ test("--before pages older messages", async () => {
   expect(seqs(json)).toEqual([4, 5])
   expect(json.truncated).toBe(true)
   expect(queries.at(-1)).toContain("before=6")
+  const older = document(
+    await agent(["team", "show", "--before", "4", "--limit", "2", "--json"], { url: server.url }),
+  )
+  expect(seqs(older)).toEqual([2, 3])
+  const help = await agent(["team", "--help"])
+  expect(help.stdout).toContain("the first for --before")
 })
 
 test("both cursors, a bad seq, and --wait or --timeout out of place are usage errors that send nothing", async () => {
@@ -56,6 +62,7 @@ test("both cursors, a bad seq, and --wait or --timeout out of place are usage er
     ["--after", "1.5"],
     ["--before", "abc"],
     ["--after", "99999999999999999999"],
+    ["--after", "9007199254740992"],
     ["--wait"],
     ["--before", "3", "--wait"],
     ["--after", "1", "--timeout", "5"],
@@ -66,6 +73,7 @@ test("both cursors, a bad seq, and --wait or --timeout out of place are usage er
   }
   expect(queries).toHaveLength(0)
   expect((await agent(["team", "show", "--after", "0"], { url: server.url })).code).toBe(0)
+  expect((await agent(["team", "show", "--after", "9007199254740991"], { url: server.url })).code).toBe(0)
 })
 
 test("--wait returns at once when a newer message exists, and once one arrives otherwise", async () => {
@@ -95,4 +103,20 @@ test("--wait times out with exit 4 and still prints one document", async () => {
   const text = await agent(["team", "show", "--after", "3", "--wait", "--timeout", "1"], { url: server.url })
   expect(text.code).toBe(4)
   expect(text.stdout).toContain("--after 3 --wait")
+})
+
+test("a room deleted while waiting fails with one JSON error document", async () => {
+  const reads = { count: 0 }
+  const server = team({
+    "GET /api/team": () =>
+      ++reads.count === 1
+        ? { ...state(null), messages: [] }
+        : Response.json({ _tag: "NotFoundError", message: "Room not found" }, { status: 404 }),
+  })
+  const result = await agent(["team", "show", "--after", "2", "--wait", "--timeout", "5", "--json"], {
+    url: server.url,
+  })
+  expect(result.code).toBe(1)
+  expect(document(result)).toEqual({ error: { message: "Room trm_team was deleted while waiting." } })
+  expect(reads.count).toBe(2)
 })
