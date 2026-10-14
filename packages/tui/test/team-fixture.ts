@@ -92,7 +92,7 @@ export const loop = {
 export type World = ReturnType<typeof world>
 
 /**
- * A Team server whose answers follow what the tests change: `rooms`, `teammates`, `duties`, `runs` and `loops`.
+ * A Team server whose answers follow what the tests change: `rooms`, `teammates`, `duties`, `runs`, `active` (room IDs) and `loops`.
  * Every request is recorded in `sent`, so a test proves exactly what the client wrote.
  */
 export function world(routes: Record<string, Route> = {}) {
@@ -102,6 +102,7 @@ export function world(routes: Record<string, Route> = {}) {
     tasks: [task("queued")] as Record<string, unknown>[],
     duties: [] as Record<string, unknown>[],
     runs: [] as Record<string, unknown>[],
+    active: [] as string[],
     loops: [] as Record<string, unknown>[],
     sent: [] as { method: string; path: string; body: Record<string, unknown> }[],
   }
@@ -118,6 +119,7 @@ export function world(routes: Record<string, Route> = {}) {
       const here = current.id === "trm_team"
       return {
         rooms: state.rooms,
+        activeRoomIDs: state.active,
         room: current,
         teammates: here ? state.teammates : [],
         messages: here ? log : [],

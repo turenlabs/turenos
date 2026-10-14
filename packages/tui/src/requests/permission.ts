@@ -22,6 +22,7 @@ export function permission(ctx: RequestContext, auto = false) {
   trackShown(ctx, `${request.sessionID}:${request.id}`)
   const dialog = ctx.dialogs.open("Permission request", false, 24, true)
   if (!dialog) return
+  dialog.refresh = () => closeWhenResolved(ctx, dialog, request)
   describe(ctx, dialog, request)
   // "Always" saves the server's own rule for this request, so it is offered only when the server names one.
   const rules = request.save ?? []
@@ -186,6 +187,18 @@ function showChoice(dialog: ModalState, choice: SelectRenderable) {
   const over = top + rows - dialog.form.viewport.height
   if (top < 0) dialog.form.scrollBy(top)
   else if (over > 0) dialog.form.scrollBy(over)
+}
+
+function closeWhenResolved(ctx: RequestContext, dialog: ModalState, request: Request) {
+  if (
+    ctx.state.modal === dialog &&
+    !dialog.busy &&
+    ctx.state.detail?.sessionID === request.sessionID &&
+    !ctx.state.detail.permissions.some((item) => item.id === request.id)
+  ) {
+    ctx.dialogs.close(false)
+    ctx.say("Permission is no longer pending.")
+  }
 }
 
 function trackShown(ctx: RequestContext, key: string) {

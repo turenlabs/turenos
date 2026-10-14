@@ -92,6 +92,42 @@ test("the welcome opens under the wordmark and the anvil, which leave a short pa
   expect(short).not.toMatch(ANVIL)
 })
 
+test("the welcome anvil stops while New session is open and turns again once it closes", async () => {
+  const server = turen({ routes: { "GET /api/session": () => ({ data: [], cursor: {} }) } })
+  const { view, screen } = await terminal(120, 36)
+  const app = mountDashboard(view.renderer, connect({ url: server.url }), server.url)
+  cleanup.push(app.dispose)
+  await app.ready
+  await screen("No session selected")
+  // The turning anvil asks the renderer for a frame about ten times a second; a still screen asks for none.
+  let requests = 0
+  const request = view.renderer.requestRender.bind(view.renderer)
+  view.renderer.requestRender = () => {
+    requests++
+    request()
+  }
+  const busy = async () => {
+    requests = 0
+    await Bun.sleep(600)
+    return requests
+  }
+  const settles = async (done: (count: number) => boolean) => {
+    for (let attempt = 0; attempt < 12; attempt++) if (done(await busy())) return true
+    return false
+  }
+  expect(await busy()).toBeGreaterThanOrEqual(3)
+  view.mockInput.pressKey("n")
+  await screen("What would you like to do?")
+  // Loading the form asks for a few frames; once it settles nothing does.
+  expect(await settles((count) => count === 0)).toBe(true)
+  view.mockInput.pressEscape()
+  await screen("No session selected")
+  // Closing repaints the screen; the anvil is turning only if frames keep coming after that settles.
+  await Bun.sleep(2000)
+  expect(await busy()).toBeGreaterThanOrEqual(3)
+  expect(await busy()).toBeGreaterThanOrEqual(3)
+})
+
 async function waitFor(view: Awaited<ReturnType<typeof createTestRenderer>>, text: string) {
   for (let attempt = 0; attempt < 100; attempt++) {
     await view.renderOnce()

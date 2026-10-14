@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test"
 import { pathTail, plural, roomContext } from "../src/team/format"
 import type { TeamView } from "../src/team/types"
-import { until } from "./support"
-import { open, room, teammate, world } from "./team-fixture"
+import { assistant, until } from "./support"
+import { answer, message, open, room, teammate, world } from "./team-fixture"
 
 type Opened = Awaited<ReturnType<typeof open>>
 
@@ -144,4 +144,25 @@ test("a task session opened from the room offers 4 Team, and a click returns to 
   await until(() => app.view.captureCharFrame().includes("4 Team"))
   await clickText(app, "4 Team")
   await app.screen("[4 Team]")
+})
+
+test("coming back to Team from a session transcript taller than the pane shows the room's latest message", async () => {
+  const log = Array.from({ length: 60 }, (_, index) => message(index + 1, `entry ${index + 1}`))
+  const transcript = Array.from({ length: 80 }, (_, index) => `session line ${index}`).join("\n\n")
+  const app = await open({
+    "GET /api/session/ses_main/message": () => ({
+      data: [assistant("main", `${transcript}\n\nmain says hello`)],
+      cursor: {},
+    }),
+    "GET /api/team": (_, url) => answer(log.filter((item) => item.seq > Number(url.searchParams.get("after") ?? 0))),
+  })
+  await app.screen("entry 60")
+  app.view.mockInput.pressKey("1")
+  // The Sessions pane ends below the screen, so it is not at its end when Team comes back.
+  await app.screen("session line 79")
+  app.view.mockInput.pressKey("4")
+  await app.screen("entry 60")
+  // Later polls keep following.
+  log.push(message(61, "entry 61"))
+  await app.screen("entry 61")
 })

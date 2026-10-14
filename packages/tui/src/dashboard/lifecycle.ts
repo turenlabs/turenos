@@ -16,7 +16,7 @@ export function quit(d: DashboardContext, stop = false) {
     const draft = !!state.modal.save
     d.c.dialogs.close()
     if (!draft) return
-    return arm(d, "Draft kept. Ctrl+C again quits and discards unsent drafts.", true)
+    return arm(d, "Draft kept. Ctrl+C again quits and discards unsent drafts.")
   }
   const drafts =
     d.c.launch.hasDraft || d.c.requests.unsentDrafts() > 0 || d.c.team.unsent() > 0 || d.c.room.unsent() > 0
@@ -26,23 +26,18 @@ export function quit(d: DashboardContext, stop = false) {
     return arm(
       d,
       `The agent is still working. Press q again to quit; it keeps running on the server${drafts ? ", and unsent drafts are discarded" : ""}.`,
-      drafts,
     )
   // q types into an open reply editor, so only Ctrl+C is named there.
-  if (drafts && state.modal?.composer) return arm(d, "Draft kept. Ctrl+C again quits and discards unsent drafts.", true)
+  if (drafts && state.modal?.composer) return arm(d, "Draft kept. Ctrl+C again quits and discards unsent drafts.")
   if (drafts)
-    return arm(d, "Unsent drafts are kept only until you quit. Press q or Ctrl+C again to quit and discard them.", true)
+    return arm(d, "Unsent drafts are kept only until you quit. Press q or Ctrl+C again to quit and discard them.")
   close(d)
 }
 
-function arm(d: DashboardContext, message: string, discards = false) {
+function arm(d: DashboardContext, message: string) {
   d.run.quitArmedUntil = Date.now() + 3000
-  d.run.quitDiscards = discards
   d.say(message)
   renderStatus(d)
-  // The footer names the next press only while it counts, so it is repainted when the three seconds end.
-  if (d.run.quitTimer) clearTimeout(d.run.quitTimer)
-  d.run.quitTimer = setTimeout(() => !d.state.closed && renderStatus(d), 3100)
 }
 
 function close(d: DashboardContext) {
@@ -86,7 +81,6 @@ export function dispose(d: DashboardContext) {
   d.c.live.dispose()
   if (d.run.timer) clearTimeout(d.run.timer)
   if (d.run.noticeTimer) clearTimeout(d.run.noticeTimer)
-  if (d.run.quitTimer) clearTimeout(d.run.quitTimer)
   if (d.run.activityTimer) clearInterval(d.run.activityTimer)
   d.connection.close()
   if (d.run.listeners) {

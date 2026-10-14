@@ -101,6 +101,29 @@ test("Files goes up with Backspace and refreshes with Ctrl+R, and its hint says 
   expect(server.sent("/file").length).toBeGreaterThan(2)
 })
 
+test("in Files, @ mentions a file only: a folder keeps the panel open and its hint omits the mention", async () => {
+  const { view, screen } = await sized(120, 36, {
+    "GET /file": () => [
+      { name: "src", path: "src/", absolute: "/srv/main/src", type: "directory", ignored: false },
+      { name: "a.ts", path: "a.ts", absolute: "/srv/main/a.ts", type: "file", ignored: false },
+    ],
+    "GET /file/content": () => ({ type: "text", content: "export {}" }),
+  })
+  view.mockInput.pressKey("e")
+  expect(await screen("▶ src/")).not.toContain("@ mention in reply")
+  view.mockInput.pressKey("@")
+  await Bun.sleep(100)
+  await view.renderOnce()
+  expect(view.captureCharFrame()).toContain("▶ src/")
+  expect(view.renderer.currentFocusedEditor?.plainText ?? "").not.toContain("src")
+  view.mockInput.pressArrow("down")
+  expect(await screen("@ mention in reply")).toContain("▶ a.ts")
+  view.mockInput.pressKey("@")
+  await until(() => view.renderer.currentFocusedEditor?.plainText.includes("a.ts") === true)
+  await view.renderOnce()
+  expect(view.captureCharFrame()).not.toContain("╭─ Files")
+})
+
 test("Changes names the modes its m key cycles through", async () => {
   const { view, screen } = await sized(120, 36, { "GET /vcs/diff": () => [] })
   view.mockInput.pressKey("d")

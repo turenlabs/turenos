@@ -112,11 +112,12 @@ function taskLine(view: TeamView, task: Task) {
   return `  → ${handleOf(view.teammates, task.teammateID)} ${statusWord(task.status)}${failure} · session ${shortID(task.sessionID)}`
 }
 
-/** The line under the room title: topic, teammate count and the factory stage while a run is active. */
-export function roomContext(view: TeamView) {
+/** The line under the room title: what waits on the reader, topic, teammate count and the factory stage while a run is active. `waiting` is `waitingOnYou`. */
+export function roomContext(view: TeamView, waiting = 0) {
   const run = view.factoryRuns.find((item) => item.status === "running")
   const stage = { plan: "planning", work: "working", check: "checking", done: "finishing" }
   return [
+    waiting ? `${waiting} waiting on you · t` : "",
     view.room?.topic ? label(view.room.topic, 150) : "",
     plural(view.teammates.length, "teammate"),
     run ? `factory: ${stage[run.phase]} (run ${shortID(run.id)})` : "",
