@@ -54,6 +54,8 @@ Ordinary room messages and teammate reports do not automatically start factory r
 Each run keeps the factory configuration and teammate profiles captured at admission.
 Later setup edits apply to later runs. Live teammate pauses still prevent new task starts.
 Select **Stop factory** to cancel unfinished tasks in the current run.
+A task that fails, is cancelled, or goes stale cancels only the tasks that depend on it. Independent tasks keep running.
+Once every task has settled, the run ends `failed` if any task failed, and the finished results stay in the channel.
 Failed or uncertain model work is not automatically retried.
 
 ### Execution And Communication

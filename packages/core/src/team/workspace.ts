@@ -1118,7 +1118,55 @@ const layer = Layer.effect(
                 }
               }
               const tasks = yield* tx.select().from(TeamTaskTable).where(inArray(TeamTaskTable.id, run.task_ids)).all()
-              const failed = tasks.find((task) => ["failed", "cancelled", "stale"].includes(task.status))
+              const failedStatuses = ["failed", "cancelled", "stale"]
+              const failed = tasks.find((task) => failedStatuses.includes(task.status))
+              if (failed && run.phase === "work") {
+                // A lost task only blocks its transitive dependents. Independent tasks keep running.
+                const withDependents = (ids: ReadonlySet<string>): ReadonlySet<string> => {
+                  const next = tasks.filter(
+                    (task) =>
+                      !ids.has(task.id) &&
+                      ((task.snapshot as unknown as TaskSnapshot).factoryDependencies ?? []).some((dependency) =>
+                        ids.has(dependency.taskID),
+                      ),
+                  )
+                  return next.length ? withDependents(new Set([...ids, ...next.map((task) => task.id)])) : ids
+                }
+                const lost = withDependents(
+                  new Set(tasks.filter((task) => failedStatuses.includes(task.status)).map((task) => task.id)),
+                )
+                yield* tx
+                  .update(TeamTaskTable)
+                  .set({ status: "cancelled", lease_owner: null, lease_expires_at: null, time_updated: now() })
+                  .where(
+                    and(
+                      inArray(TeamTaskTable.id, [...lost]),
+                      inArray(TeamTaskTable.status, ["queued", "claimed", "running"]),
+                    ),
+                  )
+                  .run()
+                if (tasks.some((task) => !lost.has(task.id) && task.status !== "succeeded")) continue
+                const causes = tasks.filter((task) => failedStatuses.includes(task.status))
+                const status: "cancelled" | "stale" | "failed" = causes.some((task) => task.status === "failed")
+                  ? "failed"
+                  : causes.some((task) => task.status === "stale")
+                    ? "stale"
+                    : "cancelled"
+                yield* tx
+                  .update(TeamFactoryRunTable)
+                  .set({
+                    status,
+                    phase: "done",
+                    error: causes
+                      .filter((task) => task.status === status)
+                      .map((task) => task.error ?? `Factory task ${task.status}`)
+                      .join("; "),
+                    time_updated: now(),
+                  })
+                  .where(eq(TeamFactoryRunTable.id, run.id))
+                  .run()
+                continue
+              }
               if (failed) {
                 const status: "cancelled" | "stale" | "failed" =
                   failed.status === "cancelled" ? "cancelled" : failed.status === "stale" ? "stale" : "failed"
