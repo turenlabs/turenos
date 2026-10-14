@@ -61,6 +61,21 @@ test("a teammate role or name over 512 characters is clipped, not a reason to re
   )
 })
 
+test("a teammate whose directory is relative or unsafe stays listed with no directory", () => {
+  const state = check({
+    ...valid(),
+    teammates: [
+      { ...mates[0], directory: "~/work" },
+      { ...mates[1], directory: "/srv/\u001b[31mred" },
+    ],
+  }) as State
+  expect(state.teammates.map((mate) => [mate.id, mate.directory])).toEqual([
+    ["tm_moss", ""],
+    ["tm_rae", ""],
+  ])
+  expect(() => check({ ...valid(), teammates: [{ ...mates[0], roomID: "trm_other" }] })).toThrow("identity")
+})
+
 test("a room with more than 200 teammates is readable, up to the collection bound", () => {
   const crowd = (count: number) =>
     Array.from({ length: count }, (_, index) => ({ ...mates[0], id: `tm_${index}`, handle: `mate${index}` }))
@@ -107,7 +122,7 @@ test("the Team validator checks the answers of the write routes", () => {
   ).toBeDefined()
   expect(() => write("/teammate/tm_other", "PATCH", mates[0])).toThrow("teammate identity")
   expect(() => write("/teammate", "POST", { ...mates[0], handle: "bad handle" })).toThrow("Invalid server response")
-  expect(() => write("/teammate", "POST", { ...mates[0], directory: "relative" })).toThrow("Invalid server response")
+  expect(() => write("/teammate", "POST", { ...mates[0], directory: 7 })).toThrow("Invalid server response")
   expect(() => write("/teammate", "POST", { ...mates[0], model: { providerID: "p" } })).toThrow(
     "Invalid server response",
   )

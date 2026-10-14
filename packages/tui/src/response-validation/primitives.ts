@@ -71,14 +71,16 @@ export function optional(value: unknown, check: (value: unknown) => unknown) {
   if (value !== undefined && value !== null) check(value)
 }
 
-export function checkDirectory(value: unknown) {
-  const path = string(value, 4096)
-  if (
-    !path ||
-    UNSAFE_TEXT.test(path) ||
-    !(path.startsWith("/") || path.startsWith("\\\\") || /^[A-Za-z]:[\\/]/.test(path))
+export function usableDirectory(path: string) {
+  return (
+    !!path &&
+    !UNSAFE_TEXT.test(path) &&
+    (path.startsWith("/") || path.startsWith("\\\\") || /^[A-Za-z]:[\\/]/.test(path))
   )
-    invalid("absolute directory")
+}
+
+export function checkDirectory(value: unknown) {
+  if (!usableDirectory(string(value, 4096))) invalid("absolute directory")
 }
 
 export function location(value: unknown) {

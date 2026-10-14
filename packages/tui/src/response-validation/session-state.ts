@@ -164,10 +164,14 @@ function contentPart(value: unknown) {
     const content = object(value)
     choice(content.type, ["text", "file"])
     if (content.type === "text") clip(content, "text")
-    else string(content.uri)
+    else clip(content, "uri", FILE_URI_LIMIT)
   }
   if (state.status === "error") clip(object(state.error), "message")
 }
+
+// A file result is shown as `[file] <uri>`, cut at 1000 characters. An inline image arrives as a
+// data URI of any size, so a longer one is cut with the marker rather than rejecting its page.
+export const FILE_URI_LIMIT = 1000
 
 // The one-line tool summary reads only these input fields. A wrong type or an
 // oversized value is skipped or clipped, never a reason to reject the page.
