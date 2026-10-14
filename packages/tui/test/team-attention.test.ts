@@ -79,6 +79,8 @@ test("new messages keep a scrolled reader's position until End follows and clear
   const unread = await screen("1 new")
   expect(/entry \d+/.exec(unread)?.[0]).toBe(first)
   expect(unread).not.toContain("entry 61")
+  view.mockInput.pressTab()
+  await screen("Focus: detail")
   view.mockInput.pressKey("END")
   await screen("entry 61")
   view.mockInput.pressKey("r")
