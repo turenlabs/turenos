@@ -94,6 +94,29 @@ test("team run with a lost acknowledgement is an unknown outcome that --id retri
   expect(seen).toEqual([error.retry.id, error.retry.id])
 })
 
+test("team cancel fails when the server leaves the run waiting, and cancels a run that waits for input", async () => {
+  const waiting = factoryRun("needs_input", { phase: "check" })
+  const refused = team({
+    "GET /api/team/factory-run/run-1": () => waiting,
+    "POST /api/team/factory-run/run-1/cancel": () => waiting,
+  })
+  const left = await agent(["team", "cancel", "run-1"], { url: refused.url })
+  expect(left.code).toBe(1)
+  expect(left.stdout).toBe("")
+  expect(left.stderr).toContain("still needs_input")
+  const json = await agent(["team", "cancel", "run-1", "--json"], { url: refused.url })
+  expect(json.code).toBe(1)
+  expect(document(json)).not.toHaveProperty("ok")
+
+  const accepted = team({
+    "GET /api/team/factory-run/run-1": () => waiting,
+    "POST /api/team/factory-run/run-1/cancel": () => factoryRun("cancelled"),
+  })
+  const done = await agent(["team", "cancel", "run-1"], { url: accepted.url })
+  expect(done.code).toBe(0)
+  expect(done.stdout).toBe("run run-1 · cancelled · done\n")
+})
+
 test("team cancel prints the run's final status", async () => {
   const server = team({
     "GET /api/team/factory-run/run-1": () => factoryRun("running"),

@@ -112,14 +112,15 @@ function factoryKey(ctx: TeamContext, ops: TeamOperations, live: Live, key: KeyE
 
 function steps(ctx: TeamContext, ops: TeamOperations, live: Live, room: Room): Record<string, Step> {
   const configured = () => (room.factory ? undefined : "Not configured. s opens settings.")
-  const running = () => viewOf(ctx.state).factoryRuns.find((run) => run.status === "running")
+  const stoppable = () =>
+    viewOf(ctx.state).factoryRuns.find((run) => run.status === "running" || run.status === "needs_input")
   return {
     s: { open: () => openSettings(ctx, room, live.back) },
     t: { needs: configured, open: () => addTrigger(ctx, room, live.back) },
     "ctrl+r": { needs: configured, open: () => startRun(ctx, ops, room, live.back) },
     x: {
-      needs: () => (running() ? undefined : "No factory run is running."),
-      open: () => stopRun(ctx, running()!, live.back),
+      needs: () => (stoppable() ? undefined : "No factory run is running."),
+      open: () => stopRun(ctx, stoppable()!, live.back),
     },
   }
 }

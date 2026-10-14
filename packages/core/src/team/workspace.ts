@@ -1007,7 +1007,7 @@ const layer = Layer.effect(
           Effect.gen(function* () {
             const run = yield* tx.select().from(TeamFactoryRunTable).where(eq(TeamFactoryRunTable.id, id)).get()
             if (!run) return yield* new Team.NotFoundError({ message: `Factory run ${id} not found` })
-            if (run.status === "running") {
+            if (run.status === "running" || run.status === "needs_input") {
               yield* tx
                 .update(TeamTaskTable)
                 .set({ status: "cancelled", lease_owner: null, lease_expires_at: null, time_updated: now() })
