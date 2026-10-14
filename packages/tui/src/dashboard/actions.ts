@@ -6,7 +6,7 @@ import { todoProgress } from "../session-actions"
 import { waiting } from "../queue"
 import { extraActions } from "../layout/actions"
 import { fitActionRow } from "../layout/fit"
-import { quitPrompt, renderActivity, resize } from "./status"
+import { renderActivity, resize } from "./status"
 import type { Detail } from "../server"
 import type { DashboardContext } from "./context"
 
@@ -41,7 +41,7 @@ export function renderActions(d: DashboardContext) {
   ui.historyCount.content = pending
     ? `${pending.messages.length} messages${pending.cursor.next ? "" : " · start"}`
     : "Loading…"
-  ui.footer.content = statusline(state, state.snapshot, d.renderer.width, quitPrompt(d))
+  ui.footer.content = statusline(state, state.snapshot, d.renderer.width)
   queueMicrotask(() => {
     if (ui.sizeNotice.visible || d.options.blocked?.()) return
     const before = state.modal

@@ -12,7 +12,7 @@ afterEach(async () => {
   for (const dispose of cleanup.splice(0).reverse()) await dispose()
 })
 
-async function fixture(options: { catalog?: Promise<void>; lookupStatus?: number; lookupID?: string } = {}) {
+async function fixture(options: { catalog?: Promise<void>; lookupStatus?: number; lookupID?: string; postStatus?: number } = {}) {
   const session: Session = {
     id: "ses_model",
     projectID: "project",
@@ -35,7 +35,7 @@ async function fixture(options: { catalog?: Promise<void>; lookupStatus?: number
         const body: { model: Session["model"] } = await request.json()
         requests.push({ method: request.method, path: url.pathname, body })
         remote.session = { ...remote.session, model: body.model }
-        return new Response(null, { status: 204 })
+        return new Response(null, { status: options.postStatus ?? 204 })
       }
       requests.push({ method: request.method, path: url.pathname })
       if (request.method === "GET" && url.pathname === "/api/session/ses_model") {
@@ -217,6 +217,33 @@ test("reselecting the snapshot model is a real switch if another client has sinc
     body: { model: { providerID: "test", id: "org/model" } },
   })
   expect(app.notices.at(-1)).toContain("Variant reset to model default")
+})
+
+test("a session read back with another identity is refused and no switch is sent", async () => {
+  const app = await fixture()
+  app.models.open()
+  await app.waitFor((frame) => frame.includes("Catalog Model"))
+  app.remote.session = { ...app.remote.session, projectID: "another-project" }
+  await app.view.mockInput.typeText("other model")
+  app.view.mockInput.pressEnter()
+  await app.waitFor((frame) => frame.includes("Session identity changed"))
+  expect(app.requests.filter((request) => request.method !== "GET")).toEqual([])
+  expect(app.state.modal?.busy).toBe(false)
+})
+
+test("retrying a switch whose response was lost confirms it instead of reporting no change", async () => {
+  const app = await fixture({ postStatus: 503 })
+  app.models.open()
+  await app.waitFor((frame) => frame.includes("Catalog Model"))
+  await app.view.mockInput.typeText("other model")
+  app.view.mockInput.pressEnter()
+  await app.waitFor((frame) => frame.includes("Could not select model"))
+  expect(app.remote.session.model?.id).toBe("org/other")
+  app.view.mockInput.pressEnter()
+  await app.waitFor(() => !app.state.modal)
+  expect(app.requests.filter((request) => request.method === "POST")).toHaveLength(1)
+  expect(app.notices.at(-1)).toContain("Model selected")
+  expect(app.notices.join("\n")).not.toContain("Model unchanged")
 })
 
 for (const options of [{ lookupStatus: 404 }, { lookupID: "ses_wrong" }]) {

@@ -78,11 +78,14 @@ export function runResult(run: FactoryRun) {
     .join("\n")
 }
 
-export function runTaskLines(view: TeamView, run: FactoryRun) {
+export function runTaskLines(view: TeamView, run: FactoryRun, needsInput: readonly string[] = []) {
   const tasks = runOwnTasks(view, run)
   return [
     tasks.length ? "Tasks:" : "No tasks yet.",
-    ...tasks.map((task) => `  ${taskName(view, run, task)} · session ${shortID(task.sessionID)} · Enter opens`),
+    ...tasks.map(
+      (task) =>
+        `  ${taskName(view, run, task)}${needsInput.includes(task.sessionID) ? " · waiting on you" : ""} · session ${shortID(task.sessionID)} · Enter opens`,
+    ),
   ].join("\n")
 }
 
@@ -90,12 +93,20 @@ export function runTaskLines(view: TeamView, run: FactoryRun) {
  * The panel's right pane. On a short screen the selected run's status, result or error lead and the setup shrinks to
  * a line, so the outcome is on screen without scrolling. A notice takes its own first line.
  */
-export function panelText(view: TeamView, room: Room, run: FactoryRun | undefined, short: boolean, width?: number) {
+export function panelText(
+  view: TeamView,
+  room: Room,
+  run: FactoryRun | undefined,
+  short: boolean,
+  width?: number,
+  needsInput?: readonly string[],
+) {
   const note = view.panelNote ? `${view.panelNote}\n` : ""
   const setup = summaryText(room, view.teammates, short, width)
   if (!run) return `${note}${setup}\n\nNo runs yet.`
-  if (short) return [note, runHead(run), runResult(run), setup, runTaskLines(view, run)].filter(Boolean).join("\n")
-  return `${note}${setup}\n\n${[runHead(run), runTaskLines(view, run), runResult(run)].filter(Boolean).join("\n")}`
+  if (short)
+    return [note, runHead(run), runResult(run), setup, runTaskLines(view, run, needsInput)].filter(Boolean).join("\n")
+  return `${note}${setup}\n\n${[runHead(run), runTaskLines(view, run, needsInput), runResult(run)].filter(Boolean).join("\n")}`
 }
 
 /** Latest runs first; the server may list them in any order. */

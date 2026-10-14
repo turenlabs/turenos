@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { agent, document, permission, world } from "./agent-fixture"
+import { agent, document, permission, refusal, world } from "./agent-fixture"
 import { assistant, session } from "./support"
 
 /** Line breaks, C1 and bidi controls: none may appear raw in JSON, and none may split a line in text. */
@@ -34,6 +34,43 @@ test("send --new refuses an existing session ID with another directory or agent,
     url: server.url,
   })
   expect(same.code).toBe(0)
+})
+
+test("send --new refuses an existing session created with another model or none, and sends nothing", async () => {
+  const existing: { model?: { providerID: string; id: string } } = {}
+  const server = world({
+    "POST /api/session": () => ({ data: { ...session("old"), id: "ses_old", model: existing.model } }),
+    "POST /api/session/ses_old/prompt": async (request) => ({
+      data: { id: ((await request.json()) as { id: string }).id, sessionID: "ses_old" },
+    }),
+  })
+  const send = (model: string) =>
+    agent(["send", "--new", "hi", "--session-id", "ses_old", "--dir", "/srv/old", "--model", model], {
+      url: server.url,
+    })
+  // A session on the server default was not created by a launch that named a model.
+  expect((await send("test/model")).stderr).toContain("Nothing was sent")
+  existing.model = { providerID: "test", id: "model" }
+  const other = await send("test/other")
+  expect(other.code).toBe(1)
+  expect(other.stderr).toContain("directory, agent or model")
+  expect(other.stderr).toContain("Nothing was sent")
+  expect(server.sent("/api/session/ses_old/prompt")).toEqual([])
+  // The model the session already has is the retry after a lost reply, which still goes through.
+  expect((await send("test/model")).code).toBe(0)
+  expect(server.sent("/api/session/ses_old/prompt")).toHaveLength(1)
+})
+
+test("a --json after -- is message text and does not switch error output to JSON", async () => {
+  const server = world({ "POST /api/session/ses_main/prompt": refusal })
+  const plain = await agent(["send", "ses_main", "--", "--json"], { url: server.url })
+  expect(plain.code).toBe(1)
+  expect(plain.stdout).toBe("")
+  expect(plain.stderr).toContain("Prompt rejected")
+
+  const json = await agent(["send", "ses_main", "--json", "--", "--json"], { url: server.url })
+  expect(json.code).toBe(1)
+  expect(document(json).error).toMatchObject({ message: expect.stringContaining("Prompt rejected") })
 })
 
 test("a crowded active list neither leaks its omitted key as a session nor hides a running session", async () => {

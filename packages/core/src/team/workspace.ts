@@ -1994,7 +1994,12 @@ const layer = Layer.effect(
             const id = sessionOutputMessageID(input.sessionID, input.assistantMessageID)
             const existing = yield* tx.select().from(TeamMessageTable).where(eq(TeamMessageTable.id, id)).get()
             if (existing) {
-              if (existing.session_id !== input.sessionID || existing.text !== input.text.slice(0, 20000))
+              // Recovery republishes every finished reply on a timer. One already in the room keeps its stored text,
+              // which an earlier version may have joined differently; a live publish must match it exactly.
+              if (
+                existing.session_id !== input.sessionID ||
+                (!input.recovery && existing.text !== input.text.slice(0, 20000))
+              )
                 return yield* new Team.ConflictError({
                   message: "Session output identity was reused for different content",
                 })

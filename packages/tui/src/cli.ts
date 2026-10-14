@@ -11,8 +11,8 @@ import { agentOverview, isAgentCommand, isCommandWord } from "./agent/words"
 const help = `Usage: turen-tui [url] [options]
 
 Open the terminal dashboard for TurenOS. Without a URL it connects to TurenOS on
-this computer: the running desktop app, then this host's quick-connect or
-persistent server, then (Linux, with FORGE_SERVER_PASSWORD set) a headless
+this computer: the running desktop app, then this host's persistent or
+quick-connect server, then (Linux, with FORGE_SERVER_PASSWORD set) a headless
 server on 127.0.0.1:4096 that you own. Press s in the dashboard to switch servers.
 On a server on this computer, the dashboard shows the folder you start it in,
 unless that is your home folder. Working folders (/folders) chooses another.
