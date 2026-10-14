@@ -62,5 +62,5 @@ export function createSwarmRoom(
     void load(view, true)
   }
 
-  return { open }
+  return { open, unsent: () => drafts.size }
 }
