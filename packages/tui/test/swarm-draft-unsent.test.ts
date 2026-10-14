@@ -97,3 +97,33 @@ test("a late swarm acknowledgement does not remove a different saved draft", asy
   view.mockInput.pressKey("w")
   await screen("another thought")
 })
+
+test.each([false, true])("a pending swarm load stops painting after disposal (destroy renderer: %s)", async (destroy) => {
+  const done = Promise.withResolvers<void>()
+  const returned = Promise.withResolvers<void>()
+  let pending = false
+  const { dashboard, view, screen, server } = await keepDraft(undefined, {
+    "GET /api/session/ses_main/room": async () => {
+      if (pending) {
+        await done.promise
+        returned.resolve()
+      }
+      return new Response(null, { status: 404 })
+    },
+  })
+  await Bun.sleep(150)
+  view.mockInput.pressKey("w")
+  await screen("half a thought")
+  await screen("No swarm room")
+  const before = server.sent("/api/session/ses_main/room").length
+  pending = true
+  view.mockInput.pressKey("r", { ctrl: true })
+  await until(() => server.sent("/api/session/ses_main/room").length > before)
+  if (destroy) view.renderer.destroy()
+  if (!destroy) dashboard.dispose()
+  done.resolve()
+  await returned.promise
+  // Let the aborted request settle; Bun also fails this test on an unhandled UI write.
+  await Bun.sleep(100)
+  expect(server.sent("/api/session/ses_main/room").length).toBe(before + 1)
+})
