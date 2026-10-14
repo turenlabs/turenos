@@ -27,11 +27,46 @@ plugin({
 })
 
 const [provider, setProvider] = createStore({ connected: ["local"], name: "First model" })
-const connection = { type: "sidecar", variant: "base" }
-const { ServerConnection } = await import("@/context/server")
+const { ServerConnection, serverName } = await import("@/context/server")
+const connection = {
+  type: "sidecar" as const,
+  variant: "base" as const,
+  http: { url: "http://team.test" },
+  displayName: "Local Server",
+}
+const remote = {
+  type: "http" as const,
+  http: { url: "http://remote.test" },
+  displayName: "Remote Factory",
+}
+const [serverState, setServerState] = createStore<{
+  current: ServerConnection.Any
+  key: ServerConnection.Key
+}>({
+  current: connection,
+  key: ServerConnection.key(connection),
+})
 await mock.module("@/context/server", () => ({
   ServerConnection,
-  useServer: () => ({ current: connection, key: "fixture" }),
+  serverName,
+  useServer: () => ({
+    get current() {
+      return serverState.current
+    },
+    get key() {
+      return serverState.key
+    },
+    list: [connection, remote],
+    setActive: (key: ServerConnection.Key) => {
+      const next = key === ServerConnection.key(remote) ? remote : connection
+      setServerState({ current: next, key })
+      setSDK({
+        client,
+        url: next.type === "http" ? next.http.url : "http://team.test",
+        scope: String(key),
+      })
+    },
+  }),
 }))
 await mock.module("@/context/global", () => ({
   useGlobal: () => ({
@@ -114,7 +149,7 @@ const client = new ForgeClient({
             return new Promise<Response>((resolve) => {
               settleOlder = resolve
             })
-          const roomID = url.searchParams.get("roomID")!
+          const roomID = url.searchParams.get("roomID") ?? "room-a"
           return Response.json(
             snapshot(
               roomID,
@@ -158,7 +193,7 @@ const dispose = render(
     createComponent(MemoryRouter, {
       history,
       get children() {
-        return createComponent(Route, { path: "/team/:roomID", component: TeamPage })
+        return createComponent(Route, { path: "/team/:roomID?", component: TeamPage })
       },
     }),
   host,
@@ -231,6 +266,24 @@ try {
 
   setSDK({ client, url: "http://team.test", scope: "fixture" })
   await until(() => !!log().textContent?.includes("Second room history"), "SDK refresh did not recover")
+
+  const picker = host.querySelector<HTMLElement>('[aria-label="Team server"] [data-component="select-v2"]')
+  assert.ok(picker?.textContent?.includes("Local Server"), "Team server picker did not show the active server")
+  picker.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }))
+  await until(
+    () =>
+      [...document.querySelectorAll<HTMLElement>('[data-component="menu-v2-item"]')].some((item) =>
+        item.textContent?.includes("Remote Factory"),
+      ),
+    "Team server picker did not list other servers",
+  )
+  const option = [...document.querySelectorAll<HTMLElement>('[data-component="menu-v2-item"]')].find((item) =>
+    item.textContent?.includes("Remote Factory"),
+  )!
+  option.click()
+  await until(() => serverState.key === ServerConnection.key(remote), "Team server picker did not switch active server")
+  await until(() => history.get() === "/team/room-a", "Team server switch did not restore the target server room")
+  await until(() => !!log().textContent?.includes("Keep this history"), "Team server switch did not load target room")
   console.log("Team history checks passed")
 } finally {
   dispose()

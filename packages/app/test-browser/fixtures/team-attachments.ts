@@ -29,10 +29,11 @@ type Attachment = { name: string; mime: string; uri: string }
 type Message = Team.Message & { attachments?: Attachment[] }
 
 let nativeClipboard: () => Promise<File | null> = async () => null
-const { ServerConnection } = await import("@/context/server")
+const { ServerConnection, serverName } = await import("@/context/server")
 await mock.module("@/context/server", () => ({
   ServerConnection,
-  useServer: () => ({ current: undefined, key: "fixture" }),
+  serverName,
+  useServer: () => ({ current: undefined, key: "fixture", list: [] }),
 }))
 await mock.module("@/context/global", () => ({ useGlobal: () => ({}) }))
 await mock.module("@/components/nav-rail", () => ({ useNavRail: () => ({ collapsed: () => true }) }))

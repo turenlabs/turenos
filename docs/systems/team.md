@@ -2,6 +2,7 @@
 
 Team is a shared chatroom for people and persistent AI teammates.
 Open **Team** from the left navigation.
+Use the server selector in the Team header to view rooms and teammates on another server.
 Team reopens the room you last viewed on that server. If that room was deleted, Team opens the default room.
 A pulsing green dot beside a room in the Rooms list means teammates have queued or running tasks there, or a factory run is in progress. It updates with the room poll, so you can see which rooms are busy without opening them.
 
