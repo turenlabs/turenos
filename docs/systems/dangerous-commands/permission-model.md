@@ -68,6 +68,16 @@ Neither of those affects `ShellSafety`. A blanket `allow`, a saved grant for the
 disabled all still leave the recursive-delete block in force, because it runs before `permission.assert` and returns a
 `ToolFailure` rather than a permission request.
 
+## Pending request retries
+
+Session V2 reconciles an exact retry while a permission request ID is pending.
+The request and agent must match the original. The retry shares its decision instead of creating another prompt.
+Interrupting that retry leaves the original pending request available for a reply.
+Reusing the pending ID with different input returns a conflict. The HTTP permission endpoint returns `ConflictError` with status 409.
+These checks do not change allow or deny rules.
+See [`packages/core/src/permission.ts`](../../../packages/core/src/permission.ts) and
+[`packages/protocol/src/groups/permission.ts`](../../../packages/protocol/src/groups/permission.ts).
+
 ## Command arguments outside the workspace
 
 Command arguments are gated as well as the `workdir`. The V2 bash tool tokenizes the command, expands a leading `~`,

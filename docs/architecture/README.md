@@ -40,6 +40,8 @@ Bun starts with `--no-env-file`, `--no-install`, and `--use-system-ca`.
 The parent sends the vault key through JSON IPC as canonical base64, not through arguments or inherited environment variables.
 `FORGE_RESOURCES_PATH` supplies the trusted resource directory to the sidecar.
 The HTTP listener uses `BunHttpServer`; native terminals use `Bun.Terminal` and `Bun.spawn`.
+The [native terminal adapter](../../packages/core/src/pty/pty.bun.ts) waits for terminal EOF before publishing process exit.
+This preserves pending output and the final UTF-8 character. Explicit kill closes the terminal without waiting for EOF.
 When the requested port is `0`, the listener tries `4096` first, then a free port if that address is occupied.
 
 Desktop builds download the root-pinned Bun npm package for the selected target.
