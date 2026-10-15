@@ -287,7 +287,7 @@ jobs:
           # Restoring the cache takes longer than downloading on Windows, as in the unit jobs above.
           dependency-cache: ${{ runner.os != 'Windows' }}
       - name: Verify Bun native terminal
-        run: bun --cwd packages/script test ../core/test/pty/native-terminal.test.ts --timeout 15000
+        run: bun --cwd packages/script test ../core/test/pty/native-terminal.test.ts --timeout 15000 --rerun-each 20
       - name: Compile native terminal client
         if: matrix.name == 'linux-x64'
         working-directory: packages/forge
