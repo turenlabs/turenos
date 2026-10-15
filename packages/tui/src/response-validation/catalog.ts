@@ -33,6 +33,12 @@ export function terminals(address: URL, value: unknown) {
   })
 }
 
+export function terminalCreated(value: unknown) {
+  const response = object(value)
+  location(response.location)
+  identifier(object(response.data).id, "pty_")
+}
+
 export function agents(address: URL, value: unknown) {
   const response = object(value)
   location(response.location)
@@ -84,10 +90,10 @@ function usableCommand(value: unknown) {
   }
 }
 
-export function files(value: unknown) {
+export function files(route: string[], value: unknown) {
   const response = object(value)
   location(response.location)
-  for (const entry of array(response.data, 200)) {
+  for (const entry of array(response.data, route[1] === "list" ? 20000 : 200)) {
     const item = object(entry)
     // Results become `file://` prompt attachments, so an absolute or escaping
     // path would address a file outside the requested location.

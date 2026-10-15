@@ -60,6 +60,10 @@ export function createTeam(
   return {
     /** Loads for the selected room and repaints: the tab opened, or the selection moved. */
     sync: () => sync(loader),
+    /** The next paint shows the room's latest message, as a room's first visit does. */
+    follow: () => {
+      viewOf(state).follow = true
+    },
     /** One reconciliation, without repainting; the dashboard repaints after its refresh. */
     poll: () => load(loader),
     older: () => older(loader),

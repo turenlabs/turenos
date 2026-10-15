@@ -6,7 +6,7 @@ import { Global } from "@turenlabs/core/global"
 import { SessionMessage } from "@turenlabs/core/session/message"
 import { Team } from "@turenlabs/schema/team"
 import { HttpApiApp } from "../../src/server/routes/instance/httpapi/server"
-import { extractTeamTaskOutput, teamTaskIDForResponse } from "../../src/team/runtime"
+import { extractTeamTaskOutput, teamSessionOutputText, teamTaskIDForResponse } from "../../src/team/runtime"
 import { resetDatabase } from "../fixture/db"
 import { disposeAllInstances, tmpdir } from "../fixture/fixture"
 import { pollWithTimeout, testEffect } from "../lib/effect"
@@ -133,6 +133,20 @@ describe("TeamRuntime dispatch", () => {
       expect(teamTaskIDForResponse(messages, "msg_followup_response", taskIDs)).toBe("old_task")
       expect(teamTaskIDForResponse(messages, "msg_new_task_response", taskIDs)).toBe("new_task")
       expect(teamTaskIDForResponse(messages, "msg_missing_response", taskIDs)).toBeUndefined()
+    }))
+
+  it("keeps the text parts of one teammate reply apart across a tool step", () =>
+    Effect.sync(() => {
+      const message = {
+        type: "assistant",
+        content: [
+          { id: "text_before", type: "text", text: "I am reading the code layout." },
+          { id: "call_1", type: "tool" },
+          { id: "text_after", type: "text", text: "Next: the model switch." },
+        ],
+      } as unknown as SessionMessage.Assistant
+
+      expect(teamSessionOutputText(message)).toBe("I am reading the code layout.\n\nNext: the model switch.")
     }))
 
   it("replies to a greeting once and shares that conversation with the next teammate task", () =>

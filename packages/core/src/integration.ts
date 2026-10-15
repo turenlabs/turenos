@@ -12,6 +12,7 @@ import {
   Schedule,
   Schema,
   Scope,
+  Semaphore,
   SynchronizedRef,
   Types,
 } from "effect"
@@ -146,9 +147,14 @@ export interface Interface extends State.Transformable<Draft> {
   readonly connection: {
     /** Returns the active connection for one integration. */
     readonly active: (id: ID) => Effect.Effect<IntegrationConnection.Info | undefined>
-    /** Resolves a connection into usable credential material. */
+    /**
+     * Resolves a connection into usable credential material. `rejected` is the `expires` of an
+     * OAuth token a provider refused: that token is refreshed whatever its stored expiry says,
+     * unless another caller already replaced it.
+     */
     readonly resolve: (
       connection: IntegrationConnection.Info,
+      options?: { readonly rejected?: number },
     ) => Effect.Effect<Credential.Value | undefined, AuthorizationError>
     /** Runs a key method and stores the resulting credential. */
     readonly key: (input: {
@@ -194,6 +200,18 @@ export interface Interface extends State.Transformable<Draft> {
 }
 
 export class Service extends Context.Service<Service, Interface>()("@forge/v2/Integration") {}
+
+// One OAuth refresh at a time per credential. Integration is per Location but the credentials are
+// shared, and providers such as OpenAI retire a refresh token on use. A lock per credential keeps a
+// hung token endpoint from stalling every other provider's refresh.
+const refreshLocks = new Map<string, Semaphore.Semaphore>()
+const refreshLock = (id: string) => {
+  const existing = refreshLocks.get(id)
+  if (existing) return existing
+  const created = Semaphore.makeUnsafe(1)
+  refreshLocks.set(id, created)
+  return created
+}
 
 const attemptLifetime = Duration.toMillis(Duration.minutes(10))
 const terminalRetention = Duration.toMillis(Duration.minutes(1))
@@ -382,7 +400,7 @@ export const locationLayer = Layer.effect(
           const entry = state.get().integrations.get(id)
           return resolveConnections(entry, yield* credentials.list(id))[0]
         }),
-        resolve: Effect.fn("Integration.connection.resolve")(function* (connection) {
+        resolve: Effect.fn("Integration.connection.resolve")(function* (connection, options) {
           if (connection.type === "env") {
             const key = process.env[connection.name]
             return key ? Credential.Key.make({ type: "key", key }) : undefined
@@ -394,12 +412,25 @@ export const locationLayer = Layer.effect(
             .get()
             .integrations.get(credential.integrationID)
             ?.implementations.get(credential.value.methodID)
-          if (!implementation?.refresh) return credential.value
+          const refresh = implementation?.refresh
+          if (!refresh) return credential.value
           const now = yield* Clock.currentTimeMillis
-          if (credential.value.expires > now + Duration.toMillis(Duration.minutes(5))) return credential.value
-          const value = yield* authorize(implementation.refresh(credential.value))
-          yield* credentials.update(credential.id, { value })
-          return value
+          const stale = (value: Credential.OAuth) =>
+            options?.rejected === undefined
+              ? value.expires <= now + Duration.toMillis(Duration.minutes(5))
+              : value.expires === options.rejected
+          if (!stale(credential.value)) return credential.value
+          // Re-read under the lock: a caller that waited behind another refresh takes its result,
+          // because the refresh token it read has already been rotated away.
+          return yield* refreshLock(credential.id).withPermit(
+            Effect.gen(function* () {
+              const current = yield* credentials.get(credential.id)
+              if (current?.value.type !== "oauth" || !stale(current.value)) return current?.value
+              const value = yield* authorize(refresh(current.value))
+              yield* credentials.update(current.id, { value })
+              return value
+            }),
+          )
         }),
         key: Effect.fn("Integration.connection.key")(function* (input) {
           const method = state

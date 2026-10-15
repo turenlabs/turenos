@@ -78,7 +78,7 @@ export function remove(picker: Picker) {
 export function quit(picker: Picker) {
   const drafts = picker.hooks.drafts()
   if (drafts && !confirmed(picker, "quit", ""))
-    return say(picker, `${drafts} unsent drafts will be lost. Press q again to quit.`, "warning")
+    return say(picker, `${drafts} unsent draft${drafts === 1 ? "" : "s"} will be lost. Press q again to quit.`, "warning")
   picker.hooks.quit()
 }
 

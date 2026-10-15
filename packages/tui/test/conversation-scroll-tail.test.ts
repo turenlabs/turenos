@@ -3,6 +3,22 @@ import type { MessagesListOutput } from "@turenlabs/client"
 import { createDialogs } from "../src/dialogs"
 import { message, waitForFrame, fixture } from "./conversation-scroll-fixture"
 
+/** Opens a docked dialog, which counts as the reply editor when `composer` is set; `close()` removes it again. */
+function openReply(f: Awaited<ReturnType<typeof fixture>>, composer: boolean) {
+  const dialogs = createDialogs(f.view.renderer, f.state, f.ui, {
+    rememberPosition: f.conversation.rememberPosition,
+    cancelPosition: f.conversation.cancelPosition,
+    changed: () => f.ui.resize(),
+    submitted: async () => {},
+    say() {},
+  })
+  const dialog = dialogs.open("Reply", false, 24, true)!
+  dialog.composer = composer
+  dialogs.prompt(dialog, "Message", "")
+  f.ui.resize()
+  return { close: () => dialogs.close(false) }
+}
+
 const arrived = (id: string): MessagesListOutput["data"][number] => ({
   id,
   type: "user",
@@ -130,17 +146,7 @@ test.each([
 ])("paging up at the top with %s open (fetches: %p)", async (_, composer, expected) => {
   const f = await fixture()
   f.conversation.cancelPosition()
-  const dialogs = createDialogs(f.view.renderer, f.state, f.ui, {
-    rememberPosition: f.conversation.rememberPosition,
-    cancelPosition: f.conversation.cancelPosition,
-    changed: () => f.ui.resize(),
-    submitted: async () => {},
-    say() {},
-  })
-  const dialog = dialogs.open("Reply", false, 24, true)!
-  dialog.composer = composer
-  dialogs.prompt(dialog, "Message", "")
-  f.ui.resize()
+  openReply(f, composer)
   f.ui.detail.scrollTo(0)
   const before = await waitForFrame(f.view, (frame) => frame.includes("Live line 0"))
   const row = before.split("\n").findIndex((line) => line.includes("Live line 0"))
@@ -152,4 +158,39 @@ test.each([
   await waitForFrame(f.view, (frame) => frame.includes("Live line 0") && f.ui.detail.scrollHeight > height)
   expect(f.ui.detail.scrollTop).toBe(f.ui.detail.scrollHeight - height)
   expect(f.view.captureCharFrame().split("\n")[row]).toContain("Live line 0")
+})
+
+const count = (frame: string, text: string) => frame.split(text).length - 1
+
+test("the scrolled-up cue names End, or PgDn while the reply editor is open, once at a time", async () => {
+  const f = await fixture()
+  f.top()
+  await waitForFrame(f.view, (frame) => frame.includes("scrolled up · End for latest"))
+  const reply = openReply(f, true)
+  const open = await waitForFrame(f.view, (frame) => frame.includes("scrolled up · PgDn for latest"))
+  expect(open).not.toContain("End for latest")
+  expect(count(open, "scrolled up")).toBe(1)
+  reply.close()
+  const closed = await waitForFrame(f.view, (frame) => frame.includes("scrolled up · End for latest"))
+  expect(closed).not.toContain("PgDn for latest")
+  expect(count(closed, "scrolled up")).toBe(1)
+})
+
+test("the new-output cue swaps its jump key with the reply editor and is never duplicated", async () => {
+  const f = await fixture()
+  f.top()
+  await waitForFrame(f.view, (frame) => frame.includes("Live line 0"))
+  f.data.latest = [message("msg_more", "More output"), ...f.data.latest]
+  await f.conversation.render()
+  await waitForFrame(f.view, (frame) => frame.includes("new output below · End"))
+  const reply = openReply(f, true)
+  const open = await waitForFrame(f.view, (frame) => frame.includes("new output below · PgDn"))
+  expect(open).not.toContain("new output below · End")
+  expect(count(open, "new output below")).toBe(1)
+  expect(open).not.toContain("scrolled up")
+  reply.close()
+  const closed = await waitForFrame(f.view, (frame) => frame.includes("new output below · End"))
+  expect(closed).not.toContain("new output below · PgDn")
+  expect(count(closed, "new output below")).toBe(1)
+  expect(closed).not.toContain("scrolled up")
 })

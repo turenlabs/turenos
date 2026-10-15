@@ -9,27 +9,31 @@ import { viewOf, type Task, type TeamContext } from "./types"
 const KEYS = "↑↓ choose · Enter open session · c cancel task · r refresh · Esc close"
 const cancellable: Task["status"][] = ["queued", "claimed", "running"]
 
-/** The room's tasks, newest first. Enter opens the task's session; `c` cancels a live task after a typed word. */
+/** The room's tasks, waiting on you first, then newest first. Enter opens the task's session; `c` cancels a live task after a typed word. */
 export function openTasks(ctx: TeamContext, refresh: () => Promise<void>) {
   const view = viewOf(ctx.state)
   if (ctx.state.tab !== "team" || !view.room) return ctx.say("Select a room first.")
   const roomName = label(view.room.name, 40)
   const picker = openPicker(ctx.renderer, ctx.dialogs, { title: `# ${roomName} › Tasks`, choices: [], keys: KEYS })
   if (!picker) return
+  const waiting = (task: Task) => !!ctx.state.snapshot?.needsInput?.includes(task.sessionID)
+  // Tasks whose session needs an answer lead, so Enter opens the one that blocks the room.
   const tasks = () =>
     viewOf(ctx.state)
       .tasks.filter((task) => task.roomID === view.room?.id)
-      .toSorted((a, b) => b.time.created - a.time.created)
+      .toSorted((a, b) => Number(waiting(b)) - Number(waiting(a)) || b.time.created - a.time.created)
   // The tasks as listed on screen: Enter and `c` act on these, never on a later poll's list.
   let shown: Task[] = []
   const fill = () => {
     const rows = (shown = tasks())
-    picker.text.content = rows.length ? "Tasks the room's messages created." : "No tasks in this room yet."
+    picker.text.content = rows.length
+      ? "Tasks the room's messages created; those waiting on you come first."
+      : "No tasks in this room yet."
     picker.fit()
     picker.set(
       rows.map(
         (task): Choice => ({
-          name: describe(ctx, task),
+          name: `${waiting(task) ? "waiting on you · " : ""}${describe(ctx, task)}`,
           description: label(task.sessionID, 80),
           run: () => ctx.openSession(task.sessionID),
         }),
