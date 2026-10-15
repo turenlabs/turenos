@@ -312,6 +312,8 @@ test.each(["events", "reconnect"])(
       f.emit("session.next.revert.staged", { assistantMessageID: undefined, revert: { messageID: "msg_tail" } })
       f.emit("session.next.revert.committed", { assistantMessageID: undefined, messageID: "msg_tail" })
     } else {
+      // Snapshot reads can finish before the event stream subscribes.
+      await f.wait(() => f.streams.size > 0)
       f.data.available = false
       f.closeStreams()
       await f.screen("Polling")
