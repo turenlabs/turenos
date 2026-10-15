@@ -1,19 +1,35 @@
+import { newMessages, waitingOnYou } from "./attention"
 import { plural } from "./format"
 import { label, type DashboardState, type Row } from "../state"
 import { viewOf, visibleRooms } from "./types"
 
-/** Sidebar rows: one per room. Only the loaded room's teammates are known, so the others show their message count. */
+/**
+ * Sidebar rows: one per room. The list draws only the name line, so the marks (waiting, new, working) follow the name
+ * there, most urgent first because a narrow sidebar cuts the end. The description feeds the filter: only the loaded
+ * room's teammates are known, so the others show their message count.
+ */
 export function roomRows(state: DashboardState): Row[] {
   const view = viewOf(state)
-  return visibleRooms(view).map((room) => ({
-    id: room.id,
-    name: `# ${label(room.name, 100)}${room.archived ? " · archived" : ""}`,
-    description: room.topic
-      ? label(room.topic, 250)
-      : view.room?.id === room.id
-        ? plural(view.teammates.length, "teammate")
-        : plural(room.head, "message"),
-  }))
+  const waiting = waitingOnYou(view, state.snapshot?.needsInput)
+  return visibleRooms(view).map((room) => {
+    const unread = newMessages(view, room)
+    const marks = [
+      view.room?.id === room.id && waiting ? `${waiting} waiting` : "",
+      unread ? `${unread} new` : "",
+      view.activeRoomIDs.includes(room.id) ? "working" : "",
+    ].filter(Boolean)
+    return {
+      id: room.id,
+      name: [`# ${label(room.name, marks.length ? 14 : 100)}${room.archived ? " · archived" : ""}`, ...marks].join(
+        " · ",
+      ),
+      description: room.topic
+        ? label(room.topic, 250)
+        : view.room?.id === room.id
+          ? plural(view.teammates.length, "teammate")
+          : plural(room.head, "message"),
+    }
+  })
 }
 
 /** The sidebar note above the list. */

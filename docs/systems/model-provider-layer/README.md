@@ -38,6 +38,12 @@ entry, or a local CLI bridge. `SessionRunner` constructs a canonical
 the resulting events, then owns tool execution and continuation. Provider
 streaming does not delegate to the legacy Forge prompt loop.
 
+If OpenAI rejects a ChatGPT OAuth token with HTTP 401, Session V2 can refresh it once and retry the same request.
+This recovery applies only before text or tool input starts. A second 401 or a failed refresh ends the attempt.
+API-key authentication failures do not use this recovery.
+Refreshes for one credential run serially within the process, including across Locations.
+A waiting caller reads the stored credential again instead of reusing a rotated refresh token.
+
 ```txt
 Catalog + credentials → SessionRunnerModel.resolve → Model route
 SessionRunner → LLMRequest → LLMClient.stream → LLMEvent stream
@@ -83,6 +89,7 @@ a connection policy use AI SDK.
 
 ## Source
 
+- [`packages/core/src/integration.ts`](../../../packages/core/src/integration.ts)
 - [`packages/core/src/session/runner/llm.ts`](../../../packages/core/src/session/runner/llm.ts)
 - [`packages/core/src/session/runner/model.ts`](../../../packages/core/src/session/runner/model.ts)
 - [`packages/core/src/session/runner/aisdk-bridge.ts`](../../../packages/core/src/session/runner/aisdk-bridge.ts)

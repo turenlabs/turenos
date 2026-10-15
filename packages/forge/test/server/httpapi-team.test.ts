@@ -61,8 +61,8 @@ describe("Team HttpApi", () => {
     const route = `/api/team/message/${payload.id}/attachments`
     expect((await request(route, tmp.path)).status).toBe(400)
     expect((await request(`${route}?roomID=`, tmp.path)).status).toBe(400)
-    expect((await request(`${route}?roomID=${other.id}`, tmp.path)).status).toBe(400)
-    expect((await request(`/api/team/message/msg_missing/attachments?roomID=${room.id}`, tmp.path)).status).toBe(400)
+    expect((await request(`${route}?roomID=${other.id}`, tmp.path)).status).toBe(404)
+    expect((await request(`/api/team/message/msg_missing/attachments?roomID=${room.id}`, tmp.path)).status).toBe(404)
     const downloaded = await request(`${route}?roomID=${room.id}`, tmp.path)
     expect(downloaded.status).toBe(200)
     expect(Schema.decodeUnknownSync(Schema.Array(Team.Attachment))(await downloaded.json())).toEqual(attachments)
@@ -76,7 +76,7 @@ describe("Team HttpApi", () => {
     })
     expect(invalid.status).toBe(400)
     expect((await request(`/api/team/message/msg_http_invalid/attachments?roomID=${other.id}`, tmp.path)).status).toBe(
-      400,
+      404,
     )
   })
 
@@ -96,7 +96,7 @@ describe("Team HttpApi", () => {
       (await app.handler(new Request(route, { headers: { authorization: "Basic invalid" } }), context)).status,
     ).toBe(401)
     const authorization = `Basic ${Buffer.from("forge:team-download-test").toString("base64")}`
-    expect((await app.handler(new Request(route, { headers: { authorization } }), context)).status).toBe(400)
+    expect((await app.handler(new Request(route, { headers: { authorization } }), context)).status).toBe(404)
   })
 
   test("edits, archives, restores, and deletes an idle room", async () => {
@@ -294,7 +294,7 @@ describe("Team HttpApi", () => {
       await (await request(`/api/team?roomID=${room.id}`, tmp.path)).json(),
     )
     expect(state.teammates).toMatchObject([{ id: teammate.id, status: "active" }])
-    expect((await request("/api/team/teammate/missing/stop", tmp.path, "POST")).status).toBe(400)
+    expect((await request("/api/team/teammate/missing/stop", tmp.path, "POST")).status).toBe(404)
   })
 
   test("rejects invalid handles, blank messages, and conflicting history cursors", async () => {

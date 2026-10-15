@@ -138,9 +138,9 @@ test("send --new starts a session under frozen IDs, and a retry with them cannot
   const created: { id: string; location: unknown }[] = []
   const server = world({
     "POST /api/session": async (request) => {
-      const body = (await request.json()) as { id: string; location: unknown; agent?: string }
+      const body = (await request.json()) as { id: string; location: unknown; agent?: string; model?: unknown }
       created.push(body)
-      return { data: { ...session("new"), id: body.id, location: body.location, agent: body.agent } }
+      return { data: { ...session("new"), id: body.id, location: body.location, agent: body.agent, model: body.model } }
     },
     "POST /api/session/ses_fresh/prompt": async (request) => ({
       data: { id: ((await request.json()) as { id: string }).id, sessionID: "ses_fresh" },

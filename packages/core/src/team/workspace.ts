@@ -1,6 +1,7 @@
 export * as TeamWorkspace from "./workspace"
 
 import { Team } from "@turenlabs/schema/team"
+import { parseFactoryOutput } from "@turenlabs/schema/team-output"
 import { createHash } from "node:crypto"
 import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lt, lte, notInArray, or, sql } from "drizzle-orm"
 import { Context, Effect, Layer, Schema } from "effect"
@@ -1118,7 +1119,55 @@ const layer = Layer.effect(
                 }
               }
               const tasks = yield* tx.select().from(TeamTaskTable).where(inArray(TeamTaskTable.id, run.task_ids)).all()
-              const failed = tasks.find((task) => ["failed", "cancelled", "stale"].includes(task.status))
+              const failedStatuses = ["failed", "cancelled", "stale"]
+              const failed = tasks.find((task) => failedStatuses.includes(task.status))
+              if (failed && run.phase === "work") {
+                // A lost task only blocks its transitive dependents. Independent tasks keep running.
+                const withDependents = (ids: ReadonlySet<string>): ReadonlySet<string> => {
+                  const next = tasks.filter(
+                    (task) =>
+                      !ids.has(task.id) &&
+                      ((task.snapshot as unknown as TaskSnapshot).factoryDependencies ?? []).some((dependency) =>
+                        ids.has(dependency.taskID),
+                      ),
+                  )
+                  return next.length ? withDependents(new Set([...ids, ...next.map((task) => task.id)])) : ids
+                }
+                const lost = withDependents(
+                  new Set(tasks.filter((task) => failedStatuses.includes(task.status)).map((task) => task.id)),
+                )
+                yield* tx
+                  .update(TeamTaskTable)
+                  .set({ status: "cancelled", lease_owner: null, lease_expires_at: null, time_updated: now() })
+                  .where(
+                    and(
+                      inArray(TeamTaskTable.id, [...lost]),
+                      inArray(TeamTaskTable.status, ["queued", "claimed", "running"]),
+                    ),
+                  )
+                  .run()
+                if (tasks.some((task) => !lost.has(task.id) && task.status !== "succeeded")) continue
+                const causes = tasks.filter((task) => failedStatuses.includes(task.status))
+                const status: "cancelled" | "stale" | "failed" = causes.some((task) => task.status === "failed")
+                  ? "failed"
+                  : causes.some((task) => task.status === "stale")
+                    ? "stale"
+                    : "cancelled"
+                yield* tx
+                  .update(TeamFactoryRunTable)
+                  .set({
+                    status,
+                    phase: "done",
+                    error: causes
+                      .filter((task) => task.status === status)
+                      .map((task) => task.error ?? `Factory task ${task.status}`)
+                      .join("; "),
+                    time_updated: now(),
+                  })
+                  .where(eq(TeamFactoryRunTable.id, run.id))
+                  .run()
+                continue
+              }
               if (failed) {
                 const status: "cancelled" | "stale" | "failed" =
                   failed.status === "cancelled" ? "cancelled" : failed.status === "stale" ? "stale" : "failed"
@@ -1187,11 +1236,7 @@ const layer = Layer.effect(
                 .all()
               if (run.phase === "plan") {
                 const output = outputs.find((message) => message.source_key === `task:${tasks[0]?.id}`)?.text ?? ""
-                const json = Schema.decodeUnknownOption(Schema.UnknownFromJsonString)(output)
-                const plan =
-                  json._tag === "Some"
-                    ? Schema.decodeUnknownOption(Team.FactoryPlan)(json.value)
-                    : { _tag: "None" as const }
+                const plan = Schema.decodeUnknownOption(Team.FactoryPlan)(parseFactoryOutput(output))
                 const assignments = plan._tag === "Some" ? plan.value.assignments : []
                 const assignmentIDs = new Set(assignments.map((item) => item.teammateID))
                 const dependenciesValid = assignments.every((item) => {
@@ -1427,11 +1472,7 @@ const layer = Layer.effect(
               if (run.phase === "check") {
                 const task = tasks.at(-1)
                 const output = outputs.find((message) => message.source_key === `task:${task?.id}`)?.text ?? ""
-                const json = Schema.decodeUnknownOption(Schema.UnknownFromJsonString)(output)
-                const check =
-                  json._tag === "Some"
-                    ? Schema.decodeUnknownOption(Team.FactoryCheck)(json.value)
-                    : { _tag: "None" as const }
+                const check = Schema.decodeUnknownOption(Team.FactoryCheck)(parseFactoryOutput(output))
                 const status: "succeeded" | "needs_input" | "failed" =
                   check._tag === "Some" && check.value.status === "accepted"
                     ? "succeeded"
@@ -1994,7 +2035,12 @@ const layer = Layer.effect(
             const id = sessionOutputMessageID(input.sessionID, input.assistantMessageID)
             const existing = yield* tx.select().from(TeamMessageTable).where(eq(TeamMessageTable.id, id)).get()
             if (existing) {
-              if (existing.session_id !== input.sessionID || existing.text !== input.text.slice(0, 20000))
+              // Recovery republishes every finished reply on a timer. One already in the room keeps its stored text,
+              // which an earlier version may have joined differently; a live publish must match it exactly.
+              if (
+                existing.session_id !== input.sessionID ||
+                (!input.recovery && existing.text !== input.text.slice(0, 20000))
+              )
                 return yield* new Team.ConflictError({
                   message: "Session output identity was reused for different content",
                 })

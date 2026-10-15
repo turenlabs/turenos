@@ -1,7 +1,7 @@
 export * as PermissionV2 from "./permission"
 
 import { makeLocationNode } from "./effect/app-node"
-import { Context, Deferred, Effect as EffectRuntime, Fiber, Layer, Option, Schema, Semaphore } from "effect"
+import { Context, Deferred, Effect as EffectRuntime, Equal, Fiber, Layer, Option, Schema, Semaphore } from "effect"
 import path from "path"
 import { Permission } from "@turenlabs/schema/permission"
 import { LobbySession } from "@turenlabs/schema/lobby-session"
@@ -77,6 +77,10 @@ export class NotFoundError extends Schema.TaggedErrorClass<NotFoundError>()("Per
   requestID: ID,
 }) {}
 
+export class ConflictError extends Schema.TaggedErrorClass<ConflictError>()("PermissionV2.ConflictError", {
+  requestID: ID,
+}) {}
+
 export type Error = BlockedError | CorrectedError
 
 export { evaluate } from "./permission/rules"
@@ -92,8 +96,8 @@ export const mutationMetadata = (targets: ReadonlyArray<string>) => ({
 })
 
 export interface Interface {
-  readonly ask: (input: AssertInput) => EffectRuntime.Effect<AskResult, SessionV2.NotFoundError>
-  readonly assert: (input: AssertInput) => EffectRuntime.Effect<void, Error | SessionV2.NotFoundError>
+  readonly ask: (input: AssertInput) => EffectRuntime.Effect<AskResult, ConflictError | SessionV2.NotFoundError>
+  readonly assert: (input: AssertInput) => EffectRuntime.Effect<void, ConflictError | Error | SessionV2.NotFoundError>
   readonly reply: (input: ReplyInput) => EffectRuntime.Effect<void, NotFoundError>
   readonly get: (id: ID) => EffectRuntime.Effect<Request | undefined>
   readonly forSession: (sessionID: SessionV2.ID) => EffectRuntime.Effect<ReadonlyArray<Request>>
@@ -264,9 +268,14 @@ const layer = Layer.effect(
     const create = (request: Request, agent?: AgentV2.ID) =>
       EffectRuntime.uninterruptible(
         EffectRuntime.gen(function* () {
+          const existing = pending.get(request.id)
+          // Reusing a pending ID reconciles an exact retry (same request and agent); any other reuse conflicts.
+          if (existing)
+            return Equal.equals(existing.request, request) && existing.agent === agent
+              ? existing
+              : yield* new ConflictError({ requestID: request.id })
           const deferred = yield* Deferred.make<void, DeclinedError | CorrectedError>()
           const item: Pending = { request, agent, deferred }
-          if (pending.has(request.id)) return yield* EffectRuntime.die(`Duplicate pending permission ID: ${request.id}`)
           pending.set(request.id, item)
           yield* events
             .publish(Event.Asked, request)
@@ -293,13 +302,14 @@ const layer = Layer.effect(
             })
           }
           if (result.effect === "allow") return
+          const retried = input.id !== undefined && pending.has(input.id)
           const item = yield* create(request(input), input.agent)
           yield* restore(Deferred.await(item.deferred)).pipe(
             EffectRuntime.catchTag("PermissionV2.DeclinedError", (error) => EffectRuntime.die(error)),
             EffectRuntime.ensuring(
               completion.withPermit(
                 EffectRuntime.gen(function* () {
-                  if (pending.get(item.request.id) !== item) return
+                  if (retried || pending.get(item.request.id) !== item) return
                   if (item.watcher)
                     yield* Fiber.interrupt(item.watcher).pipe(
                       EffectRuntime.forkDetach({ startImmediately: true }),

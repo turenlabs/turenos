@@ -1,6 +1,6 @@
 import { mkdtemp, rm } from "node:fs/promises"
 import { existsSync } from "node:fs"
-import { connect as connectSocket, createServer, type Socket } from "node:net"
+import { connect, createServer, type Socket } from "node:net"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { readBounded } from "../response-validation/body"
@@ -203,7 +203,7 @@ async function openTunnel(ctx: Context, base: string[], destination: string, rem
 function loopbackProxy(socketPath: string) {
   const sockets = new Set<Socket>()
   const server = createServer((socket) => {
-    const upstream = connectSocket(socketPath)
+    const upstream = connect(socketPath)
     for (const item of [socket, upstream]) {
       sockets.add(item)
       item.on("close", () => sockets.delete(item))
