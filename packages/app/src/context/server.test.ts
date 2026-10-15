@@ -133,6 +133,24 @@ test("Agents selection does not abandon a server before its first health result"
 })
 
 describe("createServerProjects", () => {
+  test("opening an existing folder does not send another shared membership edit", () => {
+    createRoot((dispose) => {
+      const [store, setStore] = createStore({ projects: {}, lastProject: {}, recentlyClosed: {} })
+      const changes: [string, boolean][] = []
+      const projects = createServerProjects({
+        scope: () => ServerScope.local,
+        store,
+        setStore,
+        changed: (directory, open) => changes.push([directory, open]),
+      })
+      projects.open("C:\\Repo")
+      projects.open("c:/repo/")
+      expect(changes).toEqual([["C:\\Repo", true]])
+      expect(projects.list()).toEqual([{ worktree: "C:\\Repo", expanded: true }])
+      dispose()
+    })
+  })
+
   test("membership edits notify the shared folder service while presentation edits stay local", () => {
     createRoot((dispose) => {
       const [store, setStore] = createStore({ projects: {}, lastProject: {}, recentlyClosed: {} })
