@@ -43,6 +43,7 @@ turen-tui team run factory "weekly report" && turen-tui team wait <run-id>
 
 `stop` and session waits check the requested ID in the full, byte-bounded active response before list truncation.
 An ID absent from the dashboard's retained active map is not proof of running work.
+When the server's active list is cut, `sessions` checks each listed session that the list does not name on its own, and `pending` also checks the newest 100 sessions (of the folder, without `--everywhere`) that the list does not name, so a running session is not shown as `idle` and its requests are not skipped.
 An idle parent retains unfinished tasks unless `stop --tasks` is explicit.
 Without a sent-message anchor, `wait` returns the latest assistant message when the session is idle.
 With an anchor, `send --wait` also requires a reply after that message.

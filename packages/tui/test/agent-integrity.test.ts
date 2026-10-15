@@ -145,3 +145,26 @@ test("--json writes C1 controls, bidi overrides and line separators as escapes t
   const failure = await agent(["send", "ses_main", "hi", "--id", "bad id", "--json"], { url: server.url })
   expect(failure.stdout).not.toMatch(raw)
 })
+
+test("a cut active list does not make sessions read idle or hide the pending requests of a running session", async () => {
+  const filler = Array.from({ length: 130 }, (_, index) => `ses_f${index}`)
+  const empty = Object.fromEntries(
+    filler.flatMap((id) =>
+      ["permission", "question"].map((kind) => [`GET /api/session/${id}/${kind}`, () => ({ data: [] })]),
+    ),
+  )
+  const server = world({
+    ...empty,
+    "GET /api/session": () => ({ data: [session("main")], cursor: {} }),
+    "GET /api/session/ses_main/message": () => ({ data: [], cursor: {} }),
+  })
+  filler.forEach((id) => server.state.active.add(id))
+  server.state.active.add("ses_main")
+  server.state.permissions.push(permission())
+
+  const listed = document(await agent(["sessions", "--json"], { url: server.url })).sessions as { state: string }[]
+  expect(listed.map((item) => item.state)).toEqual(["needs-input"])
+
+  const found = document(await agent(["pending", "--everywhere", "--json"], { url: server.url }))
+  expect((found.permissions as { id: string }[]).map((item) => item.id)).toEqual(["per_1"])
+})
