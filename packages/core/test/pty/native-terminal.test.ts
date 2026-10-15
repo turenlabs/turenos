@@ -20,7 +20,8 @@ test("native terminal handles input, UTF-8 output, resize, and process exit", as
     process.execPath,
     [
       "-e",
-      'console.log("ready"); process.stdin.on("data", () => { console.log("received:\\u00e9"); process.exit(0) })',
+      // Bun initializes terminal stdin when the listener is installed; only then is input safe to send.
+      'process.stdin.on("data", () => { console.log("received:\\u00e9"); process.exit(0) }); console.log("ready")',
     ],
     { name: "xterm-256color" },
   )
