@@ -2,6 +2,28 @@ import type { ReleaseNote } from "../release-notes"
 
 export const notes: readonly ReleaseNote[] = [
   {
+    version: "1.0.47",
+    summary:
+      "More resilient providers and a steadier terminal client: refusal handling, credential redaction, Team waits, and TUI polish.",
+    changes: {
+      new: [
+        "OpenAI Responses refusals surface as visible completions instead of a silent stop.",
+      ],
+      improved: [
+        "A 429 that only reports quota exhaustion retries as a rate limit, and a rejected ChatGPT sign-in refreshes once and retries the turn.",
+        "Provider error diagnostics and transport logs redact embedded credentials.",
+        "A session stays parked while any of its Team room waits is blocked, and a factory run waiting for input can be stopped.",
+      ],
+      fixed: [
+        "A burst of messages can no longer drop a WebSocket stream silently — it fails visibly instead.",
+        "Missing Team resources answer 404 instead of a generic error.",
+        "The terminal client keeps the transcript in view after resize, preserves swarm post drafts, and skips updates to disposed panels.",
+        "Native terminals drain their final output before the process exits.",
+        "Working-folder sync is bounded during outages.",
+      ],
+    },
+  },
+  {
     version: "1.0.46",
     summary:
       "The terminal client ships inside the `forge` CLI, and the app links it into your shell as `forge` and `turenos`.",
