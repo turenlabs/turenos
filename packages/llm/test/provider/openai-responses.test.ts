@@ -3,6 +3,7 @@ import { ConfigProvider, Effect, Fiber, Layer, Stream } from "effect"
 import { Headers, HttpClientRequest } from "effect/unstable/http"
 import { LLM, LLMError, Message, Model, ToolCallPart, Usage } from "../../src"
 import { Auth, LLMClient, RequestExecutor, WebSocketExecutor } from "../../src/route"
+import { MAX_BUFFERED_MESSAGES } from "../../src/route/transport/websocket"
 import * as Azure from "../../src/providers/azure"
 import * as OpenAI from "../../src/providers/openai"
 import * as OpenAIResponses from "../../src/protocols/openai-responses"
@@ -357,6 +358,49 @@ describe("OpenAI Responses route", () => {
       ).pipe(Effect.flip)
 
       expect(error.message).toContain("closed before opening")
+    }),
+  )
+
+  it.effect("delivers a WebSocket burst up to the buffer limit and fails the stream beyond it", () =>
+    Effect.gen(function* () {
+      const open = () => {
+        const socket = Object.assign(new EventTarget(), {
+          readyState: globalThis.WebSocket.OPEN,
+          send: () => {},
+          close: () => {},
+        })
+        return WebSocketExecutor.fromWebSocket(
+          // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the fake socket implements only the EventTarget, readyState, send and close members fromWebSocket uses.
+          socket as unknown as globalThis.WebSocket,
+          { url: "wss://api.openai.test/v1/responses", headers: Headers.empty },
+        ).pipe(
+          Effect.map((connection) => ({
+            connection,
+            burst: (count: number) =>
+              Array.from({ length: count }, (_, index) =>
+                socket.dispatchEvent(new MessageEvent("message", { data: String(index) })),
+              ),
+            close: () => socket.dispatchEvent(Object.assign(new Event("close"), { code: 1000 })),
+          })),
+        )
+      }
+
+      const exact = yield* open()
+      exact.burst(MAX_BUFFERED_MESSAGES)
+      exact.close()
+      expect(Array.from(yield* exact.connection.messages.pipe(Stream.runCollect))).toHaveLength(MAX_BUFFERED_MESSAGES)
+
+      const over = yield* open()
+      over.burst(MAX_BUFFERED_MESSAGES + 2)
+      over.close()
+      const received = Array.from(
+        yield* over.connection.messages.pipe(Stream.take(MAX_BUFFERED_MESSAGES), Stream.runCollect),
+      )
+      const error = yield* over.connection.messages.pipe(Stream.runCollect, Effect.flip)
+
+      expect(received).toHaveLength(MAX_BUFFERED_MESSAGES)
+      expect(received[MAX_BUFFERED_MESSAGES - 1]).toBe(String(MAX_BUFFERED_MESSAGES - 1))
+      expect(error.reason).toMatchObject({ _tag: "Transport", kind: "overflow" })
     }),
   )
 

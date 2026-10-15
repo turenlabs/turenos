@@ -27,6 +27,10 @@ type WebSocketConstructorWithHeaders = new (
 
 export class Service extends Context.Service<Service, Interface>()("@forge/LLM/WebSocketExecutor") {}
 
+// Browser and Bun WebSockets cannot be paused, so frames the consumer has not pulled yet buffer here. The
+// bound protects memory from a stalled consumer; exceeding it fails the stream instead of dropping frames.
+export const MAX_BUFFERED_MESSAGES = 4096
+
 const transportError = (
   method: string,
   message: string,
@@ -149,18 +153,31 @@ export const fromWebSocket = (
 ): Effect.Effect<WebSocketConnection, LLMError> =>
   Effect.gen(function* () {
     yield* waitOpen(ws, input)
-    const messages = yield* Queue.bounded<string | Uint8Array, LLMError | Cause.Done<void>>(128)
+    const messages = yield* Queue.bounded<string | Uint8Array, LLMError | Cause.Done<void>>(MAX_BUFFERED_MESSAGES)
 
     const onMessage = (event: MessageEvent) => {
-      if (typeof event.data === "string") return Queue.offerUnsafe(messages, event.data)
-      const binary = binaryMessage(event.data)
-      if (binary) return Queue.offerUnsafe(messages, binary)
+      const message = typeof event.data === "string" ? event.data : binaryMessage(event.data)
+      if (message === undefined) {
+        Queue.failCauseUnsafe(
+          messages,
+          Cause.fail(
+            transportError("message", "Unsupported WebSocket message payload", { url: input.url, kind: "message" }),
+          ),
+        )
+        return
+      }
+      if (Queue.offerUnsafe(messages, message)) return
+      // A full queue fails the stream after the buffered frames drain; a queue that already ended ignores this.
       Queue.failCauseUnsafe(
         messages,
         Cause.fail(
-          transportError("message", "Unsupported WebSocket message payload", { url: input.url, kind: "message" }),
+          transportError("message", `WebSocket buffer exceeded ${MAX_BUFFERED_MESSAGES} unread messages`, {
+            url: input.url,
+            kind: "overflow",
+          }),
         ),
       )
+      if (ws.readyState === globalThis.WebSocket.OPEN) ws.close(1000)
     }
     const onError = (event: Event) => {
       Queue.failCauseUnsafe(

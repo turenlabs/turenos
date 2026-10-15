@@ -37,6 +37,13 @@ Use `LLMClient.stream(request)` when callers want incremental `LLMEvent`s. Use `
 
 Filter or narrow `LLMEvent` streams with `LLMEvent.is.*` (camelCase guards, e.g. `events.filter(LLMEvent.is.toolCall)`). The kebab-case `LLMEvent.guards["tool-call"]` form also works but prefer `is.*` in new code.
 
+## WebSocket buffering
+
+The WebSocket transport buffers up to 4096 unread messages because browser and Bun WebSockets cannot pause incoming frames.
+If the buffer fills, buffered messages drain before the stream fails with a `Transport` error whose `kind` is `overflow`.
+The transport closes an open socket instead of silently dropping excess messages.
+See `packages/llm/src/route/transport/websocket.ts` and the burst regression in `packages/llm/test/provider/openai-responses.test.ts`.
+
 ## Quota and rate-limit failures
 
 HTTP 429 responses with generic "quota exceeded" or "quota exhausted" wording remain retryable rate-limit errors.
