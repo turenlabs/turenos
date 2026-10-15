@@ -11,11 +11,11 @@ describe("util.timeout", () => {
     expect(result).toBe("fast")
   })
 
-  test("should reject when promise exceeds timeout", async () => {
-    const slowPromise = new Promise<string>((resolve) => {
-      setTimeout(() => resolve("slow"), 200)
-    })
+  test("should reject while the promise remains pending", async () => {
+    const pending = Promise.withResolvers<string>()
 
-    await expect(withTimeout(slowPromise, 50)).rejects.toThrow("Operation timed out after 50ms")
+    await expect(withTimeout(pending.promise, 50)).rejects.toThrow("Operation timed out after 50ms")
+    pending.resolve("slow")
+    expect(await pending.promise).toBe("slow")
   })
 })
