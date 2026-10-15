@@ -20,7 +20,7 @@ test("native terminal handles input, UTF-8 output, resize, and process exit", as
     process.execPath,
     [
       "-e",
-      // Bun initializes terminal stdin when the listener is installed; only then is input safe to send.
+      // Install the input consumer before announcing readiness; output must also drain before exit.
       'process.stdin.on("data", () => { console.log("received:\\u00e9"); process.exit(0) }); console.log("ready")',
     ],
     { name: "xterm-256color" },
@@ -76,6 +76,29 @@ test("native terminal releases resources when spawn fails", () => {
   expect(() => spawn("turen-missing-terminal-command", [], { name: "xterm" })).toThrow()
 })
 
+test("native terminal delivers complete UTF-8 output before publishing exit", async () => {
+  const pty = spawn(
+    process.execPath,
+    ["-e", 'process.stdout.write("X".repeat(1048576) + "\\u00e9-final", () => process.exit(0))'],
+    { name: "xterm-256color" },
+  )
+  let output = ""
+  pty.onData((value) => {
+    output += value
+  })
+  const exited = new Promise<{ exitCode: number; output: string }>((resolve) =>
+    pty.onExit((event) => resolve({ exitCode: event.exitCode, output })),
+  )
+  try {
+    const result = await bounded(exited, () => `Native UTF-8 output at exit: ${output.length} characters`)
+    expect(result.exitCode).toBe(0)
+    expect(result.output).toContain("\u00e9-final")
+    if (process.platform !== "win32") expect(result.output).toBe("X".repeat(1048576) + "\u00e9-final")
+  } finally {
+    pty.kill()
+  }
+}, 20_000)
+
 test("native terminal drains the final output of a busy child", async () => {
   const pty = spawn(
     process.execPath,
@@ -91,8 +114,8 @@ test("native terminal drains the final output of a busy child", async () => {
   )
   const exited = new Promise<number>((resolve) => pty.onExit((event) => resolve(event.exitCode)))
   try {
-    expect(await bounded(exited)).toBe(0)
-    await bounded(drained)
+    expect(await bounded(exited, () => `Native busy-child exit after ${output.length} output characters`)).toBe(0)
+    await bounded(drained, () => `Native busy-child output drain after exit: ${output.length} characters`)
     expect(output).toContain("output-complete")
     if (process.platform !== "win32") expect(output.split("X").length - 1).toBe(131072)
   } finally {
