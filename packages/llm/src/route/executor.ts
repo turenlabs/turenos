@@ -213,10 +213,13 @@ const providerMessage = (status: number, body: { readonly body?: string }) => {
   return `Provider request failed with HTTP ${status}`
 }
 
-const isQuotaBody = (body: string) =>
-  /insufficient[-_\s]?quota|usage[-_\s]?not[-_\s]?included|quota[-_\s]?(?:exceeded|exhausted)|billing[-_\s]?hard[-_\s]?limit|(?:free|go)[-_\s]?usage[-_\s]?limit/i.test(
+// Generic "quota exceeded" wording is how providers also describe per-minute limits on a 429, so a 429 needs a
+// hard-limit code before it is terminal.
+const isQuotaBody = (body: string, status: number) =>
+  /insufficient[-_\s]?quota|usage[-_\s]?not[-_\s]?included|billing[-_\s]?hard[-_\s]?limit|(?:free|go)[-_\s]?usage[-_\s]?limit/i.test(
     body,
-  )
+  ) ||
+  (status !== 429 && /quota[-_\s]?(?:exceeded|exhausted)/i.test(body))
 
 const responseHttp = (input: {
   readonly request: HttpClientRequest.HttpClientRequest
@@ -251,7 +254,7 @@ const statusReason = (input: {
   if (input.status === 403) {
     return new AuthenticationReason({ message: input.message, kind: "insufficient-permissions", http: input.http })
   }
-  if (isQuotaBody(body)) {
+  if (isQuotaBody(body, input.status)) {
     return new QuotaExceededReason({ message: input.message, http: input.http })
   }
   if (input.status === 429) {
