@@ -1,6 +1,7 @@
 import { StyledText, fg, type InputRenderable } from "@opentui/core"
 import type { SessionsSwarmRoomEntriesOutput, SessionsSwarmRoomOutput } from "@turenlabs/client"
 import { fitHeading, panelWidth } from "../changes/heading"
+import { clock } from "../menus/stamp"
 import { display } from "../messages"
 import type { Panel } from "../panel"
 import { errorText, httpStatus, type Connection, type Session } from "../server"
@@ -37,7 +38,7 @@ export type SwarmView = {
 }
 
 export async function load(v: SwarmView, reset = false) {
-  if (v.loading) return
+  if (v.loading || v.state.closed || v.panel.dialog.error.isDestroyed) return
   v.loading = true
   try {
     const room = await v.connection.client.sessions.swarmRoom({ sessionID: v.session.id })
@@ -46,7 +47,7 @@ export async function load(v: SwarmView, reset = false) {
       after: reset ? undefined : v.head,
       limit: 200,
     })
-    if (v.state.modal !== v.panel.dialog) return
+    if (v.state.closed || v.state.modal !== v.panel.dialog || v.panel.dialog.error.isDestroyed) return
     if (reset) v.entries.length = 0
     v.entries.push(...page.entries.filter((entry) => entry.seq > v.head || reset))
     v.entries.splice(0, Math.max(0, v.entries.length - 500))
@@ -54,7 +55,7 @@ export async function load(v: SwarmView, reset = false) {
     v.head = page.hasMore ? (page.entries.at(-1)?.seq ?? page.head) : page.head
     paint(v, room)
   } catch (error) {
-    if (v.state.modal !== v.panel.dialog) return
+    if (v.state.closed || v.state.modal !== v.panel.dialog || v.panel.dialog.error.isDestroyed) return
     v.panel.dialog.error.content = KEYS
     v.panel.heading.content = "No swarm room"
     // With no lanes to choose, the empty list would squeeze the message into a narrow column.
@@ -89,14 +90,18 @@ function paint(v: SwarmView, room: Room) {
   const atBottom = panel.dialog.form.scrollTop + panel.dialog.form.viewport.height >= panel.dialog.form.scrollHeight - 1
   panel.body.content = v.entries.length ? entryText(v.entries) : "No entries yet."
   // Keep following new entries unless the reader scrolled up.
-  if (atBottom) queueMicrotask(() => panel.dialog.form.scrollTo(panel.dialog.form.scrollHeight))
+  if (atBottom)
+    queueMicrotask(() => {
+      if (!v.state.closed && v.state.modal === panel.dialog && !panel.dialog.form.isDestroyed)
+        panel.dialog.form.scrollTo(panel.dialog.form.scrollHeight)
+    })
   panel.dialog.error.content = KEYS
 }
 
 function entryText(entries: Entry[]) {
   return new StyledText(
     entries.flatMap((entry) => [
-      fg(color.muted)(`#${entry.seq} ${new Date(entry.timeCreated).toLocaleTimeString()} ${label(entry.kind, 32)} · `),
+      fg(color.muted)(`#${entry.seq} ${clock(entry.timeCreated)} ${label(entry.kind, 32)} · `),
       fg(entry.actor.type === "human" ? color.accent : color.text)(`${label(entry.actor.name, 60)}\n`),
       fg((Object.hasOwn(KIND, entry.kind) ? KIND[entry.kind] : undefined) ?? color.text)(
         `${display(entry.text, 4000)}\n\n`,
@@ -105,16 +110,19 @@ function entryText(entries: Entry[]) {
   )
 }
 
-export async function send(v: SwarmView) {
+export async function send(v: SwarmView, sent: (text: string) => void) {
   const text = v.post.value.trim()
-  if (!text || v.sending) return
+  if (!text || v.sending || v.state.closed || v.panel.dialog.error.isDestroyed) return
   v.sending = true
   v.panel.dialog.error.content = `Posting…\n${KEYS}`
   try {
     await v.connection.client.sessions.swarmRoomPost({ sessionID: v.session.id, text })
+    sent(text)
+    if (v.state.closed || v.state.modal !== v.panel.dialog || v.panel.dialog.error.isDestroyed) return
     v.post.value = ""
     await load(v, true)
   } catch (error) {
+    if (v.state.closed || v.state.modal !== v.panel.dialog || v.panel.dialog.error.isDestroyed) return
     v.panel.dialog.error.content = `! ${errorText(error)}\n${KEYS}`
   } finally {
     v.sending = false

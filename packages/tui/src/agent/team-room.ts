@@ -7,12 +7,18 @@ import { checked, teamMissing } from "../team/load"
 
 /**
  * The Team state of a room the user named: its ID (`trm_…`), its exact name in any case, or the server's default room
- * when nothing is named. Past the room itself it carries the newest `limit` messages.
+ * when nothing is named. Past the room itself it carries `limit` messages: the newest, or with a cursor the ones after
+ * or before that sequence number.
  */
-export async function roomState(run: Run, given: string | undefined, limit: number) {
-  if (given === undefined) return checked(await readState(run, { limit }))
+export async function roomState(
+  run: Run,
+  given: string | undefined,
+  limit: number,
+  cursor: { after?: number; before?: number } = {},
+) {
+  if (given === undefined) return checked(await readState(run, { limit, ...cursor }))
   if (given.startsWith("trm_"))
-    return checked(await readState(run, { roomID: idArgument(given, "trm_", "The room"), limit }))
+    return checked(await readState(run, { roomID: idArgument(given, "trm_", "The room"), limit, ...cursor }))
   const rooms = checked(await readState(run, { limit: 1 })).rooms
   const named = rooms.filter((room) => room.name.toLowerCase() === given.trim().toLowerCase())
   // An archived room of the same name does not make an active one ambiguous.
@@ -25,7 +31,7 @@ export async function roomState(run: Run, given: string | undefined, limit: numb
     throw new AgentError(
       `No room named "${clean(given, 80)}" on this server. List them with: turen-tui team rooms --all${run.flags}`,
     )
-  return checked(await readState(run, { roomID: matches[0].id, limit }))
+  return checked(await readState(run, { roomID: matches[0].id, limit, ...cursor }))
 }
 
 export async function rooms(run: Run) {
