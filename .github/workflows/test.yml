@@ -244,6 +244,11 @@ jobs:
       - name: Check generated client
         working-directory: packages/client
         run: bun run check:generated
+      - name: Generate legacy SDK
+        id: legacy_sdk
+        run: ./packages/sdk/js/script/build.ts
+      - name: Check generated legacy SDK
+        run: git diff --exit-code -- packages/sdk/js/src/gen packages/sdk/js/src/v2/gen
       - name: Check generated extension catalog
         working-directory: packages/extensions
         run: bun run check
