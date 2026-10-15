@@ -1,5 +1,6 @@
 import { mergeMessages } from "@turenlabs/client/team"
 import { errorText, routeMissing } from "../server"
+import { baseline } from "./attention"
 import { MAX_MESSAGES, PAGE, viewOf, type Answer, type TeamContext } from "./types"
 import type { TeamStateOutput } from "@turenlabs/client"
 
@@ -76,6 +77,8 @@ function replace(view: ReturnType<typeof viewOf>, answer: Answer) {
   view.tasks = answer.tasks
   view.duties = answer.duties
   view.factoryRuns = answer.factoryRuns ?? []
+  view.activeRoomIDs = answer.activeRoomIDs ?? []
+  baseline(view)
 }
 
 /** A room not loaded yet: its log restarts at the latest page. */

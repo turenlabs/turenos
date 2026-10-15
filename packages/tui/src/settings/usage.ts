@@ -1,4 +1,5 @@
 import { contextTokens } from "@turenlabs/client/context"
+import { stamp } from "../menus/stamp"
 import { array, numeric, object, optional, string } from "../response-validation"
 import { label } from "../state"
 import { color } from "../theme"
@@ -51,7 +52,7 @@ function usageText(result: Record<string, unknown>, names: Map<string, string>) 
       `${named(string(quota.providerID, 256))}${quota.plan ? ` (${label(quota.plan as string, 40)})` : ""}: ${label(string(quota.status, 32))}${quota.detail ? ` · ${label(quota.detail as string, 200)}` : ""}`,
       ...array(quota.windows, 32).map((value) => {
         const window = object(value)
-        const reset = typeof window.resetAt === "number" ? ` · resets ${new Date(window.resetAt).toLocaleString()}` : ""
+        const reset = typeof window.resetAt === "number" ? ` · resets ${stamp(window.resetAt)}` : ""
         return `  ${label(string(window.label, 100), 40)}: ${Math.round(numeric(window.usedPercent))}% used${reset}`
       }),
     ]

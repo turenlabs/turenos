@@ -16,13 +16,21 @@ export async function startHeadless(
   signal: AbortSignal,
   progress?: (text: string) => void,
 ): Promise<Endpoint> {
-  if (state.headless && state.headless.child.exitCode === null)
+  if (state.headless && state.headless.child.exitCode === null) {
+    const existing = state.headless
     return verified(
       target,
-      { url: state.headless.url, username: "forge", password: state.headless.password },
+      { url: existing.url, username: "forge", password: existing.password },
       signal,
       "The private server stopped responding.",
-    )
+    ).catch((error) => {
+      if (!signal.aborted) {
+        existing.child.kill()
+        if (state.headless === existing) state.headless = undefined
+      }
+      throw error
+    })
+  }
   await refuseOwnedData(ctx)
   // A caller that stopped waiting during the check above gets no server it would have to stop.
   signal.throwIfAborted()

@@ -49,7 +49,7 @@ export async function shimRecord(ctx: Context) {
 }
 
 export async function persistentRecord(ctx: Context) {
-  const text = await readPrivate(ctx.persistentPath, ctx.uid, "root")
+  const text = await readPrivate(ctx.persistentPath, ctx.uid, "root").catch(() => undefined)
   const record = text === undefined ? undefined : persistentAttach(parseJSON(text), ctx.persistentSocket)
   if (!record) throw new Error("The persistent server's attach record is missing or unreadable.")
   return record

@@ -134,6 +134,20 @@ test("the Esc-again prompt leaves the screen when its 2 s window closes, and a l
   expect(server.sent("/api/session/ses_main/interrupt")).toHaveLength(0)
 })
 
+test("a notice shown after the Esc-again prompt outlives the prompt's 2 s window", async () => {
+  const { view, screen } = await open({ ...running, ...stopped })
+  view.mockInput.pressEnter()
+  await screen("Typing")
+  view.mockInput.pressEscape()
+  await screen("Press Esc again to stop this turn")
+  // Copying with nothing selected says how to select, on the dashboard's own notice line.
+  view.mockInput.pressKey("y", { ctrl: true })
+  await screen("Select text, then Ctrl+Y")
+  await Bun.sleep(2500)
+  await view.renderOnce()
+  expect(view.captureCharFrame()).toContain("Select text, then Ctrl+Y")
+})
+
 test("Ctrl+T says what the new delivery mode does", async () => {
   const { view, screen } = await open({ ...running, ...stopped })
   view.mockInput.pressEnter()
