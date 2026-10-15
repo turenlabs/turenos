@@ -12,7 +12,7 @@ type Subcommand = keyof typeof subcommands
 /** The options each subcommand takes besides the target options every command takes. */
 const own: Record<Subcommand, readonly string[]> = {
   rooms: ["all"],
-  show: ["limit"],
+  show: ["limit", "after", "before", "wait", "timeout"],
   post: ["id"],
   run: ["id"],
   cancel: [],
@@ -25,7 +25,7 @@ export async function team(run: Run) {
   const subcommand = (Object.keys(subcommands) as Subcommand[]).find((item) => item === name)
   if (!subcommand)
     throw usage(`Use one of: ${Object.keys(subcommands).join(", ")}. Run turen-tui team --help for usage.`)
-  const stray = (["all", "limit", "id", "timeout"] as const).filter(
+  const stray = (["all", "limit", "id", "timeout", "after", "before", "wait"] as const).filter(
     (option) => run.values[option] !== undefined && !own[subcommand].includes(option),
   )
   if (stray.length) throw usage(`team ${subcommand} does not take ${stray.map((option) => `--${option}`).join(", ")}.`)

@@ -142,8 +142,12 @@ export function mentionInReply(
   path: string | undefined,
   drafts: Drafts,
 ) {
-  const text = path && mentionText(path)
-  if (!text) return
+  if (!path) return
+  const text = mentionText(path)
+  if (!text) {
+    panel.dialog.error.content = "This file's path cannot be mentioned. Esc close"
+    return
+  }
   // The trailing space ends the mention, so the caret does not land on a live @ token that traps Esc.
   if (!drafts.mention(session, `${text} `)) {
     panel.dialog.error.content = "Your reply draft is full or already sent. Esc close"

@@ -13,6 +13,8 @@ export type Values = {
   dir?: string
   everywhere?: boolean
   limit?: string
+  after?: string
+  before?: string
   all?: boolean
   raw?: boolean
   new?: boolean
@@ -67,7 +69,7 @@ const extra = {
   reject: {},
   answer: { choice: { type: "string", multiple: true }, answers: text, reject: flag, custom: flag },
   stop: { tasks: flag },
-  team: { all: flag, limit: text, id: text, timeout: text },
+  team: { all: flag, limit: text, id: text, timeout: text, after: text, before: text, wait: flag },
 } as const
 
 export function parseCommand(command: AgentCommand, args: string[]) {
@@ -92,6 +94,15 @@ export function whole(name: string, value: string | undefined, fallback: number,
   if (value === undefined) return fallback
   const number = /^\d{1,9}$/.test(value) ? Number(value) : Number.NaN
   if (!(number >= min && number <= max)) throw usage(`--${name} must be a whole number from ${min} to ${max}.`)
+  return number
+}
+
+/** A message sequence number option: a non-negative safe integer. */
+export function sequence(name: string, value: string | undefined) {
+  if (value === undefined) return undefined
+  const number = /^\d{1,16}$/.test(value) ? Number(value) : Number.NaN
+  if (!Number.isSafeInteger(number))
+    throw usage(`--${name} must be a message sequence number (a whole number, 0 or more).`)
   return number
 }
 
