@@ -37,6 +37,14 @@ Use `LLMClient.stream(request)` when callers want incremental `LLMEvent`s. Use `
 
 Filter or narrow `LLMEvent` streams with `LLMEvent.is.*` (camelCase guards, e.g. `events.filter(LLMEvent.is.toolCall)`). The kebab-case `LLMEvent.guards["tool-call"]` form also works but prefer `is.*` in new code.
 
+## OpenAI Responses refusals
+
+The OpenAI Responses parser streams `response.refusal.delta` events as answer text.
+A `response.refusal.done` event supplies the refusal text when no text delta has already opened that item.
+The parser does not repeat the full refusal after streaming its deltas.
+Without an explicit incomplete reason or a function call, a refused response finishes with `content-filter` instead of `stop`.
+See `packages/llm/src/protocols/openai-responses.ts` and the delta and done-only regressions in `packages/llm/test/provider/openai-responses.test.ts`.
+
 ## Error diagnostics
 
 `RequestExecutor` removes URL usernames and passwords from structured HTTP diagnostics and transport error descriptions.
