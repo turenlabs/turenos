@@ -168,6 +168,47 @@ describe("TeamWorkspace", () => {
     }),
   )
 
+  it.effect("cancels a factory run that waits for the user's answer", () =>
+    Effect.gen(function* () {
+      const team = yield* TeamWorkspace.Service
+      const room = yield* team.createRoom({ name: "factory-waiting" })
+      const lead = yield* team.createTeammate({
+        roomID: room.id,
+        name: "Lead",
+        handle: "lead",
+        role: "Lead",
+        mission: "Coordinate",
+      })
+      yield* team.configureFactory({
+        roomID: room.id,
+        config: {
+          outcome: "Build feature",
+          parameters: {},
+          constraints: "Keep permissions",
+          acceptanceCriteria: "Tests pass",
+          directory: "/tmp/factory",
+          coordinatorTeammateID: lead.id,
+          teammateIDs: [lead.id],
+        },
+      })
+      const run = yield* team.startFactoryRun({ id: "frun_waiting", roomID: room.id })
+      const finish = (owner: string, text: string) =>
+        Effect.gen(function* () {
+          const [task] = yield* team.claimTasks({ owner })
+          yield* team.startTask({ id: task!.id, owner })
+          yield* team.finishTask({ id: task!.id, owner, status: "succeeded", text })
+          yield* team.syncFactoryRuns()
+        })
+      yield* finish("plan", JSON.stringify({ assignments: [{ teammateID: lead.id, prompt: "Build it" }] }))
+      yield* finish("work", "Feature built")
+      yield* finish("check", JSON.stringify({ status: "needs_input", summary: "Which database?" }))
+      expect((yield* team.getFactoryRun(run.id)).status).toBe("needs_input")
+
+      expect(yield* team.cancelFactoryRun(run.id)).toMatchObject({ status: "cancelled", phase: "done" })
+      expect(yield* team.cancelFactoryRun(run.id)).toMatchObject({ status: "cancelled" })
+    }),
+  )
+
   it.effect("delivers exact factory predecessor outputs and keeps blocked work from starving independent tasks", () =>
     Effect.gen(function* () {
       const team = yield* TeamWorkspace.Service
