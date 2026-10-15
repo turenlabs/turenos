@@ -8017,6 +8017,7 @@ export type TeamFactoryRun = {
 
 export type TeamState = {
   rooms: Array<TeamRoom>
+  activeRoomIDs?: Array<string>
   room: TeamRoom
   teammates: Array<TeamTeammate>
   messages: Array<TeamMessage>
