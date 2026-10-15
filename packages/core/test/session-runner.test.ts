@@ -17,6 +17,8 @@ import {
 } from "@turenlabs/llm"
 import * as OpenAIChat from "@turenlabs/llm/protocols/openai-chat"
 import * as OpenAIResponses from "@turenlabs/llm/protocols/openai-responses"
+import { Auth } from "@turenlabs/llm/route"
+import { Headers } from "effect/unstable/http"
 import { Database } from "@turenlabs/core/database/database"
 import { makeLocationNode } from "@turenlabs/core/effect/app-node"
 import { AppNodeBuilder } from "@turenlabs/core/effect/app-node-builder"
@@ -55,6 +57,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
 import { ToolListChangedNotificationSchema } from "@modelcontextprotocol/sdk/types.js"
 import { SessionRunnerModel } from "@turenlabs/core/session/runner/model"
+import { Integration } from "@turenlabs/core/integration"
 import { SessionRunnerRetry } from "@turenlabs/core/session/runner/retry"
 import { SessionStatus } from "@turenlabs/core/session/status"
 import { Reflection } from "@turenlabs/core/reflection"
@@ -308,20 +311,34 @@ const echo = Layer.effectDiscard(
 const echoNode = makeLocationNode({ name: "test/session-runner-tools", layer: echo, deps: [ToolRegistry.node] })
 let modelResolveHook = Effect.void
 let currentModel = model
-const models = SessionRunnerModel.layerWith((session) =>
+// Stands in for a ChatGPT sign-in: models carry `access` until a resolve asks to refresh it, and
+// that refresh fails when there is no `refreshed` token to hand out.
+let signIn: { readonly access: string; readonly refreshed?: string } | undefined
+let refreshResolves = 0
+const models = SessionRunnerModel.layerWith((session, _request, options) =>
   modelResolveHook.pipe(
     Effect.as(session.model?.id === "replacement" ? replacementModel : currentModel),
-    Effect.map((model) => ({
-      model,
-      ref: ModelV2.Ref.make({
-        id: ModelV2.ID.make(model.id),
-        providerID: ProviderV2.ID.make(model.provider),
-        ...(session.model?.variant === undefined ? {} : { variant: session.model.variant }),
-      }),
-      // These models are stubs with no catalog entry, so they have no price
-      // list -- the same state a subscription-billed transport is in.
-      cost: [],
-    })),
+    Effect.flatMap((model) => {
+      if (options?.refreshOAuth !== undefined) refreshResolves += 1
+      const access = options?.refreshOAuth === undefined ? signIn?.access : signIn?.refreshed
+      if (signIn && access === undefined)
+        return Effect.fail(new Integration.AuthorizationError({ cause: new Error("refresh rejected") }))
+      return Effect.succeed({
+        model:
+          access === undefined
+            ? model
+            : Model.update(model, { route: model.route.with({ auth: Auth.bearer(access) }) }),
+        ref: ModelV2.Ref.make({
+          id: ModelV2.ID.make(model.id),
+          providerID: ProviderV2.ID.make(model.provider),
+          ...(session.model?.variant === undefined ? {} : { variant: session.model.variant }),
+        }),
+        // These models are stubs with no catalog entry, so they have no price
+        // list -- the same state a subscription-billed transport is in.
+        cost: [],
+        ...(signIn === undefined ? {} : { oauthExpires: 3_600_000 }),
+      })
+    }),
   ),
 )
 const systemContextKey = SystemContext.Key.make("test/context")
@@ -577,6 +594,8 @@ const setup = Effect.gen(function* () {
   systemLoadHook = Effect.void
   modelResolveHook = Effect.void
   currentModel = model
+  signIn = undefined
+  refreshResolves = 0
   skillBaselines.clear()
   responses = undefined
   streamFailure = undefined
@@ -7215,6 +7234,114 @@ describe("SessionRunnerLLM provider retry", () => {
       const userIndex = suffix.findIndex((message) => message.role === "user")
       expect(runtimeIndex).toBeGreaterThanOrEqual(0)
       expect(userIndex).toBeGreaterThan(runtimeIndex)
+    }),
+  )
+
+  // What the ChatGPT backend answers when it has revoked an access token before its stated expiry.
+  const tokenExpired = () =>
+    executorFailure(
+      [
+        new Response(JSON.stringify({ error: { code: "token_expired" } }), {
+          status: 401,
+          headers: { "content-type": "application/json" },
+        }),
+      ],
+      "https://chatgpt.com/backend-api/codex/responses",
+    )
+  const authorization = (request: LLMRequest) =>
+    request.model.route.auth
+      .apply({ request, method: "POST", url: "https://chatgpt.com", body: "{}", headers: Headers.empty })
+      .pipe(Effect.map((headers) => headers.authorization))
+
+  it.effect("refreshes a rejected ChatGPT sign-in once and retries the turn with the new token", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      signIn = { access: `synthetic-access-${"a".repeat(16)}`, refreshed: `synthetic-access-${"b".repeat(16)}` }
+      responseStream = Stream.fail(yield* tokenExpired())
+      response = fragmentFixture("text", "after-refresh", ["Recovered"]).completeEvents
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Token rejected" }), resume: false })
+
+      yield* session.resume(sessionID)
+
+      expect(refreshResolves).toBe(1)
+      expect(yield* Effect.forEach(requests, authorization)).toEqual([
+        `Bearer ${signIn.access}`,
+        `Bearer ${signIn.refreshed}`,
+      ])
+      // Only the token changes: the retry keeps the Codex metadata, headers and options.
+      expect({ ...requests[1]!, model: undefined }).toEqual({ ...requests[0]!, model: undefined })
+      // The retry is invisible: no wait notice and no failed step ahead of the answer.
+      expect(yield* retriedEvents(sessionID)).toEqual([])
+      expect(yield* session.context(sessionID)).toMatchObject([
+        { type: "user", text: "Token rejected" },
+        { type: "assistant", finish: "stop", content: [{ type: "text", text: "Recovered" }] },
+      ])
+    }),
+  )
+
+  it.effect("fails a second ChatGPT 401 as an authentication error without refreshing again", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      signIn = { access: `synthetic-access-${"a".repeat(16)}`, refreshed: `synthetic-access-${"b".repeat(16)}` }
+      streamFailure = yield* tokenExpired()
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Token rejected twice" }), resume: false })
+
+      expect(yield* session.resume(sessionID).pipe(Effect.flip)).toMatchObject({
+        reason: { _tag: "Authentication", kind: "invalid" },
+      })
+      expect(refreshResolves).toBe(1)
+      expect(requests).toHaveLength(2)
+    }),
+  )
+
+  it.effect("fails with the original 401 when refreshing the rejected ChatGPT sign-in fails", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      signIn = { access: `synthetic-access-${"a".repeat(16)}` }
+      streamFailure = yield* tokenExpired()
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Refresh rejected" }), resume: false })
+
+      expect(yield* session.resume(sessionID).pipe(Effect.flip)).toBe(streamFailure)
+      expect(refreshResolves).toBe(1)
+      expect(requests).toHaveLength(1)
+    }),
+  )
+
+  for (const kind of ["text", "tool input"] as const)
+    it.effect(`does not refresh a ChatGPT 401 after partial ${kind}`, () =>
+      Effect.gen(function* () {
+        yield* setup
+        const session = yield* SessionV2.Service
+        signIn = { access: `synthetic-access-${"a".repeat(16)}`, refreshed: `synthetic-access-${"b".repeat(16)}` }
+        const failure = yield* tokenExpired()
+        responseStream = Stream.concat(
+          Stream.fromIterable(fragmentFixture(kind, fragmentID(kind, "before-401"), ["Partial"]).partialEvents),
+          Stream.fail(failure),
+        )
+        yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Do not replay partial output" }), resume: false })
+
+        expect(yield* session.resume(sessionID).pipe(Effect.flip)).toBe(failure)
+        expect(refreshResolves).toBe(0)
+        expect(requests).toHaveLength(1)
+        expect(yield* retriedEvents(sessionID)).toEqual([])
+      }),
+    )
+
+  it.effect("does not retry a 401 for a credential that cannot be refreshed", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      streamFailure = yield* tokenExpired()
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "API key rejected" }), resume: false })
+
+      expect(yield* session.resume(sessionID).pipe(Effect.flip)).toMatchObject({
+        reason: { _tag: "Authentication", kind: "invalid" },
+      })
+      expect(refreshResolves).toBe(0)
+      expect(requests).toHaveLength(1)
     }),
   )
 })
