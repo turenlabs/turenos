@@ -44,6 +44,17 @@ If the buffer fills, buffered messages drain before the stream fails with a `Tra
 The transport closes an open socket instead of silently dropping excess messages.
 See `packages/llm/src/route/transport/websocket.ts` and the burst regression in `packages/llm/test/provider/openai-responses.test.ts`.
 
+## Error diagnostics
+
+`RequestExecutor` removes URL usernames and passwords from structured HTTP diagnostics and transport error descriptions.
+It also removes these request values when provider response bodies echo them.
+`WebSocketExecutor` redacts credentials when runtime error text quotes the complete connection URL.
+These changes affect diagnostics, not the credentials sent to the provider.
+
+Sources: [`executor.ts`](../../../packages/llm/src/route/executor.ts),
+[`websocket.ts`](../../../packages/llm/src/route/transport/websocket.ts), and
+[`executor.test.ts`](../../../packages/llm/test/executor.test.ts).
+
 ## Folder layout
 
 ```
