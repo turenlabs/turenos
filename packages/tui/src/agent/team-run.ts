@@ -41,14 +41,19 @@ export async function startRun(run: Run) {
   )
 }
 
+const finished = ["succeeded", "failed", "cancelled", "stale"]
+
 export async function cancelRun(run: Run) {
   const runID = idArgument(takes("team cancel", run.positionals, ["run-id"])[0], "", "The run ID")
   const client = run.connection.client.team
   const current = await client.factoryRunGet({ runID }).catch(runGone(run.flags))
   // The server leaves a finished run as it is, so the answer would read as a cancellation that did not happen.
-  if (["succeeded", "failed", "cancelled", "stale"].includes(current.status))
+  if (finished.includes(current.status))
     return emit(run, { ok: true, run: current }, `run ${runID} already ${current.status}; nothing to cancel.`)
   const cancelled = await client.factoryRunCancel({ runID })
+  // A server that leaves the run unfinished has not cancelled it, so the command must not say it did.
+  if (!finished.includes(cancelled.status))
+    throw new AgentError(`Run ${runID} is still ${cancelled.status}; the server did not cancel it.`)
   return emit(run, { ok: true, run: cancelled }, [runLine("run", cancelled), ...runDetail(cancelled)].join("\n"))
 }
 
