@@ -40,7 +40,7 @@ The first claim saves these inputs once. Reclaims preserve the same prompt.
 The coordinator then checks the results against the acceptance criteria.
 The plan and the check are JSON. A reply that is only that JSON, bare or inside one Markdown code block, is read; JSON with prose around it is invalid.
 An accepted check completes the run. A rejected or invalid check fails the run.
-A check that requires your answer reports `needs_input`.
+A check that requires your answer reports `needs_input`. **Stop factory** also stops a run that waits for your answer; it ends `cancelled`.
 
 The channel shows the current stage, linked task Sessions, and the final result.
 Open a task Session to answer native permission or question requests.
