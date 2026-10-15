@@ -627,6 +627,53 @@ describe("PermissionV2", () => {
     }),
   )
 
+  it.effect("attaches an exact retry of a pending permission to the original request", () =>
+    Effect.gen(function* () {
+      yield* setup()
+      const { service, fiber, request } = yield* waitForRequest()
+      const retry = yield* service.assert(assertion()).pipe(Effect.forkScoped)
+      yield* Effect.yieldNow
+      expect(yield* service.ask(assertion())).toEqual({ id: request.id, effect: "ask" })
+      expect(yield* service.list()).toEqual([request])
+      yield* service.reply({ requestID: request.id, reply: "once" })
+      yield* Fiber.join(fiber)
+      yield* Fiber.join(retry)
+      expect(yield* service.list()).toEqual([])
+    }),
+  )
+
+  it.effect("keeps the original pending permission when an exact retry is interrupted", () =>
+    Effect.gen(function* () {
+      yield* setup()
+      const { service, fiber, request } = yield* waitForRequest()
+      const retry = yield* service.assert(assertion()).pipe(Effect.forkScoped)
+      yield* Effect.yieldNow
+      yield* Fiber.interrupt(retry)
+      expect(yield* service.get(request.id)).toEqual(request)
+      yield* service.reply({ requestID: request.id, reply: "once" })
+      yield* Fiber.join(fiber)
+    }),
+  )
+
+  it.effect("fails with a conflict when a pending permission ID is reused for a different request", () =>
+    Effect.gen(function* () {
+      yield* setup()
+      const { service, request } = yield* waitForRequest()
+      const conflicts = [
+        assertion({ resources: ["src/other.ts"] }),
+        assertion({ action: "edit" }),
+        assertion({ metadata: { note: "different" } }),
+      ]
+      for (const input of conflicts) {
+        const error = yield* service.ask(input).pipe(Effect.flip)
+        expect(error).toBeInstanceOf(PermissionV2.ConflictError)
+        expect(error).toMatchObject({ requestID: request.id })
+        expect(JSON.stringify(error)).not.toContain("src/other.ts")
+      }
+      expect(yield* service.list()).toEqual([request])
+    }),
+  )
+
   it.effect("releases a pending permission when checks are disabled", () =>
     Effect.gen(function* () {
       yield* setup()

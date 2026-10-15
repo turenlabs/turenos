@@ -1,3 +1,4 @@
+import { stamp } from "../menus/stamp"
 import { display } from "../messages"
 import type { Session } from "../server"
 import { label, sessionTitle } from "../state"
@@ -33,7 +34,7 @@ export function describe(session: Session, harness: State) {
         .slice(0, 5)
         .map(
           (run) =>
-            `  ${new Date(run.timestamp).toLocaleString()} · ${run.outcome.replaceAll("_", " ")}${run.detail ? ` — ${label(run.detail, 200)}` : ""}`,
+            `  ${stamp(run.timestamp)} · ${run.outcome.replaceAll("_", " ")}${run.detail ? ` — ${label(run.detail, 200)}` : ""}`,
         ),
     ].join("\n"),
     16000,

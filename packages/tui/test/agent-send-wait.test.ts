@@ -1,4 +1,6 @@
-import { expect, test } from "bun:test"
+import { describe, expect, test } from "bun:test"
+import { messagesAfter } from "../src/agent/wait"
+import type { Message } from "../src/agent/state"
 import { agent, document, permission, refusal, task, user, world } from "./agent-fixture"
 
 const reply = (id: string, text: string) => ({
@@ -231,4 +233,34 @@ test("send --queue --wait does not take the running turn's reply while the messa
   expect(result.code).toBe(0)
   expect(result.stdout).toContain("answer B")
   expect(result.stdout).not.toContain("answer A")
+})
+
+describe("messagesAfter", () => {
+  const ids = (messages: Message[]) => messages.map((message) => message.id)
+  const window = (...entries: [string, string][]) =>
+    entries.map(([id, type]) => ({ id, type, time: { created: 1 } })) as unknown as Message[]
+  const thread = window(["msg_old", "assistant"], ["msg_sent", "user"], ["msg_a", "assistant"], ["msg_b", "assistant"])
+
+  test("returns the messages after the sent message", () => {
+    expect(ids(messagesAfter(thread, { messageID: "msg_sent" }))).toEqual(["msg_a", "msg_b"])
+  })
+
+  test("includes a shell command's own message, which is its result", () => {
+    const shell = window(["msg_old", "assistant"], ["msg_sent", "shell"], ["msg_a", "assistant"])
+    expect(ids(messagesAfter(shell, { messageID: "msg_sent" }))).toEqual(["msg_sent", "msg_a"])
+  })
+
+  test("falls back to the messages after the baseline when the sent message is not in the window", () => {
+    expect(ids(messagesAfter(thread, { messageID: "msg_gone", baseline: "msg_sent" }))).toEqual(["msg_a", "msg_b"])
+  })
+
+  test("returns every message when neither the sent message nor the baseline is in the window", () => {
+    // A long turn writes one assistant message per step and pushes both out of the 30-message window: those steps
+    // are the reply, and an empty answer would leave send --wait polling until it times out.
+    const steps = window(
+      ...Array.from({ length: 30 }, (_, index): [string, string] => [`msg_step${index}`, "assistant"]),
+    )
+    expect(messagesAfter(steps, { messageID: "msg_gone", baseline: "msg_also_gone" })).toEqual(steps)
+    expect(messagesAfter(steps, { messageID: "msg_gone" })).toEqual(steps)
+  })
 })

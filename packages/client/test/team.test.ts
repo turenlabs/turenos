@@ -230,6 +230,16 @@ describe("factory output", () => {
     expect(factoryOutput("Done, see @rae")).toBeUndefined()
   })
 
+  test("reads output inside one code fence, and not prose around it", () => {
+    const check = { kind: "check", status: "accepted", summary: "All criteria pass" }
+    const json = '{"status":"accepted","summary":"All criteria pass"}'
+    expect(factoryOutput("```json\n" + json + "\n```")).toEqual(check)
+    expect(factoryOutput("\n  ```\n" + json + "\n```  \n")).toEqual(check)
+    expect(factoryOutput("Verdict:\n```json\n" + json + "\n```")).toBeUndefined()
+    expect(factoryOutput("```json\n" + json + "\n```\nThanks")).toBeUndefined()
+    expect(factoryOutput("Verdict: " + json)).toBeUndefined()
+  })
+
   test("room schedules are those of the room or its teammates", () => {
     const value = { room: { id: "trm_a" }, teammates: [{ id: "tm_1" }] }
     const loops = [{ id: "a", factoryRoomID: "trm_a" }, { id: "b", teammateID: "tm_1" }, { id: "c", teammateID: "tm_9" }]

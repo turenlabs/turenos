@@ -30,6 +30,9 @@ test("team wait and cancel on an unknown run say where runs are listed, and canc
       { status: 400 },
     )
   const server = team({
+    "GET /api/team/factory-run/run-8": () =>
+      Response.json({ _tag: "TeamNotFoundError", message: "Factory run run-8 not found" }, { status: 404 }),
+    // Servers before the Team 404 answer an unknown run with this 400.
     "GET /api/team/factory-run/run-9": missing,
     "GET /api/team/factory-run/run-1": () => factoryRun("succeeded"),
     "POST /api/team/factory-run/run-1/cancel": () => {
@@ -37,11 +40,12 @@ test("team wait and cancel on an unknown run say where runs are listed, and canc
       return factoryRun("cancelled")
     },
   })
-  for (const command of ["wait", "cancel"]) {
-    const result = await agent(["team", command, "run-9"], { url: server.url })
-    expect(result.code).toBe(1)
-    expect(result.stderr).toBe("turen-tui: Factory run run-9 not found. List runs with: turen-tui team show <room>\n")
-  }
+  for (const id of ["run-8", "run-9"])
+    for (const command of ["wait", "cancel"]) {
+      const result = await agent(["team", command, id], { url: server.url })
+      expect(result.code).toBe(1)
+      expect(result.stderr).toBe(`turen-tui: Factory run ${id} not found. List runs with: turen-tui team show <room>\n`)
+    }
   const done = await agent(["team", "cancel", "run-1"], { url: server.url })
   expect(done.code).toBe(0)
   expect(done.stdout).toBe("run run-1 already succeeded; nothing to cancel.\n")

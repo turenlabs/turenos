@@ -28,7 +28,10 @@ export function createRequests(
     state,
     connection,
     dialogs,
-    say,
+    say: (message) => {
+      ctx.stopArmed = undefined
+      say(message)
+    },
     openSession,
     slash,
     mentions,

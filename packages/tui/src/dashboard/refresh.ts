@@ -53,8 +53,12 @@ async function update(d: DashboardContext, version: number | undefined) {
     showDisconnected(d, error)
   } finally {
     // While the live stream works it carries the selected session's changes, so the poll only reconciles the rest.
+    // It carries nothing for Team rooms, so the Team tab keeps the two-second poll.
     if (!state.closed && !state.attached && version === state.attachVersion)
-      d.run.timer = setTimeout(() => void refresh(d), state.streamStatus === "live" ? 5000 : 2000)
+      d.run.timer = setTimeout(
+        () => void refresh(d),
+        state.streamStatus === "live" && state.tab !== "team" ? 5000 : 2000,
+      )
   }
 }
 

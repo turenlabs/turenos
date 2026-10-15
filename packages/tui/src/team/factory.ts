@@ -62,6 +62,7 @@ export function openFactory(ctx: TeamContext, ops: TeamOperations) {
             ctx.renderer.height <= 30,
             // The row's width less the run list (a column, or its 34% of the row) and the gap before the detail.
             panel.width() - (wide ? 34 : Math.max(24, Math.floor(panel.width() * 0.34))) - 4,
+            ctx.state.snapshot?.needsInput,
           )
         : "This room is no longer loaded. Esc closes.",
     )

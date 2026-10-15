@@ -305,7 +305,8 @@ export function make(options: ClientOptions) {
   }
 
   const responseError = async (response: Response, descriptor: RequestDescriptor): Promise<never> => {
-    if (descriptor.declaredStatuses.includes(response.status)) throw await json(response)
+    // A declared status without a JSON body is the server's own answer, such as a 404 for a route it doesn't have.
+    if (descriptor.declaredStatuses.includes(response.status) && isJson(response)) throw await json(response)
     try {
       await response.body?.cancel()
     } catch {}
@@ -1127,7 +1128,7 @@ export function make(options: ClientOptions) {
               agent: input["agent"],
             },
             successStatus: 200,
-            declaredStatuses: [404, 400, 401],
+            declaredStatuses: [404, 409, 400, 401],
             empty: false,
           },
           requestOptions,
@@ -1644,7 +1645,7 @@ export function make(options: ClientOptions) {
               limit: input?.["limit"],
             },
             successStatus: 200,
-            declaredStatuses: [400, 409, 401],
+            declaredStatuses: [400, 409, 404, 401],
             empty: false,
           },
           requestOptions,
@@ -1656,7 +1657,7 @@ export function make(options: ClientOptions) {
             path: `/api/team/room`,
             body: { name: input["name"], topic: input["topic"] },
             successStatus: 200,
-            declaredStatuses: [400, 409, 401],
+            declaredStatuses: [400, 409, 404, 401],
             empty: false,
           },
           requestOptions,
@@ -1668,7 +1669,7 @@ export function make(options: ClientOptions) {
             path: `/api/team/room/${encodeURIComponent(input.roomID)}`,
             body: { name: input["name"], topic: input["topic"] },
             successStatus: 200,
-            declaredStatuses: [400, 409, 401],
+            declaredStatuses: [400, 409, 404, 401],
             empty: false,
           },
           requestOptions,
@@ -1679,7 +1680,7 @@ export function make(options: ClientOptions) {
             method: "POST",
             path: `/api/team/room/${encodeURIComponent(input.roomID)}/archive`,
             successStatus: 200,
-            declaredStatuses: [400, 409, 401],
+            declaredStatuses: [400, 409, 404, 401],
             empty: false,
           },
           requestOptions,
@@ -1690,7 +1691,7 @@ export function make(options: ClientOptions) {
             method: "POST",
             path: `/api/team/room/${encodeURIComponent(input.roomID)}/restore`,
             successStatus: 200,
-            declaredStatuses: [400, 409, 401],
+            declaredStatuses: [400, 409, 404, 401],
             empty: false,
           },
           requestOptions,
@@ -1701,7 +1702,7 @@ export function make(options: ClientOptions) {
             method: "DELETE",
             path: `/api/team/room/${encodeURIComponent(input.roomID)}`,
             successStatus: 204,
-            declaredStatuses: [400, 409, 401],
+            declaredStatuses: [400, 409, 404, 401],
             empty: true,
           },
           requestOptions,
@@ -1723,7 +1724,7 @@ export function make(options: ClientOptions) {
               avatar: input["avatar"],
             },
             successStatus: 200,
-            declaredStatuses: [400, 409, 401],
+            declaredStatuses: [400, 409, 404, 401],
             empty: false,
           },
           requestOptions,
@@ -1746,7 +1747,7 @@ export function make(options: ClientOptions) {
               resetModel: input["resetModel"],
             },
             successStatus: 200,
-            declaredStatuses: [400, 409, 401],
+            declaredStatuses: [400, 409, 404, 401],
             empty: false,
           },
           requestOptions,
@@ -1757,7 +1758,7 @@ export function make(options: ClientOptions) {
             method: "POST",
             path: `/api/team/teammate/${encodeURIComponent(input.teammateID)}/stop`,
             successStatus: 204,
-            declaredStatuses: [400, 409, 401],
+            declaredStatuses: [400, 409, 404, 401],
             empty: true,
           },
           requestOptions,
@@ -1769,7 +1770,7 @@ export function make(options: ClientOptions) {
             path: `/api/team/message/${encodeURIComponent(input.messageID)}/attachments`,
             query: { roomID: input["roomID"] },
             successStatus: 200,
-            declaredStatuses: [400, 409, 401],
+            declaredStatuses: [400, 409, 404, 401],
             empty: false,
           },
           requestOptions,
@@ -1781,7 +1782,7 @@ export function make(options: ClientOptions) {
             path: `/api/team/message`,
             body: { id: input["id"], roomID: input["roomID"], text: input["text"], attachments: input["attachments"] },
             successStatus: 200,
-            declaredStatuses: [400, 409, 401],
+            declaredStatuses: [400, 409, 404, 401],
             empty: false,
           },
           requestOptions,
@@ -1793,7 +1794,7 @@ export function make(options: ClientOptions) {
             path: `/api/team/teammate/${encodeURIComponent(input.teammateID)}/duty`,
             body: { loopID: input["loopID"] },
             successStatus: 200,
-            declaredStatuses: [400, 409, 401],
+            declaredStatuses: [400, 409, 404, 401],
             empty: false,
           },
           requestOptions,
@@ -1804,7 +1805,7 @@ export function make(options: ClientOptions) {
             method: "POST",
             path: `/api/team/task/${encodeURIComponent(input.taskID)}/cancel`,
             successStatus: 200,
-            declaredStatuses: [400, 409, 401],
+            declaredStatuses: [400, 409, 404, 401],
             empty: false,
           },
           requestOptions,
@@ -1824,7 +1825,7 @@ export function make(options: ClientOptions) {
               teammateIDs: input["teammateIDs"],
             },
             successStatus: 200,
-            declaredStatuses: [400, 409, 401],
+            declaredStatuses: [400, 409, 404, 401],
             empty: false,
           },
           requestOptions,
@@ -1836,7 +1837,7 @@ export function make(options: ClientOptions) {
             path: `/api/team/room/${encodeURIComponent(input.roomID)}/factory/run`,
             body: { id: input["id"], request: input["request"] },
             successStatus: 200,
-            declaredStatuses: [400, 409, 401],
+            declaredStatuses: [400, 409, 404, 401],
             empty: false,
           },
           requestOptions,
@@ -1847,7 +1848,7 @@ export function make(options: ClientOptions) {
             method: "GET",
             path: `/api/team/factory-run/${encodeURIComponent(input.runID)}`,
             successStatus: 200,
-            declaredStatuses: [400, 409, 401],
+            declaredStatuses: [400, 409, 404, 401],
             empty: false,
           },
           requestOptions,
@@ -1858,7 +1859,7 @@ export function make(options: ClientOptions) {
             method: "POST",
             path: `/api/team/factory-run/${encodeURIComponent(input.runID)}/cancel`,
             successStatus: 200,
-            declaredStatuses: [400, 409, 401],
+            declaredStatuses: [400, 409, 404, 401],
             empty: false,
           },
           requestOptions,
@@ -2060,7 +2061,7 @@ function appendQuery(params: URLSearchParams, key: string, value: unknown): void
 }
 
 async function json(response: Response): Promise<unknown> {
-  if (!isContentType(response, "application/json") && !response.headers.get("content-type")?.includes("+json")) {
+  if (!isJson(response)) {
     try {
       await response.body?.cancel()
     } catch {}
@@ -2078,6 +2079,10 @@ async function json(response: Response): Promise<unknown> {
   } catch (cause) {
     throw new ClientError("MalformedResponse", { cause })
   }
+}
+
+function isJson(response: Response) {
+  return isContentType(response, "application/json") || response.headers.get("content-type")?.includes("+json") === true
 }
 
 function isContentType(response: Response, expected: string) {

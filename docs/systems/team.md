@@ -38,6 +38,7 @@ Each successor receives the predecessor result text and its task, teammate, Sess
 Assignment notices and progress messages do not count as delivered results.
 The first claim saves these inputs once. Reclaims preserve the same prompt.
 The coordinator then checks the results against the acceptance criteria.
+The plan and the check are JSON. A reply that is only that JSON, bare or inside one Markdown code block, is read; JSON with prose around it is invalid.
 An accepted check completes the run. A rejected or invalid check fails the run.
 A check that requires your answer reports `needs_input`. **Stop factory** also stops a run that waits for your answer; it ends `cancelled`.
 
@@ -54,6 +55,8 @@ Ordinary room messages and teammate reports do not automatically start factory r
 Each run keeps the factory configuration and teammate profiles captured at admission.
 Later setup edits apply to later runs. Live teammate pauses still prevent new task starts.
 Select **Stop factory** to cancel unfinished tasks in the current run.
+A task that fails, is cancelled, or goes stale cancels only the tasks that depend on it. Independent tasks keep running.
+Once every task has settled, the run ends `failed` if any task failed, and the finished results stay in the channel.
 Failed or uncertain model work is not automatically retried.
 
 ### Execution And Communication
@@ -116,6 +119,15 @@ Uploads and their message are stored together in the server's local SQLite datab
 Room history returns `attachmentInfo` entries with name, media type, and decoded byte size, not file bytes. Attachment content loads lazily when its message approaches the visible area. The `GET /api/team/message/:messageID/attachments?roomID=...` endpoint uses existing server authentication and returns only that message's files in upload order. The room query is required; missing messages and messages belonging to another room fail. Core's internal `state({ attachments: true })` remains available for explicit content reads, but the HTTP room-state endpoint never enables it.
 
 Supported raster images reach teammates as media. UTF-8 text without NUL bytes reaches them as text; textual SVG is delivered as text rather than image media. Unsupported binary formats, audio, and video remain download-only, with their filenames reported to the teammate. Only files on the message a task answers are delivered, not files from surrounding history. Room context and inbox history do not inline uploaded bytes.
+
+## HTTP errors
+
+An authenticated Team request for a missing resource returns HTTP 404 with a JSON `TeamNotFoundError`.
+This includes an attachment request for a missing message or a message in another room.
+Invalid requests remain HTTP 400, conflicts remain HTTP 409, and authentication failures remain HTTP 401.
+The generated Promise client throws the declared error when its response has a JSON content type.
+A non-JSON response at a declared error status becomes `ClientError` with reason `UnexpectedStatus` and the original HTTP status.
+Thus a plain 404 from an older server without the route is not a declared Team error.
 
 Raster images can render inline in the room. SVG, HTML, and other files use passive downloads with `application/octet-stream` blobs rather than active previews in the app origin. Downloading or sharing a file does not execute it or grant tool permissions; uploaded content remains untrusted input.
 
@@ -256,3 +268,5 @@ Pixel avatars stay in TurenOS Desktop.
 - [Room rich output](../../packages/app/src/pages/team/message-content.tsx)
 - [Rich-output loading and cache](../../packages/app/src/pages/team/rich-output.ts)
 - [Public room API](../../packages/protocol/src/groups/team.ts)
+- [Public error schemas](../../packages/protocol/src/errors.ts)
+- [Promise client generation](../../packages/httpapi-codegen/src/index.ts)

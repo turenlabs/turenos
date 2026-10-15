@@ -24,6 +24,8 @@ export function changeTab(d: DashboardContext, tab: Tab) {
   renderList(d)
   if (tab === "sessions") d.c.conversation.loadPosition()
   if (tab !== "sessions") d.c.conversation.cancelPosition()
+  // The pane still holds the tab being left, scrolled to its top, so Team cannot tell from it whether to follow.
+  if (tab === "team") d.c.team.follow()
   void d.c.conversation.render()
   if (tab === "team") void d.c.team.sync()
   // The live stream does not carry terminals or automations, and the poll is slow while it is connected.

@@ -136,6 +136,10 @@ export type LoopRunNotFoundError = {
 export const isLoopRunNotFoundError = (value: unknown): value is LoopRunNotFoundError =>
   typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "LoopRunNotFoundError"
 
+export type TeamNotFoundError = { readonly _tag: "TeamNotFoundError"; readonly message: string }
+export const isTeamNotFoundError = (value: unknown): value is TeamNotFoundError =>
+  typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "TeamNotFoundError"
+
 export type IntelFeedNotFoundError = {
   readonly _tag: "IntelFeedNotFoundError"
   readonly feedID: string

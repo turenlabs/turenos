@@ -26,7 +26,9 @@ export async function runAgent(args: string[], io: Io) {
   try {
     return await dispatch(args, io)
   } catch (error) {
-    return report(error, io, args.includes("--json"))
+    const stop = args.indexOf("--")
+    const flags = stop < 0 ? args : args.slice(0, stop)
+    return report(error, io, flags.includes("--json"))
   }
 }
 

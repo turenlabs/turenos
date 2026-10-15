@@ -513,6 +513,36 @@ describe("HttpApiCodegen.generate", () => {
     }
   })
 
+  test("keeps the status of a declared error status whose body is not JSON", async () => {
+    const output = emitPromise(
+      compileContract(
+        api(
+          HttpApiEndpoint.get("get", "/session/:sessionID", {
+            params: { sessionID: Schema.String },
+            success: Schema.Struct({ data: Schema.String }),
+            error: Missing.pipe(HttpApiSchema.status(404)),
+          }),
+        ),
+      ),
+    )
+    const directory = await mkdtemp(join(tmpdir(), "opencode-httpapi-codegen-"))
+
+    try {
+      await Promise.all(output.files.map((file) => Bun.write(join(directory, file.path), file.content)))
+      const generated = await import(`${join(directory, "index.ts")}?t=${crypto.randomUUID()}`)
+      const client = generated.Forge.make({
+        baseUrl: "https://example.com",
+        fetch: async () => new Response("Not Found", { status: 404, headers: { "content-type": "text/plain" } }),
+      })
+
+      const error = await client.session.get({ sessionID: "missing" }).catch((cause: unknown) => cause)
+      expect(error).toMatchObject({ reason: "UnexpectedStatus", cause: { status: 404 } })
+      expect(generated.isMissing(error)).toBeFalse()
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
+
   test("iterates an emitted SSE stream lazily without reconnecting", async () => {
     const output = emitPromise(
       compileContract(
