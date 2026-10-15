@@ -120,6 +120,15 @@ Room history returns `attachmentInfo` entries with name, media type, and decoded
 
 Supported raster images reach teammates as media. UTF-8 text without NUL bytes reaches them as text; textual SVG is delivered as text rather than image media. Unsupported binary formats, audio, and video remain download-only, with their filenames reported to the teammate. Only files on the message a task answers are delivered, not files from surrounding history. Room context and inbox history do not inline uploaded bytes.
 
+## HTTP errors
+
+An authenticated Team request for a missing resource returns HTTP 404 with a JSON `TeamNotFoundError`.
+This includes an attachment request for a missing message or a message in another room.
+Invalid requests remain HTTP 400, conflicts remain HTTP 409, and authentication failures remain HTTP 401.
+The generated Promise client throws the declared error when its response has a JSON content type.
+A non-JSON response at a declared error status becomes `ClientError` with reason `UnexpectedStatus` and the original HTTP status.
+Thus a plain 404 from an older server without the route is not a declared Team error.
+
 Raster images can render inline in the room. SVG, HTML, and other files use passive downloads with `application/octet-stream` blobs rather than active previews in the app origin. Downloading or sharing a file does not execute it or grant tool permissions; uploaded content remains untrusted input.
 
 ## Teammate Collaboration
@@ -259,3 +268,5 @@ Pixel avatars stay in TurenOS Desktop.
 - [Room rich output](../../packages/app/src/pages/team/message-content.tsx)
 - [Rich-output loading and cache](../../packages/app/src/pages/team/rich-output.ts)
 - [Public room API](../../packages/protocol/src/groups/team.ts)
+- [Public error schemas](../../packages/protocol/src/errors.ts)
+- [Promise client generation](../../packages/httpapi-codegen/src/index.ts)

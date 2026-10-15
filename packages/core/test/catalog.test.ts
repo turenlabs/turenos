@@ -1,5 +1,7 @@
 import { describe, expect } from "bun:test"
+import { LLM, type Model } from "@turenlabs/llm"
 import { Clock, DateTime, Effect, Fiber, Layer, Stream } from "effect"
+import { Headers } from "effect/unstable/http"
 import { TestClock } from "effect/testing"
 import { AISDK } from "@turenlabs/core/aisdk"
 import { Catalog } from "@turenlabs/core/catalog"
@@ -785,6 +787,108 @@ describe("CatalogV2", () => {
       // The persisted token is still valid, so resolving again must not burn the rotated refresh.
       yield* integrations.connection.resolve(required(yield* integrations.connection.active(integrationID)))
       expect(refreshes).toBe(1)
+    }),
+  )
+
+  // OpenAI can answer HTTP 401 `token_expired` while the stored expiry still says the token is
+  // valid. The runner then resolves again naming the rejected token's expiry; requests rejected
+  // together must share one refresh, because OpenAI retires the refresh token on use.
+  it.effect("refreshes a rejected ChatGPT token once although its stored expiry is still valid", () =>
+    Effect.gen(function* () {
+      const catalog = yield* Catalog.Service
+      const integrations = yield* Integration.Service
+      const runnerModel = yield* SessionRunnerModel.Service
+      const storage = yield* Storage.Service
+      const vault = yield* SecretVault.Service
+      const providerID = ProviderV2.ID.openai
+      const integrationID = Integration.ID.make("openai")
+      const methodID = Integration.MethodID.make("chatgpt-browser")
+      const modelID = ModelV2.ID.make("gpt-5.6-sol")
+      const scope = Storage.Scope.make("internal/auth/providers")
+      const key = Storage.Key.make("credentials")
+      const rejected = `synthetic-access-${"a".repeat(16)}`
+      const replacement = `synthetic-access-${"b".repeat(16)}`
+      // Expiry is compared against the Effect clock, which these tests hold at zero.
+      const expires = (yield* Clock.currentTimeMillis) + 3_600_000
+      let refreshes = 0
+
+      yield* storage.set({
+        scope,
+        key,
+        value: JSON.stringify({
+          openai: { type: "oauth", access: rejected, refresh: `synthetic-refresh-${"a".repeat(16)}`, expires },
+        }),
+      })
+      yield* integrations.transform((editor) =>
+        editor.method.update({
+          integrationID,
+          method: { id: methodID, type: "oauth", label: "ChatGPT" },
+          authorize: () => Effect.die("unused"),
+          refresh: (value) => {
+            refreshes += 1
+            return Effect.succeed(
+              Credential.OAuth.make({
+                type: "oauth",
+                methodID,
+                access: replacement,
+                refresh: `synthetic-refresh-${"b".repeat(16)}`,
+                expires: expires + 3_600_000,
+                metadata: value.metadata,
+              }),
+            )
+          },
+        }),
+      )
+      yield* catalog.transform((editor) => {
+        editor.provider.update(providerID, (provider) => {
+          provider.integrationID = integrationID
+          provider.api = { type: "aisdk", package: "@ai-sdk/openai" }
+        })
+        editor.model.update(providerID, modelID, (model) => {
+          model.api = { id: modelID, type: "aisdk", package: "@ai-sdk/openai" }
+          model.capabilities.tools = true
+        })
+      })
+      const session = SessionV2.Info.make({
+        id: SessionV2.ID.make("ses_rejected_chatgpt_oauth"),
+        projectID: ProjectV2.ID.global,
+        title: "test",
+        cost: 0,
+        tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+        time: { created: DateTime.makeUnsafe(0), updated: DateTime.makeUnsafe(0) },
+        location: { directory: AbsolutePath.make("test") },
+        model: { providerID, id: modelID },
+      })
+      const authorization = (model: Model) =>
+        model.route.auth
+          .apply({
+            request: LLM.request({ model, prompt: "Hello" }),
+            method: "POST",
+            url: "https://chatgpt.com/backend-api/codex/responses",
+            body: "{}",
+            headers: Headers.empty,
+          })
+          .pipe(Effect.map((headers) => headers.authorization))
+
+      const first = yield* runnerModel.resolve(session)
+      expect(yield* authorization(first.model)).toBe(`Bearer ${rejected}`)
+
+      const retried = yield* Effect.all(
+        [
+          runnerModel.resolve(session, undefined, { refreshOAuth: first.oauthExpires }),
+          runnerModel.resolve(session, undefined, { refreshOAuth: first.oauthExpires }),
+        ],
+        { concurrency: "unbounded" },
+      )
+
+      expect(yield* Effect.forEach(retried, (resolved) => authorization(resolved.model))).toEqual([
+        `Bearer ${replacement}`,
+        `Bearer ${replacement}`,
+      ])
+      expect(refreshes).toBe(1)
+      const sealed = required(yield* storage.get({ scope, key })).value
+      expect(JSON.parse(yield* vault.open(scope, key, sealed)).openai).toMatchObject({ access: replacement })
+      expect(first.oauthExpires).toBe(expires)
     }),
   )
 
