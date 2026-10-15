@@ -38,6 +38,7 @@ Each successor receives the predecessor result text and its task, teammate, Sess
 Assignment notices and progress messages do not count as delivered results.
 The first claim saves these inputs once. Reclaims preserve the same prompt.
 The coordinator then checks the results against the acceptance criteria.
+The plan and the check are JSON. A reply that is only that JSON, bare or inside one Markdown code block, is read; JSON with prose around it is invalid.
 An accepted check completes the run. A rejected or invalid check fails the run.
 A check that requires your answer reports `needs_input`.
 
@@ -54,6 +55,8 @@ Ordinary room messages and teammate reports do not automatically start factory r
 Each run keeps the factory configuration and teammate profiles captured at admission.
 Later setup edits apply to later runs. Live teammate pauses still prevent new task starts.
 Select **Stop factory** to cancel unfinished tasks in the current run.
+A task that fails, is cancelled, or goes stale cancels only the tasks that depend on it. Independent tasks keep running.
+Once every task has settled, the run ends `failed` if any task failed, and the finished results stay in the channel.
 Failed or uncertain model work is not automatically retried.
 
 ### Execution And Communication

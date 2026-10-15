@@ -80,8 +80,8 @@ export function stopPrompt(ctx: RequestContext, sessionID: string, also = "") {
 /** Arms the second Esc for 2 s and shows `prompt`, which is cleared when the window closes unanswered. */
 export function armStop(ctx: RequestContext, sessionID: string, action: "stop" | "rewind", prompt: string) {
   const armed = { sessionID, until: Date.now() + 2000, action }
-  ctx.stopArmed = armed
   ctx.say(prompt)
+  ctx.stopArmed = armed
   // A later press or a replaced window leaves the notice to whoever owns it by then.
   setTimeout(() => {
     if (ctx.stopArmed !== armed) return
