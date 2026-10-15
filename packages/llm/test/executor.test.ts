@@ -352,6 +352,100 @@ describe("RequestExecutor", () => {
     ),
   )
 
+  it.effect("redacts URL userinfo in status and transport diagnostics but still sends it", () =>
+    Effect.gen(function* () {
+      const user = ["svc", crypto.randomUUID()].join("-")
+      const password = ["pw", crypto.randomUUID()].join("-")
+      const credentialed = HttpClientRequest.post(`https://${user}:${password}@provider.test/v1/chat?debug=1`)
+      const sent: Array<string> = []
+      const status = yield* Effect.gen(function* () {
+        const executor = yield* RequestExecutor.Service
+        return yield* executor.execute(credentialed).pipe(Effect.flip)
+      }).pipe(
+        Effect.provide(
+          RequestExecutor.layer.pipe(
+            Layer.provide(
+              Layer.succeed(
+                HttpClient.HttpClient,
+                HttpClient.make((request) => {
+                  sent.push(request.url)
+                  return Effect.succeed(HttpClientResponse.fromWeb(request, new Response("bad", { status: 400 })))
+                }),
+              ),
+            ),
+          ),
+        ),
+      )
+      const transport = yield* Effect.gen(function* () {
+        const executor = yield* RequestExecutor.Service
+        return yield* executor.execute(credentialed).pipe(Effect.flip)
+      }).pipe(
+        Effect.provide(
+          RequestExecutor.layer.pipe(
+            Layer.provide(
+              Layer.succeed(
+                HttpClient.HttpClient,
+                HttpClient.make((request) =>
+                  Effect.fail(
+                    new HttpClientError.HttpClientError({
+                      reason: new HttpClientError.EncodeError({ request, cause: new Error("unserializable body") }),
+                    }),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      )
+
+      expect(sent.every((url) => url.includes(`${user}:${password}@`))).toBe(true)
+      expect(errorHttp(expectLLMError(status))?.request.url).toBe(
+        "https://%3Credacted%3E:%3Credacted%3E@provider.test/v1/chat?debug=1",
+      )
+      expect(expectLLMError(transport).reason).toMatchObject({ _tag: "Transport" })
+      const rendered = JSON.stringify([status, transport])
+      expect(rendered).not.toContain(user)
+      expect(rendered).not.toContain(password)
+    }),
+  )
+
+  it.effect("redacts URL userinfo from actual TransportError descriptions and echoed bodies", () =>
+    Effect.gen(function* () {
+      const user = `svc-${crypto.randomUUID()}`
+      const password = `pw-${crypto.randomUUID()}`
+      const credentialed = HttpClientRequest.post(`https://${user}:${password}@provider.test/v1/chat?debug=1`)
+      const attempts = yield* Ref.make(0)
+      const fiber = yield* Effect.gen(function* () {
+        const executor = yield* RequestExecutor.Service
+        return yield* executor.execute(credentialed).pipe(Effect.flip)
+      }).pipe(
+        Effect.provide(
+          transportFailureLayer(
+            attempts,
+            Number.MAX_SAFE_INTEGER,
+            (request) => new HttpClientError.TransportError({ request, description: `Cannot reach ${request.url}` }),
+          ),
+        ),
+        Effect.forkChild,
+      )
+      yield* TestClock.adjust("10 minutes")
+      const transport = expectLLMError(yield* Fiber.join(fiber))
+      expect(transport.reason).toMatchObject({ _tag: "Transport", kind: "TransportError" })
+      expect(yield* Ref.get(attempts)).toBe(3)
+      const status = yield* Effect.gen(function* () {
+        const executor = yield* RequestExecutor.Service
+        return yield* executor.execute(credentialed).pipe(Effect.flip)
+      }).pipe(Effect.provide(responsesLayer([new Response(`Cannot reach ${credentialed.url}`, { status: 400 })])))
+      Array.of(transport, expectLLMError(status)).forEach((error) => {
+        const rendered = JSON.stringify(error)
+        expect(rendered).not.toContain(user)
+        expect(rendered).not.toContain(password)
+        expect(rendered).toContain("provider.test")
+        expect(rendered).toContain("debug=1")
+      })
+    }).pipe(Effect.provideService(Random.Random, randomMidpoint)),
+  )
+
   it.effect("extracts OpenAI-style rate-limit diagnostics", () =>
     Effect.gen(function* () {
       const executor = yield* RequestExecutor.Service

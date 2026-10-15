@@ -44,6 +44,17 @@ Explicit hard-quota markers, including `insufficient_quota` and billing hard lim
 For other statuses, generic quota-exceeded or quota-exhausted wording also identifies a terminal quota error after authentication checks.
 See `packages/llm/src/route/executor.ts` and the retry and hard-quota regressions in `packages/llm/test/executor.test.ts`.
 
+## Error diagnostics
+
+`RequestExecutor` removes URL usernames and passwords from structured HTTP diagnostics and transport error descriptions.
+It also removes these request values when provider response bodies echo them.
+`WebSocketExecutor` redacts credentials when runtime error text quotes the complete connection URL.
+These changes affect diagnostics, not the credentials sent to the provider.
+
+Sources: [`executor.ts`](../../../packages/llm/src/route/executor.ts),
+[`websocket.ts`](../../../packages/llm/src/route/transport/websocket.ts), and
+[`executor.test.ts`](../../../packages/llm/test/executor.test.ts).
+
 ## Folder layout
 
 ```
