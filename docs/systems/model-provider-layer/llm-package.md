@@ -37,6 +37,13 @@ Use `LLMClient.stream(request)` when callers want incremental `LLMEvent`s. Use `
 
 Filter or narrow `LLMEvent` streams with `LLMEvent.is.*` (camelCase guards, e.g. `events.filter(LLMEvent.is.toolCall)`). The kebab-case `LLMEvent.guards["tool-call"]` form also works but prefer `is.*` in new code.
 
+## Quota and rate-limit failures
+
+HTTP 429 responses with generic "quota exceeded" or "quota exhausted" wording remain retryable rate-limit errors.
+Explicit hard-quota markers, including `insufficient_quota` and billing hard limits, produce terminal `QuotaExceeded` errors, including on HTTP 429.
+For other statuses, generic quota-exceeded or quota-exhausted wording also identifies a terminal quota error after authentication checks.
+See `packages/llm/src/route/executor.ts` and the retry and hard-quota regressions in `packages/llm/test/executor.test.ts`.
+
 ## Folder layout
 
 ```
