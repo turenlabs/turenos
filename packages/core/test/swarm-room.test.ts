@@ -548,4 +548,56 @@ describe("SwarmRoom", () => {
       expect(latest.text).toContain("addressed to you")
     }),
   )
+
+  it.effect("lists a lane dropped and re-added by later plans once, in the latest plan order", () =>
+    Effect.gen(function* () {
+      const root = yield* setup("lane_readd_order")
+      const rooms = yield* SwarmRoom.Service
+      const room = yield* rooms.open(root)
+      const leader: SwarmRoom.ActorRef = { sessionID: root }
+      const plan = (seq: number, keys: string[]) =>
+        rooms.post({
+          roomID: room.id,
+          actor: leader,
+          kind: "plan",
+          text: "lane plan",
+          payload: { lanes: keys.map((key) => ({ key: Contract.LaneKey.make(key), title: key })) },
+          baseRevision: seq,
+        })
+      const first = yield* plan(room.head, ["audit", "research"])
+      const second = yield* plan(first.entry.seq, ["research"])
+      yield* plan(second.entry.seq, ["audit", "research"])
+
+      expect((yield* rooms.lanes(room.id)).map((lane) => lane.key).join(",")).toBe("audit,research")
+    }),
+  )
+
+  it.effect("ignores claims made before a lane was dropped and re-added by a later plan", () =>
+    Effect.gen(function* () {
+      const root = yield* setup("lane_readd_claim")
+      const rooms = yield* SwarmRoom.Service
+      const room = yield* rooms.open(root)
+      const leader: SwarmRoom.ActorRef = { sessionID: root }
+      const task = yield* spawnWorker(root, "lane_readd_claim")
+      const worker: SwarmRoom.ActorRef = { sessionID: task.childSessionID }
+      const plan = (seq: number, keys: string[]) =>
+        rooms.post({
+          roomID: room.id,
+          actor: leader,
+          kind: "plan",
+          text: "lane plan",
+          payload: { lanes: keys.map((key) => ({ key: Contract.LaneKey.make(key), title: key })) },
+          baseRevision: seq,
+        })
+      const audit = Contract.LaneKey.make("audit")
+      const first = yield* plan(room.head, ["audit"])
+      const claim = yield* rooms.claim({ roomID: room.id, actor: worker, lane: audit, baseRevision: first.entry.seq })
+      const dropped = yield* plan(claim.entry.seq, ["build"])
+      const readded = yield* plan(dropped.entry.seq, ["audit"])
+
+      const claimed = yield* rooms.claim({ roomID: room.id, actor: leader, lane: audit, baseRevision: readded.entry.seq })
+      expect(claimed.entry.actor.memberID).not.toBe(claim.entry.actor.memberID)
+      expect((yield* rooms.lanes(room.id)).map((lane) => `${lane.key}:${lane.status}`)).toEqual(["audit:claimed"])
+    }),
+  )
 })
