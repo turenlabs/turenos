@@ -1066,6 +1066,44 @@ describe("OpenAI Responses route", () => {
     }),
   )
 
+  it.effect("streams a refusal as text and finishes with content-filter", () =>
+    Effect.gen(function* () {
+      const response = yield* LLMClient.generate(request).pipe(
+        Effect.provide(
+          fixedResponse(
+            sseEvents(
+              { type: "response.refusal.delta", item_id: "msg_1", delta: "I cannot " },
+              { type: "response.refusal.delta", item_id: "msg_1", delta: "help." },
+              { type: "response.refusal.done", item_id: "msg_1", refusal: "I cannot help." },
+              { type: "response.completed", response: { id: "resp_1", usage: {} } },
+            ),
+          ),
+        ),
+      )
+
+      expect(response.text).toBe("I cannot help.")
+      expect(response.finishReason).toBe("content-filter")
+    }),
+  )
+
+  it.effect("surfaces a refusal that only arrives in the done event", () =>
+    Effect.gen(function* () {
+      const response = yield* LLMClient.generate(request).pipe(
+        Effect.provide(
+          fixedResponse(
+            sseEvents(
+              { type: "response.refusal.done", item_id: "msg_1", refusal: "I cannot help." },
+              { type: "response.completed", response: { id: "resp_1", usage: {} } },
+            ),
+          ),
+        ),
+      )
+
+      expect(response.text).toBe("I cannot help.")
+      expect(response.finishReason).toBe("content-filter")
+    }),
+  )
+
   it.effect("parses text and usage stream fixtures", () =>
     Effect.gen(function* () {
       const body = sseEvents(
