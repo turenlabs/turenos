@@ -1,7 +1,6 @@
 import { teammateHandle } from "@turenlabs/client/team"
 import {
   array,
-  checkDirectory,
   choice,
   clip,
   identifier,
@@ -12,6 +11,7 @@ import {
   object,
   optional,
   string,
+  usableDirectory,
 } from "./primitives"
 
 
@@ -57,7 +57,9 @@ export function teammate(item: Record<string, unknown>, roomID?: unknown) {
   clip(item, "role", 512)
   clip(item, "mission", 100_000)
   choice(item.status, ["active", "paused"])
-  checkDirectory(item.directory)
+  // The directory only prefills forms and goes back on an edit. The server accepts any string, so a relative or
+  // unsafe one leaves the teammate listed with no directory instead of rejecting the whole Team state.
+  if (!usableDirectory(string(item.directory, 4096))) item.directory = ""
   optional(item.agent, name)
   optional(item.model, modelRef)
   const time = object(item.time)

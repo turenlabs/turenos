@@ -110,6 +110,33 @@ test("a 2 MiB tool output is truncated with a marker and the rest of the page re
   expect((result.data[2] as unknown as { output: string }).output).toContain("truncated")
 })
 
+test("a tool file result with an inline image over 1 MiB is cut with a marker and the page renders", async () => {
+  const uri = `data:image/png;base64,${"A".repeat(2 * 1024 * 1024)}`
+  const tool = (id: string, file: unknown) => ({
+    id,
+    type: "tool",
+    name: "screenshot",
+    state: { status: "completed", input: {}, structured: {}, content: [file] },
+  })
+  const connection = serve({
+    "/api/session/ses_page/message": page(
+      assistant("msg_a", [tool("prt_big", { type: "file", uri, mime: "image/png" }), tool("prt_small", { type: "file", uri: "file:///srv/a.png", mime: "image/png" })]),
+      user("msg_b"),
+    ),
+  })
+  const result = await messages(connection)
+  expect(result.data.map((item) => item.id)).toEqual(["msg_a", "msg_b"])
+  const files = (result.data[0] as unknown as { content: { state: { content: { uri: string }[] } }[] }).content.map(
+    (part) => part.state.content[0]!.uri,
+  )
+  expect(files[0]!.length).toBeLessThan(1100)
+  expect(files[0]).toStartWith("data:image/png;base64,AAAA")
+  expect(files[0]).toContain("[truncated: ")
+  expect(files[1]).toBe("file:///srv/a.png")
+  const bad = serve({ "/api/session/ses_page/message": page(assistant("msg_a", [tool("prt_bad", { type: "file", uri: 7, mime: "image/png" })])) })
+  await expect(messages(bad)).rejects.toThrow()
+})
+
 test("message identity checks stay strict", async () => {
   const connection = serve({ "/api/session/ses_page/message": page({ ...user("msg_a"), id: "../escape" }) })
   await expect(messages(connection)).rejects.toThrow()

@@ -1,6 +1,7 @@
 import type { MessagesListOutput } from "@turenlabs/client"
 import { TurnInterruption } from "@turenlabs/client/turn-interruption"
 import { display, toolResult } from "../messages"
+import { FILE_URI_LIMIT } from "../response-validation/session-state"
 import { changeDiff } from "./changes"
 import { codeSpan, literal } from "./literal"
 import type { Collapse } from "./collapse"
@@ -54,7 +55,7 @@ function toolBody(part: ToolPart, view: ToolView) {
 }
 
 function fileLine(item: { uri: string }) {
-  return `[file] ${display(item.uri, 1000)}`
+  return `[file] ${display(item.uri, FILE_URI_LIMIT)}`
 }
 
 // Search inputs come before paths so a grep reads as its pattern, not its folder.

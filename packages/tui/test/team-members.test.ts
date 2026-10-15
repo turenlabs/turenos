@@ -176,6 +176,20 @@ test("Enter opens a teammate's menu; Edit sends the changed fields and resets an
   expect(body.resetModel).toBeUndefined()
 })
 
+test("Edit on a teammate listed with no directory sends no directory", async () => {
+  const w = world({ "PATCH /api/team/teammate/tm_moss": () => edit(w, "tm_moss", { role: "Lead" }) })
+  w.state.teammates[0] = { ...mates[0], mission: "Review.", directory: "~/work" }
+  const { view, screen } = await members(w)
+  view.mockInput.pressEnter()
+  await screen("Open latest task session")
+  view.mockInput.pressEnter()
+  await screen("Directory (blank: server default)")
+  for (let field = 0; field < 5; field++) view.mockInput.pressKey("TAB")
+  view.mockInput.pressKey("s", { ctrl: true })
+  await until(() => w.sent("PATCH", "/api/team/teammate/tm_moss").length === 1)
+  expect(w.sent("PATCH", "/api/team/teammate/tm_moss")[0]!.body).not.toHaveProperty("directory")
+})
+
 test("F3 chooses an agent from the server's list and Ctrl+L a model, without leaving the form's text", async () => {
   const w = world({
     "GET /api/agent": agents,

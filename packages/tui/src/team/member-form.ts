@@ -161,7 +161,8 @@ async function submitMember(
         name: fields.name,
         role: fields.role,
         mission: fields.mission,
-        directory: directory || mate.directory,
+        // A teammate the server holds with an unusable directory reaches here with none: send nothing, not "".
+        directory: directory || mate.directory || undefined,
         ...(agent ? { agent } : mate.agent ? { resetAgent: true } : {}),
         ...(model ? { model } : mate.model ? { resetModel: true } : {}),
       })

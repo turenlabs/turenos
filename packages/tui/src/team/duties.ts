@@ -129,6 +129,6 @@ function create(ctx: TeamContext, mate: Teammate, again: () => void) {
   form(ctx, undefined, again, {
     title: `@${label(mate.handle, 32)} › New duty`,
     teammateID: mate.id,
-    directory: mate.directory,
+    directory: mate.directory || undefined,
   })
 }
