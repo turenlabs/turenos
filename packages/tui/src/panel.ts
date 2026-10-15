@@ -1,4 +1,4 @@
-import { BoxRenderable, SelectRenderable, TextRenderable, type CliRenderer } from "@opentui/core"
+import { BoxRenderable, RenderableEvents, SelectRenderable, TextRenderable, type CliRenderer } from "@opentui/core"
 import type { Dialogs } from "./dialogs"
 import { mentionText } from "./prompt-files"
 import type { Session } from "./server"
@@ -24,7 +24,12 @@ export function openPanel(
   const dialog = dialogs.open(title, false, 999)
   if (!dialog) return undefined
   dialog.frame.maxWidth = 220
-  dialog.frame.width = "98%"
+  // Whole columns: a fractional percent width lets Yoga wrap the text for a box wider than the one it draws, which cuts
+  // the last character of a full line beside the scrollbar.
+  const fit = () => (dialog.frame.width = Math.floor(renderer.width * 0.98))
+  fit()
+  renderer.on("resize", fit)
+  dialog.frame.once(RenderableEvents.DESTROYED, () => renderer.off("resize", fit))
   // Whole rows: a fractional percent height lets the list overlap the hint. The dialog size rule caps it below the screen.
   dialog.frame.height = "100%"
   // The hint is at most two whole lines; a fixed height keeps it from growing into the list.
