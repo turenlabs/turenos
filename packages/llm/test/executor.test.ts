@@ -387,11 +387,13 @@ describe("RequestExecutor", () => {
         const executor = yield* RequestExecutor.Service
         return yield* executor.execute(credentialed).pipe(Effect.flip)
       }).pipe(Effect.provide(responsesLayer([new Response(`Cannot reach ${credentialed.url}`, { status: 400 })])))
-      const rendered = JSON.stringify([transport, expectLLMError(status)])
-      expect(rendered).not.toContain(user)
-      expect(rendered).not.toContain(password)
-      expect(rendered).toContain("provider.test")
-      expect(rendered).toContain("debug=1")
+      Array.of(transport, expectLLMError(status)).forEach((error) => {
+        const rendered = JSON.stringify(error)
+        expect(rendered).not.toContain(user)
+        expect(rendered).not.toContain(password)
+        expect(rendered).toContain("provider.test")
+        expect(rendered).toContain("debug=1")
+      })
     }).pipe(Effect.provideService(Random.Random, randomMidpoint)),
   )
 

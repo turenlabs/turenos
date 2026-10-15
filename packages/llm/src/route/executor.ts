@@ -169,8 +169,8 @@ const responseDetails = (
 
 const secretValues = (request: HttpClientRequest.HttpClientRequest) => {
   const values = new Set<string>()
-  const add = (value: string) => {
-    if (value.length < 4) return
+  const add = (value: string, minimum = 4) => {
+    if (value.length < minimum) return
     values.add(value)
     values.add(encodeURIComponent(value))
   }
@@ -183,7 +183,10 @@ const secretValues = (request: HttpClientRequest.HttpClientRequest) => {
   })
 
   if (!URL.canParse(request.url)) return values
-  new URL(request.url).searchParams.forEach((value, key) => {
+  const url = new URL(request.url)
+  add(url.username, 1)
+  add(url.password, 1)
+  url.searchParams.forEach((value, key) => {
     if (isSensitiveQueryName(key)) add(value)
   })
   return values
@@ -334,7 +337,7 @@ const toHttpError = (redactedNames: ReadonlyArray<string | RegExp>) => (error: u
       module: "RequestExecutor",
       method: "execute",
       reason: new TransportReason({
-        message: input.message,
+        message: input.request ? redactBody(input.message, input.request) : input.message,
         kind: input.kind,
         url: input.request ? redactUrl(input.request.url) : undefined,
         http: input.request ? new HttpContext({ request: requestDetails(input.request, redactedNames) }) : undefined,
