@@ -2,7 +2,7 @@ import { TeamWorkspace } from "@turenlabs/core/team/workspace"
 import { Loop } from "@turenlabs/core/loop"
 import { SessionV2 } from "@turenlabs/core/session"
 import { SessionMessage } from "@turenlabs/core/session/message"
-import { ConflictError, InvalidRequestError } from "@turenlabs/protocol/errors"
+import { ConflictError, InvalidRequestError, TeamNotFoundError } from "@turenlabs/protocol/errors"
 import { Effect } from "effect"
 import { HttpApiBuilder, HttpApiSchema } from "effect/unstable/httpapi"
 import { Api } from "../api"
@@ -16,6 +16,7 @@ const teamError = (error: unknown) => {
   const tag = tagOf(error)
   const message = error instanceof Error ? error.message : "Invalid Team request"
   if (tag === "Team.ConflictError" || tag === "ConflictError") return new ConflictError({ message })
+  if (tag === "Team.NotFoundError") return new TeamNotFoundError({ message })
   return new InvalidRequestError({ message, kind: tag })
 }
 

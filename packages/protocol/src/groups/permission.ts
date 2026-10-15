@@ -6,7 +6,7 @@ import { Project } from "@turenlabs/schema/project"
 import { Session } from "@turenlabs/schema/session"
 import { Context, Schema } from "effect"
 import { HttpApiEndpoint, HttpApiGroup, HttpApiMiddleware, HttpApiSchema, OpenApi } from "effect/unstable/httpapi"
-import { PermissionNotFoundError, SessionNotFoundError } from "../errors"
+import { ConflictError, PermissionNotFoundError, SessionNotFoundError } from "../errors"
 import { LocationQuery, locationQueryOpenApi } from "./location"
 
 export const makePermissionGroup = <
@@ -74,7 +74,7 @@ export const makePermissionGroup = <
         success: Schema.Struct({
           data: Schema.Struct({ id: Permission.ID, effect: Permission.Effect }),
         }),
-        error: SessionNotFoundError,
+        error: [SessionNotFoundError, ConflictError],
       })
         .middleware(sessionLocationMiddleware)
         .annotateMerge(

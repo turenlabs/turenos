@@ -383,6 +383,13 @@ const teamScenarios: Scenario[] = [
       )
     }),
   http.protected
+    .get("/api/team/factory-run/{runID}", "v2.team.factoryRunGet.missing")
+    .at((ctx) => ({ path: "/api/team/factory-run/trun_httpapi_missing", headers: ctx.headers() }))
+    .json(404, (body) => {
+      object(body)
+      check(body._tag === "TeamNotFoundError", "a missing factory run should answer TeamNotFoundError")
+    }),
+  http.protected
     .post("/api/team/factory-run/{runID}/cancel", "v2.team.factoryRunCancel")
     .mutating()
     .seeded((ctx) => createTeamFactoryRun(ctx, "trun_httpapi_cancel"))
