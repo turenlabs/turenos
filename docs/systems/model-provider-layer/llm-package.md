@@ -37,6 +37,17 @@ Use `LLMClient.stream(request)` when callers want incremental `LLMEvent`s. Use `
 
 Filter or narrow `LLMEvent` streams with `LLMEvent.is.*` (camelCase guards, e.g. `events.filter(LLMEvent.is.toolCall)`). The kebab-case `LLMEvent.guards["tool-call"]` form also works but prefer `is.*` in new code.
 
+## Error diagnostics
+
+`RequestExecutor` removes URL usernames and passwords from structured HTTP diagnostics and transport error descriptions.
+It also removes these request values when provider response bodies echo them.
+`WebSocketExecutor` redacts credentials when runtime error text quotes the complete connection URL.
+These changes affect diagnostics, not the credentials sent to the provider.
+
+Sources: [`executor.ts`](../../../packages/llm/src/route/executor.ts),
+[`websocket.ts`](../../../packages/llm/src/route/transport/websocket.ts), and
+[`executor.test.ts`](../../../packages/llm/test/executor.test.ts).
+
 ## Folder layout
 
 ```
