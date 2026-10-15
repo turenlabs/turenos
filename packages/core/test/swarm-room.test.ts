@@ -511,6 +511,32 @@ describe("SwarmRoom", () => {
     }),
   )
 
+  it.effect("keeps a member parked while another of its concurrent waits is still blocked", () =>
+    Effect.gen(function* () {
+      const root = yield* setup("wait-concurrent")
+      const rooms = yield* SwarmRoom.Service
+      const room = yield* rooms.open(root)
+      const task = yield* spawnWorker(root, "wait_concurrent")
+      const worker = task.childSessionID
+      const leader: SwarmRoom.ActorRef = { sessionID: root }
+
+      const messageWait = yield* rooms
+        .wait(room.id, { sessionID: worker, kinds: ["message"], timeoutMs: 30_000 })
+        .pipe(Effect.forkChild)
+      const decisionWait = yield* rooms
+        .wait(room.id, { sessionID: worker, kinds: ["decision"], timeoutMs: 30_000 })
+        .pipe(Effect.forkChild)
+      yield* Effect.yieldNow
+      yield* Effect.yieldNow
+      yield* rooms.post({ roomID: room.id, actor: leader, kind: "message", text: "wake one wait" })
+      yield* Fiber.join(messageWait)
+
+      expect((yield* rooms.parked(room.id)).has(worker)).toBe(true)
+      yield* Fiber.interrupt(decisionWait)
+      expect((yield* rooms.parked(room.id)).has(worker)).toBe(false)
+    }),
+  )
+
   it.effect("flags entries addressed to a lane's claimant as 'to you'", () =>
     Effect.gen(function* () {
       const root = yield* setup("addressed")

@@ -155,9 +155,10 @@ const layer = Layer.effect(
     const events = yield* EventV2.Service
     const sessions = yield* SessionStore.Service
     const locks = KeyedMutex.makeUnsafe<string>()
-    // Process-local set of sessions parked in `wait` per room — drives the
-    // "parked" member state and lets wait_agents detect an all-parked deadlock.
-    const waiters = new Map<ID, Set<SessionSchema.ID>>()
+    // Process-local count of blocked `wait` calls per parked session and room — drives the
+    // "parked" member state and lets wait_agents detect an all-parked deadlock. A session
+    // stays parked until its last concurrent wait finishes.
+    const waiters = new Map<ID, Map<SessionSchema.ID, number>>()
 
     const entryFromRow = (row: typeof SwarmRoomEntryTable.$inferSelect): Entry => ({
       id: row.id,
@@ -391,7 +392,7 @@ const layer = Layer.effect(
     })
 
     const parked = Effect.fn("SwarmRoom.parked")(function* (roomID: ID) {
-      return new Set(waiters.get(roomID) ?? [])
+      return new Set(waiters.get(roomID)?.keys())
     })
 
     // Agent membership is derived, not stored: the root Session is the leader and
@@ -446,7 +447,7 @@ const layer = Layer.effect(
             },
           ]
         : []
-      const parkedSessions = waiters.get(roomID) ?? new Set<SessionSchema.ID>()
+      const parkedSessions = waiters.get(roomID) ?? new Map<SessionSchema.ID, number>()
       const workers: Member[] = tasks.map((task) => ({
         id: Contract.MemberID.make(task.child_session_id),
         roomID,
@@ -918,16 +919,18 @@ const layer = Layer.effect(
           if (backlog.length > 0) return backlog
           yield* Effect.acquireRelease(
             Effect.sync(() => {
-              const set = waiters.get(roomID) ?? new Set<SessionSchema.ID>()
-              set.add(input.sessionID)
-              waiters.set(roomID, set)
+              const counts = waiters.get(roomID) ?? new Map<SessionSchema.ID, number>()
+              counts.set(input.sessionID, (counts.get(input.sessionID) ?? 0) + 1)
+              waiters.set(roomID, counts)
             }),
             () =>
               Effect.sync(() => {
-                const set = waiters.get(roomID)
-                if (set === undefined) return
-                set.delete(input.sessionID)
-                if (set.size === 0) waiters.delete(roomID)
+                const counts = waiters.get(roomID)
+                if (counts === undefined) return
+                const remaining = (counts.get(input.sessionID) ?? 1) - 1
+                if (remaining > 0) counts.set(input.sessionID, remaining)
+                if (remaining <= 0) counts.delete(input.sessionID)
+                if (counts.size === 0) waiters.delete(roomID)
               }),
           )
           const queue = yield* Queue.unbounded<Entry>()
