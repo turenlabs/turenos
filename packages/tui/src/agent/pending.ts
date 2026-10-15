@@ -1,5 +1,5 @@
 import { httpStatus } from "../server"
-import { inFolder, type Folder } from "../working-folders"
+import { folderSessionList, inFolder, type Folder } from "../working-folders"
 import { clean, emit, type Run } from "./context"
 import { usage } from "./errors"
 import { listingFolder } from "./folder"
@@ -29,11 +29,14 @@ async function one(run: Run, sessionID: string) {
 
 /** The requests of every running session, or of those in the folder; a session deleted meanwhile has none. */
 async function everyRunning(run: Run, folder: Folder | undefined): Promise<Pending> {
-  const running = [...(await activeIDs(run.connection))]
+  const active = await activeIDs(run.connection)
+  const running = [...active]
   const shown = folder
     ? (await inBatches(running, 8, (id) => inView(run, folder, id))).filter((id) => id !== undefined)
     : running
-  const results = await inBatches(shown, 8, (id) => pendingFor(run.connection, id))
+  // A cut active list hides some running sessions: ask about the newest sessions it does not name, one page at most.
+  const hidden = active.omitted > 0 ? await omittedRunning(run, folder, active) : []
+  const results = await inBatches([...shown, ...hidden], 8, (id) => pendingFor(run.connection, id))
   return {
     permissions: results.flatMap((result) => result.permissions),
     questions: results.flatMap((result) => result.questions),
@@ -46,4 +49,16 @@ async function inView(run: Run, folder: Folder, sessionID: string) {
     throw error
   })
   return session && inFolder(folder, session) ? sessionID : undefined
+}
+
+async function omittedRunning(run: Run, folder: Folder | undefined, listed: Set<string>) {
+  const client = run.connection.client
+  const found = folder
+    ? await folderSessionList(client, folder, { limit: 100, archived: false })
+    : await client.sessions.list({ limit: 100, order: "desc", archived: false }).then((page) => page.data)
+  const unlisted = found.filter((session) => !listed.has(session.id))
+  const checked = await inBatches(unlisted, 8, async (session) =>
+    (await run.connection.running(session.id)) ? session.id : undefined,
+  )
+  return checked.filter((id) => id !== undefined)
 }
