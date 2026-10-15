@@ -8,7 +8,7 @@ function server() {
     string,
     { scope: string; key: string; value: string; revision: number; timeCreated: number; timeUpdated: number }
   >()
-  const control = { fail: false, failRead: false }
+  const control = { fail: false, failRead: false, offline: false }
   const requests: { url: string; headers: Headers; signal?: AbortSignal | null; redirect?: RequestRedirect }[] = []
   const transport = async (input: URL | RequestInfo, init?: RequestInit) => {
     const url = new URL(String(input))
@@ -18,6 +18,7 @@ function server() {
       signal: init?.signal,
       redirect: init?.redirect,
     })
+    if (control.offline) throw new TypeError("Failed to fetch")
     const record = records.get(url.origin)
     if (control.failRead && init?.method !== "PUT") return new Response("", { status: 503 })
     if (init?.method !== "PUT") return Response.json({ state: record ?? null })
@@ -118,7 +119,10 @@ test("a refused GUI edit surfaces its failure and restores confirmed membership"
 test("migration seeds only usable folders and keeps the most recent ones within the shared limit", async () => {
   const remote = server()
   const recent = Array.from({ length: maxFolders + 40 }, (_, index) => `/project-${index}`)
-  const projects = [{ worktree: "relative/path", expanded: true }, { worktree: "~/home", expanded: true }].concat(
+  const projects = [
+    { worktree: "relative/path", expanded: true },
+    { worktree: "~/home", expanded: true },
+  ].concat(
     recent.slice(0, 5).map((worktree) => ({ worktree, expanded: true })),
     recent.slice(5).map((worktree) => ({ worktree, expanded: false })),
   )
@@ -153,6 +157,98 @@ test("a persistent read failure is reported once and re-armed by the next succes
   remote.control.failRead = true
   await expect(gui.refresh()).rejects.toThrow()
   expect(errors).toHaveLength(2)
+})
+
+test("one transport outage reports once across refreshes and folder edits, then recovers", async () => {
+  const remote = server()
+  let projects = [{ worktree: "/original", expanded: false }]
+  const errors: unknown[] = []
+  const gui = createWorkingFolderSync({
+    folders: remote.client(),
+    projects: () => projects,
+    apply: (directories) => {
+      projects = reconcileWorkingFolders(projects, directories)
+    },
+    failed: (error) => errors.push(error),
+  })
+  await gui.refresh()
+  remote.control.offline = true
+  projects.push({ worktree: "/unsaved", expanded: true })
+  await Promise.all([gui.refresh().catch(() => {}), gui.change("/unsaved", true), gui.change("/another", true)])
+  expect(errors).toHaveLength(1)
+  expect(errors[0]).toBeInstanceOf(Error)
+  expect((errors[0] as Error).message).toBe("Could not reach the server. Sync will retry automatically.")
+  expect((errors[0] as Error).cause).toBeInstanceOf(Error)
+  expect(projects).toEqual([{ worktree: "/original", expanded: false }])
+
+  remote.control.offline = false
+  await remote.client().open("/terminal")
+  await gui.refresh()
+  expect(projects.map((project) => project.worktree)).toEqual(["/original", "/terminal"])
+  remote.control.offline = true
+  await gui.change("/another", true)
+  expect(errors).toHaveLength(2)
+  remote.control.offline = false
+  await gui.change("/gui", true)
+  expect(await remote.client().read()).toEqual(["/original", "/terminal", "/gui"])
+  remote.control.offline = true
+  await expect(gui.refresh()).rejects.toThrow()
+  expect(errors).toHaveLength(3)
+})
+
+test("an initial transport outage preserves local folders and retries migration", async () => {
+  const remote = server()
+  let projects = [{ worktree: "/legacy", expanded: false }]
+  const errors: unknown[] = []
+  const gui = createWorkingFolderSync({
+    folders: remote.client(),
+    projects: () => projects,
+    apply: (directories) => {
+      projects = reconcileWorkingFolders(projects, directories)
+    },
+    failed: (error) => errors.push(error),
+  })
+  remote.control.offline = true
+  await Promise.all([gui.refresh().catch(() => {}), gui.change("/legacy", true)])
+  await expect(gui.refresh()).rejects.toThrow()
+  expect(errors).toHaveLength(1)
+  expect(projects).toEqual([{ worktree: "/legacy", expanded: false }])
+  remote.control.offline = false
+  await gui.refresh()
+  expect(await remote.client().read()).toEqual(["/legacy"])
+  expect(errors).toHaveLength(1)
+})
+
+test.each([false, true])("overlapping refreshes share one read, initialized: %p", async (initialized) => {
+  const remote = server()
+  const gate = Promise.withResolvers<void>()
+  const entered = Promise.withResolvers<void>()
+  let blocked = false
+  const gui = createWorkingFolderSync({
+    folders: createWorkingFolders({
+      url: new URL("https://one.test"),
+      headers: new Headers(),
+      transport: async (url, init) => {
+        if (blocked && init?.method !== "PUT") {
+          entered.resolve()
+          await gate.promise
+        }
+        return remote.fetch(url, init)
+      },
+    }),
+    projects: () => [{ worktree: "/original", expanded: true }],
+    apply() {},
+    failed() {},
+  })
+  if (initialized) await gui.refresh()
+  const before = remote.requests.length
+  blocked = true
+  const first = gui.refresh()
+  const second = gui.refresh()
+  await entered.promise
+  gate.resolve()
+  await Promise.all([first, second])
+  expect(remote.requests.length - before).toBe(initialized ? 1 : 2)
 })
 
 test("each GUI server uses its own endpoint and credentials and aborts requests on disposal", async () => {

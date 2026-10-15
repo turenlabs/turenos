@@ -30,11 +30,14 @@ later edit to the old files is never re-imported.
 
    Bundle IDs are `com.turenlabs.forge`, `com.turenlabs.forge.beta`, and `com.turenlabs.forge.dev`; unpackaged builds use
    the dev ID.
+
 5. The open working folders are one revision-guarded record, scope `desktop/store/working-folders`, key `open`, written
    through `createWorkingFolders` (`packages/client/src/working-folders.ts`), which the terminal client (`packages/tui`)
    uses too. The value is `{ "version": 1, "directories": [...] }`: at most 256 absolute paths of at most 4096
    characters, in a value of at most 1 MiB. A write sends the revision it read and retries after a conflict, up to four
-   attempts.
+   attempts. Desktop polls every two seconds and shares any pending refresh. A sync outage shows one notification
+   across reads and edits. Polling continues, and the next successful sync permits another failure notification.
+   Opening an already-open folder does not send another membership edit.
 
 ## Release notes after an upgrade
 

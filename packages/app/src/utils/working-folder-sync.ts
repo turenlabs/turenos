@@ -1,4 +1,5 @@
 import { createWorkingFolders } from "@turenlabs/client/working-folders"
+import { ClientError } from "@turenlabs/client"
 import { pathKey } from "@turenlabs/client/path-key"
 import type { ServerConnection } from "@/context/server"
 import { authTokenFromCredentials } from "./server"
@@ -20,7 +21,7 @@ export function reconcileWorkingFolders(projects: Project[], directories: string
 /**
  * Serializes GUI membership changes with first-use migration. A failed change reports the error and
  * re-applies the last confirmed membership, so the GUI never keeps a folder the server did not accept.
- * Read or migration failures are reported once per outage; the next success re-arms the report.
+ * Sync failures are reported once per outage; the next success re-arms the report.
  */
 export function createWorkingFolderSync(input: {
   folders: ReturnType<typeof createWorkingFolders>
@@ -29,9 +30,19 @@ export function createWorkingFolderSync(input: {
   failed: (error: unknown) => void
 }) {
   let initialized: Promise<string[] | undefined> | undefined
+  let refreshing: Promise<void> | undefined
   let pending = 0
   let applied: string | undefined
   let reported = false
+  const failed = (error: unknown) => {
+    if (reported) return
+    reported = true
+    input.failed(
+      error instanceof ClientError && error.reason === "Transport"
+        ? new Error("Could not reach the server. Sync will retry automatically.", { cause: error })
+        : error,
+    )
+  }
   const initialize = () =>
     (initialized ??= input.folders.migrate(input.projects().map((project) => project.worktree)).catch((error) => {
       initialized = undefined
@@ -46,21 +57,29 @@ export function createWorkingFolderSync(input: {
     input.apply(directories)
   }
   return {
-    async refresh() {
-      await (initialized ? input.folders.read() : initialize()).catch((error) => {
-        if (!reported) input.failed(error)
-        reported = true
-        throw error
-      })
-      reported = false
-      apply()
+    refresh() {
+      return (refreshing ??= (initialized ? initialized.then(() => input.folders.read()) : initialize())
+        .then(() => {
+          reported = false
+          apply()
+        })
+        .catch((error) => {
+          failed(error)
+          throw error
+        })
+        .finally(() => {
+          refreshing = undefined
+        }))
     },
     change(directory: string, open: boolean) {
       pending++
       applied = undefined
       return initialize()
         .then(() => (open ? input.folders.open(directory) : input.folders.close(directory)))
-        .catch(input.failed)
+        .then(() => {
+          reported = false
+        })
+        .catch(failed)
         .finally(() => {
           pending--
           apply()

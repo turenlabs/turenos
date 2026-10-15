@@ -139,7 +139,6 @@ export function createServerProjects<T extends ServerProjectState>(input: {
     recentlyClosed: currentClosed,
     remove,
     open(directory: string) {
-      input.changed?.(directory, true)
       const scope = input.scope()
       const key = pathKey(directory)
       const closed = currentClosed()
@@ -151,6 +150,7 @@ export function createServerProjects<T extends ServerProjectState>(input: {
         )
       }
       if (indexOf(directory) !== -1) return
+      input.changed?.(directory, true)
       setStore("projects", scope, [{ worktree: directory, expanded: true }, ...current()])
     },
     // User-initiated close: removes the project, records it in recently closed and closes the shared
