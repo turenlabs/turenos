@@ -3,6 +3,7 @@ import { refresh } from "../src/dashboard/refresh"
 import { mountDashboard } from "../src/index"
 import { connect } from "../src/server"
 import { cleanup, openSwarmRoom, sized, terminal, turen, until } from "./support"
+import { answer, log } from "./team-fixture"
 
 test("a second Enter while a swarm post is on its way does not post it twice", async () => {
   const answer = Promise.withResolvers<void>()
@@ -55,16 +56,24 @@ test("a password refusal names the server picker when the dashboard has one", as
   await screen("Press s to choose a server and enter its password")
 })
 
-test("while the live stream works the snapshot poll slows down", async () => {
-  const connected = new TextEncoder().encode(
-    `data: ${JSON.stringify({ id: "evt_1", type: "server.connected", data: {} })}\n\n`,
-  )
-  const { server, screen } = await sized(120, 36, {
-    "GET /api/event": () =>
-      new Response(new ReadableStream<Uint8Array>({ start: (controller) => controller.enqueue(connected) }), {
-        headers: { "content-type": "text/event-stream" },
+/** A live event stream that connects and then stays quiet. */
+const live = {
+  "GET /api/event": () =>
+    new Response(
+      new ReadableStream<Uint8Array>({
+        start: (controller) =>
+          controller.enqueue(
+            new TextEncoder().encode(
+              `data: ${JSON.stringify({ id: "evt_1", type: "server.connected", data: {} })}\n\n`,
+            ),
+          ),
       }),
-  })
+      { headers: { "content-type": "text/event-stream" } },
+    ),
+}
+
+test("while the live stream works the snapshot poll slows down", async () => {
+  const { server, screen } = await sized(120, 36, live)
   await screen("Live")
   // Let the snapshot the connection asked for finish, then count the polls that follow.
   await Bun.sleep(500)
@@ -86,3 +95,20 @@ test("no snapshot is read or scheduled while a terminal is attached", async () =
   // Detaching calls refresh, which starts the poll again; nothing may be left waiting meanwhile.
   expect(d.run.timer).toBeUndefined()
 })
+
+test("the live stream carries no Team rooms, so the Team tab keeps polling every 2 s", async () => {
+  const { server, view, screen } = await sized(120, 36, { ...live, "GET /api/team": () => answer(log) })
+  await screen("Live")
+  view.mockInput.pressKey("ESCAPE")
+  await screen("h History")
+  // A key right after Escape would read as Alt+key.
+  await Bun.sleep(150)
+  view.mockInput.pressKey("4")
+  await screen("Done")
+  // The poll scheduled before the switch keeps its five-second delay; count from the polls after it.
+  await Bun.sleep(5500)
+  const polls = () => server.sent("/api/team").length
+  const before = polls()
+  await Bun.sleep(4500)
+  expect(polls() - before).toBeGreaterThanOrEqual(2)
+}, 20000)

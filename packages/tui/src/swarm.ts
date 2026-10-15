@@ -53,7 +53,10 @@ export function createSwarmRoom(
       const action = matchesKey(key, "r", { ctrl: true })
         ? () => load(view, true)
         : post.focused && matchesKey(key, "enter")
-          ? () => send(view)
+          ? () =>
+              send(view, (text) => {
+                if (drafts.get(session.id)?.trim() === text) drafts.delete(session.id)
+              })
           : undefined
       if (!action) return false
       void action()
@@ -62,5 +65,5 @@ export function createSwarmRoom(
     void load(view, true)
   }
 
-  return { open }
+  return { open, unsent: () => drafts.size }
 }
