@@ -44,6 +44,14 @@ Explicit hard-quota markers, including `insufficient_quota` and billing hard lim
 For other statuses, generic quota-exceeded or quota-exhausted wording also identifies a terminal quota error after authentication checks.
 See `packages/llm/src/route/executor.ts` and the retry and hard-quota regressions in `packages/llm/test/executor.test.ts`.
 
+## OpenAI Responses refusals
+
+The OpenAI Responses parser streams `response.refusal.delta` events as answer text.
+A `response.refusal.done` event supplies the refusal text when no text delta has already opened that item.
+The parser does not repeat the full refusal after streaming its deltas.
+Without an explicit incomplete reason or a function call, a refused response finishes with `content-filter` instead of `stop`.
+See `packages/llm/src/protocols/openai-responses.ts` and the delta and done-only regressions in `packages/llm/test/provider/openai-responses.test.ts`.
+
 ## Error diagnostics
 
 `RequestExecutor` removes URL usernames and passwords from structured HTTP diagnostics and transport error descriptions.
