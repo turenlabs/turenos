@@ -1,5 +1,5 @@
 import { describe, expect } from "bun:test"
-import { ConfigProvider, Effect, Layer, Stream } from "effect"
+import { ConfigProvider, Effect, Fiber, Layer, Stream } from "effect"
 import { Headers, HttpClientRequest } from "effect/unstable/http"
 import { LLM, LLMError, Message, Model, ToolCallPart, Usage } from "../../src"
 import { Auth, LLMClient, RequestExecutor, WebSocketExecutor } from "../../src/route"
@@ -322,6 +322,29 @@ describe("OpenAI Responses route", () => {
         input: [{ role: "user", content: [{ type: "input_text", text: "Say hello." }] }],
         store: false,
       })
+    }),
+  )
+
+  it.effect("redacts URL credentials quoted in a WebSocket error", () =>
+    Effect.gen(function* () {
+      const user = ["svc", crypto.randomUUID()].join("-")
+      const password = ["pw", crypto.randomUUID()].join("-")
+      const url = `wss://${user}:${password}@api.openai.test/v1/responses`
+      const socket = Object.assign(new EventTarget(), { readyState: globalThis.WebSocket.CONNECTING, close: () => {} })
+      const opening = yield* WebSocketExecutor.fromWebSocket(
+        // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the fake socket implements only the EventTarget, readyState and close members opening uses.
+        socket as unknown as globalThis.WebSocket,
+        { url, headers: Headers.empty },
+      ).pipe(Effect.flip, Effect.forkChild)
+      yield* Effect.yieldNow
+      socket.dispatchEvent(
+        new ErrorEvent("error", { message: `WebSocket connection to '${url}' failed: Failed to connect` }),
+      )
+      const reason = JSON.stringify((yield* Fiber.join(opening)).reason)
+
+      expect(reason).toContain("api.openai.test/v1/responses' failed: Failed to connect")
+      expect(reason).not.toContain(user)
+      expect(reason).not.toContain(password)
     }),
   )
 
