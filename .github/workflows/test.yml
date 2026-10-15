@@ -245,9 +245,19 @@ jobs:
         working-directory: packages/client
         run: bun run check:generated
       - name: Generate legacy SDK
+        id: legacy_sdk
         run: ./packages/sdk/js/script/build.ts
       - name: Check generated legacy SDK
         run: git diff --exit-code -- packages/sdk/js/src/gen packages/sdk/js/src/v2/gen
+      - name: Retain generated legacy SDK on drift
+        if: failure() && steps.legacy_sdk.outcome == 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: legacy-sdk-${{ github.sha }}
+          path: |
+            packages/sdk/js/src/gen
+            packages/sdk/js/src/v2/gen
+          retention-days: 3
       - name: Check generated extension catalog
         working-directory: packages/extensions
         run: bun run check
