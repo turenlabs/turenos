@@ -238,26 +238,28 @@ test("a definite refusal clears the pending run ID", async () => {
   expect(second!.body.id).not.toBe(first!.body.id)
 })
 
-test("x stops the running run after the typed word", async () => {
-  const w = world({
-    "POST /api/team/factory-run/run_1/cancel": () => {
-      w.state.runs = [run("cancelled")]
-      return run("cancelled")
-    },
-  })
-  w.state.rooms = [old(), configured]
-  w.state.runs = [run("running")]
-  const { view, screen } = await panel(w)
-  await screen("Run run_1 · running")
-  view.mockInput.pressKey("x")
-  await screen("Confirmation (type stop)")
-  view.mockInput.pressKey("s", { ctrl: true })
-  await screen("Type stop to confirm.")
-  await view.mockInput.typeText("stop")
-  view.mockInput.pressKey("s", { ctrl: true })
-  await until(() => w.sent("POST", "/api/team/factory-run/run_1/cancel").length === 1)
-  const stopped = await screen("Run run_1 · cancelled")
-  expect(stopped).not.toContain("cancelled · phase")
+test("x stops a running run, or one waiting for the user's answer, after the typed word", async () => {
+  for (const status of ["running", "needs_input"]) {
+    const w = world({
+      "POST /api/team/factory-run/run_1/cancel": () => {
+        w.state.runs = [run("cancelled")]
+        return run("cancelled")
+      },
+    })
+    w.state.rooms = [old(), configured]
+    w.state.runs = [run(status)]
+    const { view, screen } = await panel(w)
+    await screen(`Run run_1 · ${status}`)
+    view.mockInput.pressKey("x")
+    await screen("Confirmation (type stop)")
+    view.mockInput.pressKey("s", { ctrl: true })
+    await screen("Type stop to confirm.")
+    await view.mockInput.typeText("stop")
+    view.mockInput.pressKey("s", { ctrl: true })
+    await until(() => w.sent("POST", "/api/team/factory-run/run_1/cancel").length === 1)
+    const stopped = await screen("Run run_1 · cancelled")
+    expect(stopped).not.toContain("cancelled · phase")
+  }
 })
 
 test("t adds a trigger through the automation form with the room and directory set", async () => {

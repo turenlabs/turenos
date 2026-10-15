@@ -57,7 +57,7 @@ async function submitRun(ctx: TeamContext, ops: TeamOperations, roomID: string, 
   panelNote(ctx, "Factory run started.")
 }
 
-/** `x`: cancels the running run after a typed word. */
+/** `x`: cancels the running or waiting run after a typed word. */
 export function stopRun(ctx: TeamContext, run: FactoryRun, back: () => void) {
   confirm(ctx, {
     title: "Factory › Stop",

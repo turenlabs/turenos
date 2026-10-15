@@ -526,7 +526,7 @@ export default function TeamPage() {
   }
 
   const stopFactory = async () => {
-    const run = state.value?.factoryRuns?.find((item) => item.status === "running")
+    const run = stoppableRun()
     if (!run) return
     await safeAction(async () => {
       const client = serverSDK().client
@@ -687,6 +687,9 @@ export default function TeamPage() {
   }
   const assigned = () => (state.value ? assignedHandles(state.text, state.value.teammates) : [])
   const activeRun = () => state.value?.factoryRuns?.find((run) => run.status === "running")
+  // A run waiting for the user's answer does not block a new run, but it is unfinished and can be stopped.
+  const stoppableRun = () =>
+    state.value?.factoryRuns?.find((run) => run.status === "running" || run.status === "needs_input")
   // Controlled because polling replaces the run object every few seconds; a plain `open`
   // binding would reset a run the user expanded or collapsed.
   const factoryRunOpen = (run: Team.FactoryRun) =>
@@ -1506,7 +1509,7 @@ export default function TeamPage() {
                     )
                   }}
                 </For>
-                <Show when={activeRun() && !archived()}>
+                <Show when={stoppableRun() && !archived()}>
                   <button
                     class="mt-3 text-[12px] text-v2-state-fg-danger"
                     disabled={state.busy}
