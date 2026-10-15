@@ -3466,6 +3466,11 @@ export type LoopRunNotFoundError = {
   message: string
 }
 
+export type TeamNotFoundError = {
+  _tag: "TeamNotFoundError"
+  message: string
+}
+
 export type IntelFeedNotFoundError = {
   _tag: "IntelFeedNotFoundError"
   feedID: string
@@ -17415,6 +17420,10 @@ export type V2TeamStateErrors = {
    */
   401: UnauthorizedError
   /**
+   * TeamNotFoundError
+   */
+  404: TeamNotFoundError
+  /**
    * ConflictError
    */
   409: ConflictError
@@ -17451,6 +17460,10 @@ export type V2TeamRoomCreateErrors = {
    */
   401: UnauthorizedError
   /**
+   * TeamNotFoundError
+   */
+  404: TeamNotFoundError
+  /**
    * ConflictError
    */
   409: ConflictError
@@ -17485,6 +17498,10 @@ export type V2TeamRoomDeleteErrors = {
    * UnauthorizedError
    */
   401: UnauthorizedError
+  /**
+   * TeamNotFoundError
+   */
+  404: TeamNotFoundError
   /**
    * ConflictError
    */
@@ -17521,6 +17538,10 @@ export type V2TeamRoomEditErrors = {
    */
   401: UnauthorizedError
   /**
+   * TeamNotFoundError
+   */
+  404: TeamNotFoundError
+  /**
    * ConflictError
    */
   409: ConflictError
@@ -17555,6 +17576,10 @@ export type V2TeamRoomArchiveErrors = {
    * UnauthorizedError
    */
   401: UnauthorizedError
+  /**
+   * TeamNotFoundError
+   */
+  404: TeamNotFoundError
   /**
    * ConflictError
    */
@@ -17591,6 +17616,10 @@ export type V2TeamRoomRestoreErrors = {
    */
   401: UnauthorizedError
   /**
+   * TeamNotFoundError
+   */
+  404: TeamNotFoundError
+  /**
    * ConflictError
    */
   409: ConflictError
@@ -17623,6 +17652,10 @@ export type V2TeamTeammateCreateErrors = {
    * UnauthorizedError
    */
   401: UnauthorizedError
+  /**
+   * TeamNotFoundError
+   */
+  404: TeamNotFoundError
   /**
    * ConflictError
    */
@@ -17659,6 +17692,10 @@ export type V2TeamTeammateEditErrors = {
    */
   401: UnauthorizedError
   /**
+   * TeamNotFoundError
+   */
+  404: TeamNotFoundError
+  /**
    * ConflictError
    */
   409: ConflictError
@@ -17693,6 +17730,10 @@ export type V2TeamTeammateStopErrors = {
    * UnauthorizedError
    */
   401: UnauthorizedError
+  /**
+   * TeamNotFoundError
+   */
+  404: TeamNotFoundError
   /**
    * ConflictError
    */
@@ -17731,6 +17772,10 @@ export type V2TeamMessageAttachmentsErrors = {
    */
   401: UnauthorizedError
   /**
+   * TeamNotFoundError
+   */
+  404: TeamNotFoundError
+  /**
    * ConflictError
    */
   409: ConflictError
@@ -17764,6 +17809,10 @@ export type V2TeamMessagePostErrors = {
    * UnauthorizedError
    */
   401: UnauthorizedError
+  /**
+   * TeamNotFoundError
+   */
+  404: TeamNotFoundError
   /**
    * ConflictError
    */
@@ -17802,6 +17851,10 @@ export type V2TeamDutyAttachErrors = {
    */
   401: UnauthorizedError
   /**
+   * TeamNotFoundError
+   */
+  404: TeamNotFoundError
+  /**
    * ConflictError
    */
   409: ConflictError
@@ -17837,6 +17890,10 @@ export type V2TeamTaskCancelErrors = {
    */
   401: UnauthorizedError
   /**
+   * TeamNotFoundError
+   */
+  404: TeamNotFoundError
+  /**
    * ConflictError
    */
   409: ConflictError
@@ -17871,6 +17928,10 @@ export type V2TeamFactoryConfigureErrors = {
    * UnauthorizedError
    */
   401: UnauthorizedError
+  /**
+   * TeamNotFoundError
+   */
+  404: TeamNotFoundError
   /**
    * ConflictError
    */
@@ -17910,6 +17971,10 @@ export type V2TeamFactoryRunErrors = {
    */
   401: UnauthorizedError
   /**
+   * TeamNotFoundError
+   */
+  404: TeamNotFoundError
+  /**
    * ConflictError
    */
   409: ConflictError
@@ -17945,6 +18010,10 @@ export type V2TeamFactoryRunGetErrors = {
    */
   401: UnauthorizedError
   /**
+   * TeamNotFoundError
+   */
+  404: TeamNotFoundError
+  /**
    * ConflictError
    */
   409: ConflictError
@@ -17979,6 +18048,10 @@ export type V2TeamFactoryRunCancelErrors = {
    * UnauthorizedError
    */
   401: UnauthorizedError
+  /**
+   * TeamNotFoundError
+   */
+  404: TeamNotFoundError
   /**
    * ConflictError
    */
