@@ -118,11 +118,15 @@ Press `F2` or `Ctrl+G`, or type `/editor`, to compose the message in `$EDITOR` (
 
 Drafts and reading positions live only in this TUI process. There is **no disk draft persistence**; quitting loses unsent drafts. A request already sent may have reached the server even if no acknowledgement arrived. Discarding or quitting is not cancellation; use the explicit interrupt action when needed.
 
+Kept swarm post drafts count as unsent drafts when you quit or switch servers. An acknowledged post clears its saved draft. A refused post keeps it for retry.
+
 Message-editor shortcuts take precedence over dashboard navigation. From the reply editor, `Ctrl+K`, `Ctrl+P`, `Ctrl+X` and `Ctrl+O` still work, and the editor returns with its draft when the dialog they open closes; `Ctrl+K` therefore does not delete to the end of the line there. `Ctrl+B` and `Alt+Left`/`Alt+Right` stay with the editor, where they move back a character and move by word, so press `Esc` before using them to toggle the sidebar or hop. Question panels are different: `Ctrl+K` opens the session picker directly, including while entering a custom answer.
 
 Task-owned subagent sessions cannot accept direct replies. When ownership is known, `f` offers **Open main session and reply** (or parent when the root is unknown). The dialog first says why a reply cannot be sent, then offers that button. Click it or press `Enter` to open that session's reply editor; this sends nothing. If the server reports ownership after a send attempt, the child draft stays saved and retries do not resend it. Press `Esc`, then `f` to see the saved text and explicitly open the main/parent session. Child draft text is never silently moved to another recipient; any existing main-session draft is reopened separately. A `parentID` alone does not establish task ownership.
 
 Reply editors size themselves from wrapped display rows, between one and six rows. Long paragraphs can scroll inside the editor, while Send and draft controls remain visible. Terminal resizing preserves the editable text and focus. Transcript and form content reserve the scrollbar column so it does not hide the final character of a line.
+
+When the terminal gets shorter, the Team transcript keeps the latest message visible if you were following it. If you scrolled away, a height change and refresh keep your reading position instead.
 
 ## Mention files and run commands
 

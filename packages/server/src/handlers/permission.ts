@@ -4,7 +4,7 @@ import { PermissionSaved } from "@turenlabs/core/permission/saved"
 import { Effect } from "effect"
 import { HttpApiBuilder, HttpApiSchema } from "effect/unstable/httpapi"
 import { Api } from "../api"
-import { PermissionNotFoundError, SessionNotFoundError } from "@turenlabs/protocol/errors"
+import { ConflictError, PermissionNotFoundError, SessionNotFoundError } from "@turenlabs/protocol/errors"
 import { response } from "../location"
 
 function missingRequest(id: PermissionV2.ID) {
@@ -43,6 +43,14 @@ export const PermissionHandler = HttpApiBuilder.group(Api, "server.permission", 
                     new SessionNotFoundError({
                       sessionID: error.sessionID,
                       message: `Session not found: ${error.sessionID}`,
+                    }),
+                ),
+                Effect.catchTag(
+                  "PermissionV2.ConflictError",
+                  (error) =>
+                    new ConflictError({
+                      message: `Permission request ID conflicts with a pending request: ${error.requestID}`,
+                      resource: error.requestID,
                     }),
                 ),
               ),

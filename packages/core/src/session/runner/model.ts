@@ -110,6 +110,11 @@ export type Resolved = {
    * needs. Empty for a model the catalog has no pricing for.
    */
   readonly cost: ReadonlyArray<Cost>
+  /**
+   * Set when the model runs on a ChatGPT sign-in: the stored expiry of its access token. OpenAI can
+   * reject that token before then, so the runner passes this back as `refreshOAuth` to retry.
+   */
+  readonly oauthExpires?: number
 }
 
 /** `ModelV2` re-exports the `Cost` schema but not its type; this is that type. */
@@ -230,6 +235,8 @@ export type ResolveOptions = {
    * explicitly selected still applies.
    */
   readonly defaultVariant?: boolean
+  /** The `oauthExpires` of a resolution whose token the provider rejected: refresh it first. */
+  readonly refreshOAuth?: number
 }
 
 export interface Interface {
@@ -1170,6 +1177,10 @@ const resolveWith = <R>(
         // From the variant-resolved info, so a variant that carries its own
         // price list is billed at its own rates.
         cost: selected.model.cost,
+        // Exactly the credentials `fromCatalogModelWithAISDK` sends to the ChatGPT Codex endpoint.
+        ...(credential?.type === "oauth" && selected.model.providerID === ProviderV2.ID.openai
+          ? { oauthExpires: credential.expires }
+          : {}),
       }),
     ),
   )
@@ -1223,12 +1234,13 @@ const providerCredential = (
   providerID: ProviderV2.ID,
   integrationID: Integration.ID | undefined,
   integrations: Integration.Interface,
+  rejected?: number,
 ) =>
   integrations.connection
     .active(integrationID ?? Integration.ID.make(providerID))
     .pipe(
       Effect.flatMap((connection) =>
-        connection ? integrations.connection.resolve(connection) : Effect.succeed(undefined),
+        connection ? integrations.connection.resolve(connection, { rejected }) : Effect.succeed(undefined),
       ),
     )
 
@@ -1312,6 +1324,10 @@ export const locationLayer = Layer.effect(
           yield* Effect.sleep("50 millis")
         }
       }).pipe(Effect.timeoutOrElse({ duration: "10 seconds", orElse: () => Effect.succeed(undefined) }))
+    const credentialFor = Effect.fnUntraced(function* (providerID: ProviderV2.ID, rejected?: number) {
+      const provider = yield* catalog.provider.get(providerID)
+      return yield* providerCredential(providerID, provider?.integrationID, integrations, rejected)
+    })
     return Service.of({
       resolve: Effect.fn("SessionRunnerModel.resolve")(function* (session, request, options) {
         // Location plugins populate and filter the catalog asynchronously during layer startup.
@@ -1323,11 +1339,10 @@ export const locationLayer = Layer.effect(
               modelID: session.model.id,
               reason: yield* unavailableReason(catalog, session.model.providerID, session.model.id),
             })
-          const provider = yield* catalog.provider.get(selected.providerID)
           return yield* resolveWithAISDKRef(
             session,
             selected,
-            yield* providerCredential(selected.providerID, provider?.integrationID, integrations),
+            yield* credentialFor(selected.providerID, options?.refreshOAuth),
             request,
             options,
           ).pipe(Effect.provideService(AISDK.Service, aisdk))
@@ -1351,7 +1366,11 @@ export const locationLayer = Layer.effect(
               candidate.model.id === defaultModel.id,
           ) ?? candidates[0]
         if (!selected) return yield* new ModelNotSelectedError({ sessionID: session.id })
-        return yield* resolveWithAISDKRef(session, selected.model, selected.credential, request, options).pipe(
+        const credential =
+          options?.refreshOAuth === undefined
+            ? selected.credential
+            : yield* credentialFor(selected.model.providerID, options.refreshOAuth)
+        return yield* resolveWithAISDKRef(session, selected.model, credential, request, options).pipe(
           Effect.provideService(AISDK.Service, aisdk),
         )
       }),

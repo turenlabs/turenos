@@ -122,6 +122,12 @@ export class LoopRunNotFoundError extends Schema.TaggedErrorClass<LoopRunNotFoun
   { httpApiStatus: 404 },
 ) {}
 
+export class TeamNotFoundError extends Schema.TaggedErrorClass<TeamNotFoundError>()(
+  "TeamNotFoundError",
+  { message: Schema.String },
+  { httpApiStatus: 404 },
+) {}
+
 export class IntelFeedNotFoundError extends Schema.TaggedErrorClass<IntelFeedNotFoundError>()(
   "IntelFeedNotFoundError",
   { feedID: Schema.String, message: Schema.String },
