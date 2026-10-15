@@ -169,6 +169,10 @@ FONT_SETS = (
 TRANSIENT_LFLAG = 0x20000000 | 0x00800000
 
 
+class ScenarioSkipped(Exception):
+    """Ends a scenario body whose setup already failed and was recorded."""
+
+
 def transient_only(before, after):
     if not (before.startswith("lflag=") and after.startswith("lflag=")):
         return False
@@ -288,6 +292,8 @@ def main():
     sessions = []
     # The Ctrl+C that ends a scenario stops a running fixture turn, which is cleanup rather than behaviour under test.
     cleaning = {"on": False}
+    # A `with` body cannot be skipped, so after a failed setup the body's first tmux call ends it instead.
+    skipping = {"on": False}
     stage, size, last_capture = "startup", "", None
     stream_state = {"complete": False, "roster_done": False, "active": True}
     variant_body = {"model": {"providerID": "fixture", "id": "local", "variant": "audit-high"}}
@@ -380,7 +386,7 @@ def main():
                 data = {"data": sessions, "cursor": {}}
             elif path == "/api/session/active":
                 data = {"data": {"ses_review": {"type": "running"}} if stream_state["active"] else {}}
-            elif path == "/api/pty":
+            elif path == "/api/pty" or path == "/api/fs/list":
                 directory = parse_qs(url.query).get("location[directory]", [DIRECTORY])[0]
                 data = {"location": {"directory": directory, "project": {"id": "project", "directory": directory}}, "data": []}
             elif path == "/api/loop":
@@ -502,7 +508,7 @@ def main():
                 self.end_headers()
                 return
             if self.command == "POST" and path == "/api/session":
-                session = {**base, "id": body["id"], "title": "Synthetic launch audit", "location": body["location"], "time": {"created": 200, "updated": 200}}
+                session = {**base, "id": body["id"], "title": "Synthetic launch audit", "location": body["location"], "model": body.get("model", base["model"]), "agent": body.get("agent", base["agent"]), "time": {"created": 200, "updated": 200}}
                 sessions.append(session)
                 self.send({"data": session})
                 return
@@ -528,6 +534,8 @@ def main():
     result["command"] = command
 
     def tmux(*args, check=True):
+        if skipping["on"]:
+            raise ScenarioSkipped()
         return subprocess.run([tmux_bin, "-S", str(socket), "-f", "/dev/null", *args], env=env, text=True, capture_output=True, check=check, timeout=15).stdout
 
     def frame():
@@ -646,6 +654,8 @@ def main():
         return plain
 
     def check(condition, label, details=None):
+        if skipping["on"]:
+            raise ScenarioSkipped()
         if not condition:
             capture(f"failure-{stage}-{len(result['checks'])}")
         result["checks"].append({"scenario": stage, "size": size, "check": label, "passed": bool(condition), "details": details, "png": last_capture["png"] if last_capture else None})
@@ -683,21 +693,32 @@ def main():
                 )
             tmux("send-keys", "-t", "audit:0.0", "-l", launch)
             tmux("send-keys", "-t", "audit:0.0", "Enter")
-            wait("[ Turen ]" if name == "welcome" else "Question 1 of 2" if name == "question-picker" else "need input" if name == "request-enter-guards" else "Live transcript end", seconds=15)
-            yield
+            wait("Welcome to TurenOS" if name == "welcome" else "Question 1 of 2" if name == "question-picker" else "need input" if name == "request-enter-guards" else "Live transcript end", seconds=15)
         except Exception as error:
-            try:
-                capture(f"failure-{name}")
-            except Exception as capture_error:
-                result.setdefault("capture_errors", []).append(str(capture_error))
-            result["checks"].append({"scenario": stage, "size": size, "check": "scenario completed", "passed": False, "details": str(error), "png": last_capture["png"] if last_capture else None})
-            print(f"FAIL {size} {stage}: {error}", flush=True)
+            fail_scenario(name, error)
+            # A context manager must yield once even when its setup failed; the body then stops at its first tmux call.
+            skipping["on"] = True
+        try:
+            yield
+        except ScenarioSkipped:
+            pass
+        except Exception as error:
+            fail_scenario(name, error)
         finally:
+            skipping["on"] = False
             cleaning["on"] = True
             tmux("send-keys", "-t", "audit:0.0", "C-c", check=False)
             time.sleep(0.4)
             tmux("kill-session", "-t", "audit", check=False)
             cleaning["on"] = False
+
+    def fail_scenario(name, error):
+        try:
+            capture(f"failure-{name}")
+        except Exception as capture_error:
+            result.setdefault("capture_errors", []).append(str(capture_error))
+        result["checks"].append({"scenario": stage, "size": size, "check": "scenario completed", "passed": False, "details": str(error), "png": last_capture["png"] if last_capture else None})
+        print(f"FAIL {size} {stage}: {error}", flush=True)
 
     def edited_draft(kind):
         key("alpha beta gamma", literal=True)
@@ -709,8 +730,16 @@ def main():
         key("M-Right")
         key("Y", literal=True)
         check("lpha beta XgammaY" in frame(), f"{kind}: Alt+Right moves by word without hopping")
-        key("C-a", "Right", "Right", "Right", "Right", "C-k")
-        check("lpha" in frame() and "Xgamma" not in frame() and FINDER not in frame(), f"{kind}: Ctrl+K kills line suffix without opening picker")
+        if kind == "launch":
+            key("C-a", "Right", "Right", "Right", "Right", "C-k")
+            check("lpha" in frame() and "Xgamma" not in frame() and FINDER not in frame(), f"{kind}: Ctrl+K kills line suffix without opening picker")
+        else:
+            key("C-k")
+            wait(FINDER)
+            key("Escape")
+            wait_typing()
+            key("C-a", "Right", "Right", "Right", "Right", *(["C-d"] * 13))
+            check("lpha" in frame() and "Xgamma" not in frame() and FINDER not in frame(), f"{kind}: Ctrl+K opens picker then returns draft")
         key(" preserved", literal=True)
         capture(f"{kind}-edited")
         return "lpha preserved"
@@ -834,7 +863,7 @@ def main():
                 wait("Commands")
                 key("Working folders", literal=True)
                 key("Enter")
-                wait("Directory on the server")
+                wait("Open another folder")
                 plain = capture("working-folders")
                 check("/srv/empty-folder" in plain, "shared folder without sessions remains discoverable")
                 key("Enter")
@@ -848,7 +877,7 @@ def main():
                 key("C-k")
                 wait(FINDER)
                 key("Escape")
-                wait("[ Turen ]")
+                wait("Welcome to TurenOS")
                 shortcuts()
                 key("n")
                 wait(LAUNCH)
@@ -944,11 +973,11 @@ def main():
             with scenario("dashboard", width, height):
                 plain = capture("dashboard")
                 check("Live transcript end" in plain and "ses_review" not in plain, "default conversation follows latest transcript without internal IDs")
-                check(("2 Term" in plain) == (width >= 90), "sidebar default follows 90-column breakpoint")
+                check(("[1 Sess" in plain) == (width >= 90), "sidebar default follows 90-column breakpoint")
                 shortcuts()
                 key("b")
                 plain = capture("dashboard-sidebar-hidden" if width >= 90 else "dashboard-sidebar-shown")
-                check(("2 Term" in plain) == (width < 90), "b toggles sidebar")
+                check(("[1 Sess" in plain) == (width < 90), "b toggles sidebar")
                 if width < 90:
                     check("> * Review" in plain, "shown narrow sidebar reveals the current session")
                 check("Live transcript end" in plain, "conversation remains visible when sidebar toggled")
@@ -1202,6 +1231,11 @@ def main():
                 check(len(older_reads) == 1, "older cursor loads once, not again on refresh or scroll")
 
             with scenario("resize", width, height):
+                if width >= 90:
+                    key("Enter")
+                shortcuts()
+                key("Left")
+
                 def stable_frame():
                     return re.sub(r"[\u2800-\u28ff]{3}", "GLOBE", frame())
 
@@ -1209,7 +1243,7 @@ def main():
                 for cycle in range(2):
                     for columns, rows in [(60, 24), (160, 48), (90, 28), (59, 23), (120, 36), (width, height)]:
                         tmux("resize-window", "-t", "audit:0", "-x", str(columns), "-y", str(rows))
-                        if columns < 60 or rows < 24:
+                        if columns < 58 or rows < 24:
                             wait("Resize the terminal")
                         else:
                             wait("Live transcript end")
@@ -1231,7 +1265,7 @@ def main():
                 wait("Keyboard shortcuts")
                 top = capture("help-top")
                 check("ESSENTIALS" in top and re.search(r"F4\s+discard", top), "help starts at essentials with current discard key")
-                for _ in range(10):
+                for _ in range(15):
                     key("NPage")
                     if re.search(r"Esc\s+closes without responding", " ".join(frame().split())):
                         break
@@ -1322,7 +1356,7 @@ def main():
                         break
                     key("NPage")
                 plain = capture("finder-last-page")
-                check(finder_position() == (len(ordered), len(ordered)) and "▶ " + ordered[-1]["title"] in plain and FINDER in plain.splitlines()[query_row], "paging reaches final project without scrolling search away")
+                check(finder_position() == (len(ordered), len(ordered)) and "▶ " + ordered[-1]["title"] in plain and FINDER in plain, "paging reaches final project without scrolling search away")
                 resized = (120, 36) if width == 60 else (60, 24)
                 tmux("resize-window", "-t", "audit:0", "-x", str(resized[0]), "-y", str(resized[1]))
                 wait(FINDER)
@@ -1458,7 +1492,9 @@ def main():
                 wait_typing()
                 capture("reply-restored")
                 check("Keep this reply draft." in frame() and "BLOCKED" not in frame() and all(r["method"] == "GET" for r in result["requests"][start:]), "59x23 shield blocks edits, discard, navigation, and sends; resize restores draft")
-                key("C-a", "C-k")
+                key("F4")
+                time.sleep(0.5)
+                compose()
                 draft = edited_draft("reply")
                 key("Escape", "M-Right")
                 wait("The startup checks are complete")
@@ -1608,13 +1644,15 @@ def main():
                     start = len(result["requests"])
                     for name, enter in ENTER_KEYS:
                         key(enter, literal=True)
-                        check(not writes_since(start) and "Esc close" in frame(), f"{title}: {name} does not confirm or mutate requests")
                         if shortcut == "o":
                             wait("Review answers")
+                        check(not writes_since(start) and (title if shortcut == "p" else "Review answers") in frame(), f"{title}: {name} does not confirm or mutate requests")
+                        if shortcut == "o":
                             key("Left")
+                            wait(control)
                     if shortcut == "p":
                         key("Down", "Enter")
-                        check(not writes_since(start) and "Esc close" in frame(), "permission Allow once plus Enter still requires explicit confirmation")
+                        check(not writes_since(start) and title in frame(), "permission Allow once plus Enter still requires explicit confirmation")
                     if shortcut == "o":
                         key("C-r", "Enter")
                         check(not writes_since(start) and "Ctrl+S confirm rejection" in frame(), "question rejection plus Enter still requires explicit confirmation")

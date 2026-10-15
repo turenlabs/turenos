@@ -57,7 +57,7 @@ const layer = Layer.effect(
           sessionID,
           taskID: input.taskID,
           assistantMessageID,
-          text: message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join(""),
+          text: teamSessionOutputText(message),
           ...(input.recovery ? { recovery: true } : {}),
         })
       }).pipe(
@@ -376,6 +376,12 @@ export function extractTeamTaskOutput(
   const finalIndex = messages.lastIndexOf(final)
   const latestInputIndex = messages.findLastIndex((message, index) => index < finalIndex && message.type === "user")
   return extractStepOutput(messages.slice(latestInputIndex + 1, finalIndex + 1))
+}
+
+// Text parts are separate blocks (text between tool calls, or a new part per step), so keep a paragraph break
+// between them rather than running the sentences together.
+export function teamSessionOutputText(message: SessionMessage.Assistant) {
+  return message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n\n")
 }
 
 export function teamTaskIDForResponse(

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { dashboard } from "./support"
+import { cleanup, dashboard, until } from "./support"
 
 const openai = { id: "openai", name: "OpenAI", models: { gpt: { id: "gpt", providerID: "openai", name: "GPT" } } }
 
@@ -39,6 +39,32 @@ test("a provider that stays connected after Disconnect is reported, not announce
   view.mockInput.pressKey("s", { ctrl: true })
   const frame = await screen("is still connected")
   expect(frame).not.toContain("OpenAI disconnected.")
+})
+
+test("a failed Refresh providers reopens the providers menu with the failure and no unhandled rejection", async () => {
+  const errors: unknown[] = []
+  const record = (error: unknown) => errors.push(error)
+  const events = process as unknown as NodeJS.EventEmitter
+  events.on("unhandledRejection", record)
+  cleanup.push(() => events.off("unhandledRejection", record))
+  const { server, view, screen } = await settings(
+    {
+      "GET /provider": () => ({ all: [openai], connected: ["openai"] }),
+      "POST /global/dispose": () =>
+        Response.json({ _tag: "InvalidRequestError", message: "Dispose refused" }, { status: 400 }),
+    },
+    0,
+  )
+  await screen("● OpenAI")
+  view.mockInput.pressArrow("down")
+  view.mockInput.pressEnter()
+  await until(() => server.sent("/global/dispose").length === 1)
+  // Reopening the menu clears the status line, so the menu itself carries the failure.
+  const frame = await screen("Dispose refused")
+  expect(frame).toContain("Connect a provider…")
+  expect(frame).not.toContain("Providers refreshed.")
+  expect(server.sent("/global/dispose")).toHaveLength(1)
+  expect(errors).toEqual([])
 })
 
 test("a provider the server still lists as connected after Remove is reported", async () => {

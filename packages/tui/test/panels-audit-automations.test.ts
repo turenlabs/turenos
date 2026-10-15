@@ -111,6 +111,29 @@ test("Ctrl+D on a live run needs a second press inside the window and ignores ke
   await until(() => cancels() === 1)
 })
 
+test("a run cancelled with a double Ctrl+D reads cancelled in the Runs list", async () => {
+  const app = await dashboard({
+    "GET /api/loop": () => [loop],
+    "GET /api/loop/loop_1/run": () => [{ id: "run_1", loopID: "loop_1", status: "running", time: { created: 1 } }],
+    "POST /api/loop/loop_1/run/run_1/cancel": () => ({ id: "run_1", loopID: "loop_1", status: "cancelled" }),
+  })
+  app.view.mockInput.pressKey("3")
+  await app.screen("Nightly check")
+  await app.palette("Manage automation")
+  await app.screen("Runs")
+  app.view.mockInput.pressArrow("down")
+  app.view.mockInput.pressArrow("down")
+  app.view.mockInput.pressEnter()
+  const before = await app.screen("1 recent run")
+  expect(before).toMatch(/running · /)
+  app.view.mockInput.pressKey("d", { ctrl: true })
+  await app.screen("Ctrl+D again cancels this run.")
+  app.view.mockInput.pressKey("d", { ctrl: true })
+  await app.screen("Run cancelled.")
+  const after = await app.screen("cancelled · ")
+  expect(after).not.toMatch(/running · /)
+})
+
 test("more than 128 running sessions leaves the dashboard connected", async () => {
   const routes: Parameters<typeof dashboard>[0] = {
     "GET /api/session/active": () => ({

@@ -25,6 +25,7 @@ export function createSuggestionPopup<T>(
     previous?.(event)
     refresh(popup)
   }
+  editor.once("destroyed", () => hide(popup))
 
   // Rows are fitted to the editor's width, so a resize repaints an open list. A textarea reports no
   // resize, but the list text beside it does, with the same width.

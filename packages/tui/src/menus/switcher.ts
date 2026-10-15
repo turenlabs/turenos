@@ -184,9 +184,10 @@ async function submit(s: Switcher) {
   if (s.loading || !session) throw new Error("Choose a loaded session first.")
   const current = await connection.client.sessions.get({ sessionID: session.id })
   if (!inFolders(s, current.location.directory)) {
-    state.snapshot!.workingFolders = await connection.folders.open(current.location.directory)
+    const folders = await connection.folders.open(current.location.directory)
+    if (!state.closed && state.snapshot) state.snapshot.workingFolders = folders
     const notice = connection.folders.takeNotice()
-    if (notice) actions.say(notice)
+    if (!state.closed && notice) actions.say(notice)
   }
   if (!state.closed) actions.openSession(current.id, false, current)
 }
