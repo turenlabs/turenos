@@ -1,6 +1,7 @@
 import { Cause, Context, Effect, Layer, Queue, Stream } from "effect"
 import { Headers } from "effect/unstable/http"
 import { LLMError, TransportReason } from "../../schema"
+import { redactUrl } from "../executor"
 import * as HttpTransport from "./http"
 import type { Transport } from "./index"
 
@@ -30,12 +31,19 @@ const transportError = (
   method: string,
   message: string,
   input: { readonly url?: string; readonly kind?: string } = {},
-) =>
-  new LLMError({
+) => {
+  // Runtime error text quotes the socket URL, credentials included ("WebSocket connection to '<url>' failed").
+  const url = input.url === undefined ? undefined : redactUrl(input.url)
+  return new LLMError({
     module: "WebSocketExecutor",
     method,
-    reason: new TransportReason({ message, url: input.url, kind: input.kind }),
+    reason: new TransportReason({
+      message: input.url === undefined || url === undefined ? message : message.replaceAll(input.url, url),
+      url,
+      kind: input.kind,
+    }),
   })
+}
 
 const eventMessage = (event: Event) => {
   if ("message" in event && typeof event.message === "string") return event.message
