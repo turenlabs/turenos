@@ -44,6 +44,13 @@ If the buffer fills, buffered messages drain before the stream fails with a `Tra
 The transport closes an open socket instead of silently dropping excess messages.
 See `packages/llm/src/route/transport/websocket.ts` and the burst regression in `packages/llm/test/provider/openai-responses.test.ts`.
 
+## Quota and rate-limit failures
+
+HTTP 429 responses with generic "quota exceeded" or "quota exhausted" wording remain retryable rate-limit errors.
+Explicit hard-quota markers, including `insufficient_quota` and billing hard limits, produce terminal `QuotaExceeded` errors, including on HTTP 429.
+For other statuses, generic quota-exceeded or quota-exhausted wording also identifies a terminal quota error after authentication checks.
+See `packages/llm/src/route/executor.ts` and the retry and hard-quota regressions in `packages/llm/test/executor.test.ts`.
+
 ## OpenAI Responses refusals
 
 The OpenAI Responses parser streams `response.refusal.delta` events as answer text.
