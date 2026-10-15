@@ -1,4 +1,5 @@
 import { afterEach, expect, test } from "bun:test"
+import { waitForFrame } from "./dashboard-fixture"
 import { cleanup, dashboard } from "./support"
 
 afterEach(async () => {
@@ -76,6 +77,18 @@ test("/ filters the list, and Esc clears the filter before leaving", async () =>
   frame = await app.screen("GitHub")
   expect(frame).toContain("Settings › Extensions")
   expect(frame).not.toContain("Filter:")
+  app.view.mockInput.pressKey("ESCAPE")
+  await app.screen("Usage and limits")
+})
+
+test("Esc in filter mode with nothing typed leaves the filter and keeps Extensions open", async () => {
+  const app = await fromSettings({ "GET /extension": list })
+  await app.screen("Plain Skill")
+  app.view.mockInput.pressKey("/")
+  expect(await app.screen("Filter:")).toContain("Settings › Extensions")
+  app.view.mockInput.pressKey("ESCAPE")
+  const frame = await waitForFrame(app.view, (text) => text.includes("Plain Skill") && !text.includes("Filter:"))
+  expect(frame).toContain("Settings › Extensions")
   app.view.mockInput.pressKey("ESCAPE")
   await app.screen("Usage and limits")
 })

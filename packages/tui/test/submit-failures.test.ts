@@ -1,7 +1,9 @@
 import { expect, test } from "bun:test"
+import { RGBA, TextRenderable } from "@opentui/core"
 import { promptPayload } from "../src/prompt-files"
 import { connect } from "../src/server"
-import { cleanup, dashboard, session, turen, type Route } from "./support"
+import { color } from "../src/theme"
+import { cleanup, dashboard, descendants, session, turen, type Route } from "./support"
 
 const invalid = (message: string) => () => Response.json({ _tag: "InvalidRequestError", message }, { status: 400 })
 const agents = (_: Request, url: URL) => ({
@@ -190,6 +192,23 @@ test("a cut at 32,000 characters never leaves half of a surrogate pair", async (
   const text = view.renderer.currentFocusedEditor!.plainText
   expect(text.length).toBe(31999)
   expect(text.isWellFormed()).toBe(true)
+})
+
+test("the next edit after an oversized paste brings back the reply editor's hint in the muted colour", async () => {
+  const { view, screen } = await dashboard({})
+  view.mockInput.pressKey("f")
+  await screen("Enter send · Esc shortcuts")
+  const notice = (text: string) =>
+    descendants(view.renderer.root).find(
+      (node): node is TextRenderable => node instanceof TextRenderable && node.plainText.includes(text),
+    )!
+  await view.mockInput.pasteBracketedText("x".repeat(33000))
+  await screen("Paste a shorter message")
+  expect(notice("limited to 32,000").fg).toEqual(RGBA.fromHex(color.error))
+  await view.mockInput.typeText("y")
+  const frame = await screen("Enter send · Esc shortcuts")
+  expect(frame).not.toContain("limited to 32,000")
+  expect(notice("Enter send").fg).toEqual(RGBA.fromHex(color.muted))
 })
 
 test("a refused prompt after a created session keeps its ID and Ctrl+O visible", async () => {

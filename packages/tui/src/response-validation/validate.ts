@@ -1,4 +1,4 @@
-import { agents, commands, files, terminals } from "./catalog"
+import { agents, commands, files, terminalCreated, terminals } from "./catalog"
 import { automations } from "./automation"
 import { memories, savedPermissions } from "./memory"
 import { invalid, location } from "./primitives"
@@ -16,12 +16,13 @@ export function validateResponse(address: URL, init: RequestInit | undefined, va
   if (route[0] === "session") return sessionRoute(route, init, value)
   if (route[0] === "team") return team(route, init, value)
   if (route[0] === "pty" && route.length === 1 && get) terminals(address, value)
+  else if (route[0] === "pty" && route.length === 1 && init?.method === "POST") terminalCreated(value)
   else if (route[0] === "location") location(value)
   else if (route[0] === "agent") agents(address, value)
   else if (route[0] === "loop") automations(route, init, value)
-  else if (route[0] === "memory" && get) memories(route, value)
+  else if (route[0] === "memory") memories(route, init, value)
   else if (route[0] === "permission" && route[1] === "saved" && get) savedPermissions(value)
-  else if (route[0] === "fs") files(value)
+  else if (route[0] === "fs") files(route, value)
   return undefined
 }
 

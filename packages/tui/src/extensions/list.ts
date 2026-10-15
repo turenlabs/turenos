@@ -37,7 +37,7 @@ export function openExtensions(ctx: ExtensionsContext, back?: () => void, select
   if (!panel) return
   const view: View = { ctx, panel, back, all: [], items: [], select, filter: "", typing: false, note, busy: false }
   // Esc clears a filter first by reopening the list without it; the next Esc goes back.
-  panel.dialog.back = () => (view.filter ? openExtensions(ctx, back, chosen(view)?.id) : back?.())
+  panel.dialog.back = () => (view.typing || view.filter ? openExtensions(ctx, back, chosen(view)?.id) : back?.())
   panel.list.on("selectionChanged", () => describe(view))
   panel.dialog.key = (key) => {
     if (view.typing) return typeFilter(view, key)

@@ -1214,7 +1214,7 @@ const layer = Layer.effect(
       // shrink it to what the window still holds. A no-op for every healthy request.
       // Clamp against the pinned view plus appended runtime overhead. Measuring raw history
       // would re-count freed bytes and shrink the allowance for no reason.
-      const wireRequest = SessionCompaction.clampOutput({ entries: measured, model, request })
+      let wireRequest = SessionCompaction.clampOutput({ entries: measured, model, request })
       yield* SessionContextRequest.save(db, session.id, {
         baselineSeq: system.baselineSeq,
         identity,
@@ -1634,6 +1634,7 @@ const layer = Layer.effect(
       // Text and tool input close this window because replay could duplicate user-visible output
       // or a call that may already be executing.
       let providerRetryAttempt = 0
+      let rejectedOAuth = resolvedModel.oauthExpires
       const providerStream = Effect.gen(function* () {
         while (true) {
           retryableProviderFailure = undefined
@@ -1642,6 +1643,26 @@ const layer = Layer.effect(
             return yield* Effect.failCause(outcome.cause)
           const failure =
             outcome._tag === "Failure" ? Option.getOrUndefined(Cause.findErrorOption(outcome.cause)) : undefined
+          // OpenAI can revoke a ChatGPT sign-in token before its stored expiry. Its 401 arrives before
+          // any response body, so nothing of this attempt was published: refresh that token once and
+          // send the same request with it. A second 401, or a failed refresh, fails as before.
+          if (
+            rejectedOAuth !== undefined &&
+            failure instanceof LLMError &&
+            failure.reason._tag === "Authentication" &&
+            failure.reason.http?.response?.status === 401 &&
+            publisher.isProviderRetrySafe()
+          ) {
+            const refreshed = yield* models.resolve(session, agent.info?.request, { refreshOAuth: rejectedOAuth }).pipe(
+              Effect.tapError(() => Effect.logWarning("Refreshing a rejected ChatGPT sign-in failed")),
+              Effect.option,
+            )
+            rejectedOAuth = undefined
+            if (Option.isSome(refreshed)) {
+              wireRequest = LLM.updateRequest(wireRequest, { model: refreshed.value.model })
+              continue
+            }
+          }
           const candidate: SessionRunnerRetry.Failure | undefined =
             outcome._tag === "Failure" ? (failure instanceof LLMError ? failure : undefined) : retryableProviderFailure
           const decision =

@@ -196,6 +196,21 @@ test("quitting reports the unsent drafts it discards so the closing line can say
   expect(discarded).toEqual([1])
 })
 
+test("quitting from the server picker with one unsent draft says drafts in the singular", async () => {
+  const { view, screen, quits } = await setup()
+  await screen("alpha says hello")
+  view.mockInput.pressKey("f")
+  await view.mockInput.typeText("unsent reply")
+  view.mockInput.pressKey("ESCAPE")
+  await screen("Draft kept")
+  view.mockInput.pressKey("s")
+  await screen("THIS COMPUTER")
+  view.mockInput.pressKey("q")
+  const frame = await screen("1 unsent draft will be lost")
+  expect(frame).not.toContain("1 unsent drafts")
+  expect(quits()).toBe(0)
+})
+
 test("a server opened by the URL of a discovered one is that server's row, listed once and marked current", async () => {
   const { view, screen } = await setup({
     initial: (servers, _, alpha) => {
