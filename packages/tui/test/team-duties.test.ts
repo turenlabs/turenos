@@ -123,3 +123,20 @@ test("n creates a duty from the automation form with the teammate preset", async
   expect(w.sent("POST", "/api/loop")[0]!.body.factoryRoomID).toBeUndefined()
   await screen("Duties")
 })
+
+test("n on a teammate listed with no directory starts the duty in the default folder", async () => {
+  const w = world({
+    "POST /api/loop": () => ({ ...loop, id: "loop_3", name: "Triage" }),
+  })
+  w.state.teammates[0] = { ...w.state.teammates[0]!, directory: "relative/dir" }
+  const { view, screen } = await duties(w)
+  await screen("Nightly check")
+  view.mockInput.pressKey("n")
+  expect(await screen("New duty")).toContain("/srv/main")
+  await view.mockInput.typeText("Triage")
+  view.mockInput.pressKey("TAB")
+  await view.mockInput.typeText("triage the queue")
+  view.mockInput.pressKey("s", { ctrl: true })
+  await until(() => w.sent("POST", "/api/loop").length === 1)
+  expect(w.sent("POST", "/api/loop")[0]!.body).toMatchObject({ location: { directory: "/srv/main" } })
+})
