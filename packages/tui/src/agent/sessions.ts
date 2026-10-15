@@ -30,19 +30,18 @@ export async function sessions(run: Run) {
     activeIDs(run.connection),
   ])
   // Only a running session can be waiting for input, so only those are asked.
+  // A cut active list proves nothing about the sessions missing from it, so each of those is asked on its own.
   // The others are asked how their latest turn ended, so a failed or stopped turn does not read as idle.
   const states = new Map(
-    await inBatches(
-      found,
-      8,
-      async (session) =>
-        [
-          session.id,
-          running.has(session.id)
-            ? stateOf(true, await pendingFor(run.connection, session.id))
-            : await endedState(run.connection, session.id),
-        ] as const,
-    ),
+    await inBatches(found, 8, async (session) => {
+      const active = running.has(session.id) || (running.omitted > 0 && (await run.connection.running(session.id)))
+      return [
+        session.id,
+        active
+          ? stateOf(true, await pendingFor(run.connection, session.id))
+          : await endedState(run.connection, session.id),
+      ] as const
+    }),
   )
   const list = found.map(
     (session): Summary => ({
