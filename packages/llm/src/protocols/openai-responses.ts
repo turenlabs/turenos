@@ -259,6 +259,7 @@ const OpenAIResponsesEvent = Schema.Struct({
   item_id: Schema.optional(Schema.String),
   summary_index: Schema.optional(Schema.Number),
   arguments: Schema.optional(Schema.String),
+  refusal: Schema.optional(Schema.String),
   item: Schema.optional(OpenAIResponsesStreamItem),
   response: Schema.optional(
     Schema.StructWithRest(
@@ -283,6 +284,7 @@ interface ParserState {
   readonly tools: ToolStream.State<string>
   readonly completedTools: ReadonlySet<string>
   readonly hasFunctionCall: boolean
+  readonly refused: boolean
   readonly lifecycle: Lifecycle.State
   readonly reasoningItems: Readonly<Record<string, ReasoningStreamItem>>
   readonly store: boolean | undefined
@@ -659,9 +661,10 @@ const mapUsage = (usage: OpenAIResponsesUsage | null | undefined) => {
   })
 }
 
-const mapFinishReason = (event: OpenAIResponsesEvent, hasFunctionCall: boolean): FinishReason => {
+const mapFinishReason = (event: OpenAIResponsesEvent, hasFunctionCall: boolean, refused: boolean): FinishReason => {
   const reason = event.response?.incomplete_details?.reason
-  if (reason === undefined || reason === null) return hasFunctionCall ? "tool-calls" : "stop"
+  if (reason === undefined || reason === null)
+    return hasFunctionCall ? "tool-calls" : refused ? "content-filter" : "stop"
   if (reason === "max_output_tokens") return "length"
   if (reason === "content_filter") return "content-filter"
   return hasFunctionCall ? "tool-calls" : "unknown"
@@ -766,6 +769,31 @@ const onOutputTextDelta = (state: ParserState, event: OpenAIResponsesEvent): Ste
   const events: LLMEvent[] = []
   return [
     { ...state, lifecycle: Lifecycle.textDelta(state.lifecycle, events, event.item_id ?? "text-0", event.delta) },
+    events,
+  ]
+}
+
+// A refusal is the model's answer, so it streams as text and marks the turn as a content-filter finish. The
+// `done` event repeats the full text; it only emits when no delta already carried it.
+const onRefusalDelta = (state: ParserState, event: OpenAIResponsesEvent): StepResult => {
+  if (!event.delta) return [{ ...state, refused: true }, NO_EVENTS]
+  const events: LLMEvent[] = []
+  return [
+    {
+      ...state,
+      refused: true,
+      lifecycle: Lifecycle.textDelta(state.lifecycle, events, event.item_id ?? "text-0", event.delta),
+    },
+    events,
+  ]
+}
+
+const onRefusalDone = (state: ParserState, event: OpenAIResponsesEvent): StepResult => {
+  const id = event.item_id ?? "text-0"
+  if (!event.refusal || state.lifecycle.text.has(id)) return [{ ...state, refused: true }, NO_EVENTS]
+  const events: LLMEvent[] = []
+  return [
+    { ...state, refused: true, lifecycle: Lifecycle.textDelta(state.lifecycle, events, id, event.refusal) },
     events,
   ]
 }
@@ -1077,7 +1105,7 @@ const onOutputItemDone = Effect.fn("OpenAIResponses.onOutputItemDone")(function*
 const onResponseFinish = (state: ParserState, event: OpenAIResponsesEvent): StepResult => {
   const events: LLMEvent[] = []
   const lifecycle = Lifecycle.finish(state.lifecycle, events, {
-    reason: mapFinishReason(event, state.hasFunctionCall),
+    reason: mapFinishReason(event, state.hasFunctionCall, state.refused),
     usage: mapUsage(event.response?.usage),
     providerMetadata:
       event.response?.id || event.response?.service_tier
@@ -1164,6 +1192,8 @@ const onError = (state: ParserState, event: OpenAIResponsesEvent): StepResult =>
 
 const step = (state: ParserState, event: OpenAIResponsesEvent) => {
   if (event.type === "response.output_text.delta") return Effect.succeed(onOutputTextDelta(state, event))
+  if (event.type === "response.refusal.delta") return Effect.succeed(onRefusalDelta(state, event))
+  if (event.type === "response.refusal.done") return Effect.succeed(onRefusalDone(state, event))
   if (
     event.type === "response.reasoning_text.delta" ||
     event.type === "response.reasoning_summary.delta" ||
@@ -1209,6 +1239,7 @@ export const protocol = Protocol.make({
     event: Protocol.jsonEvent(OpenAIResponsesEvent),
     initial: (request) => ({
       hasFunctionCall: false,
+      refused: false,
       tools: ToolStream.empty<string>(),
       completedTools: new Set<string>(),
       lifecycle: Lifecycle.initial(),
