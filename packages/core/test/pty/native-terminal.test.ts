@@ -1,13 +1,13 @@
 import { expect, test } from "bun:test"
 import { spawn } from "../../src/pty/pty.bun"
 
-async function bounded<T>(promise: Promise<T>) {
+async function bounded<T>(promise: Promise<T>, detail = () => "Native terminal did not complete") {
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
     return await Promise.race([
       promise,
       new Promise<never>((_resolve, reject) => {
-        timer = setTimeout(() => reject(new Error("Native terminal did not complete within 5 seconds")), 5_000)
+        timer = setTimeout(() => reject(new Error(`${detail()} within 5 seconds`)), 5_000)
       }),
     ])
   } finally {
@@ -20,7 +20,8 @@ test("native terminal handles input, UTF-8 output, resize, and process exit", as
     process.execPath,
     [
       "-e",
-      'console.log("ready"); process.stdin.on("data", () => { console.log("received:\\u00e9"); process.exit(0) })',
+      // Bun initializes terminal stdin when the listener is installed; only then is input safe to send.
+      'process.stdin.on("data", () => { console.log("received:\\u00e9"); process.exit(0) }); console.log("ready")',
     ],
     { name: "xterm-256color" },
   )
@@ -40,11 +41,11 @@ test("native terminal handles input, UTF-8 output, resize, and process exit", as
   })
   const exited = new Promise<number>((resolve) => pty.onExit((event) => resolve(event.exitCode)))
   try {
-    await bounded(started)
+    await bounded(started, () => `Native terminal readiness: ${JSON.stringify(output)}`)
     pty.resize(100, 30)
     pty.write("input\r\n")
-    await bounded(completed)
-    expect(await bounded(exited)).toBe(0)
+    await bounded(completed, () => `Native terminal input/UTF-8 after resize: ${JSON.stringify(output)}`)
+    expect(await bounded(exited, () => `Native terminal exit: ${JSON.stringify(output)}`)).toBe(0)
   } finally {
     data.dispose()
     pty.kill()
