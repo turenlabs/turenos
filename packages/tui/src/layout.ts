@@ -25,19 +25,16 @@ export function createLayout(renderer: CliRenderer, state: DashboardState) {
   const body = new BoxRenderable(renderer, { flexDirection: "row", flexGrow: 1, minHeight: 1, gap: 2 })
   root.add(body)
   const sidebar = createSidebar(renderer, tabButtons)
-  const main = createMain(renderer, body, () => state.reducedMotion)
+  const main = createMain(renderer, body, () => state.reducedMotion || !!state.modal?.inline)
   body.add(sidebar.sidebar)
   const footer = createFooter(renderer, root)
   const size = createSizeNotice(renderer, root)
   const parts: LayoutParts = { root, body, tabButtons, ...topbar, ...sidebar, ...main, ...footer, ...size }
   watchPaneFocus(renderer, state, parts)
   renderer.setCursorPosition(0, 0, false)
-  const armed = { quit: false }
   return exposedLayout(parts, {
-    // A resize that does not know about the quit (a dialog opening) keeps the last one it was told.
-    resize: (quitArmed = armed.quit) => {
-      armed.quit = quitArmed
-      resizeLayout(renderer, state, parts, quitArmed)
+    resize: () => {
+      resizeLayout(renderer, state, parts)
       fitDrawer(renderer, state, parts)
     },
     focus: () => focusLayout(renderer, state, parts),
@@ -47,7 +44,7 @@ export function createLayout(renderer: CliRenderer, state: DashboardState) {
 export type DashboardLayout = ReturnType<typeof createLayout>
 
 // The parts the dashboard may use; `body`, the footer row, shortcuts and the size text stay internal.
-function exposedLayout(parts: LayoutParts, actions: { resize: (quitArmed?: boolean) => void; focus: () => void }) {
+function exposedLayout(parts: LayoutParts, actions: { resize: () => void; focus: () => void }) {
   return {
     root: parts.root,
     main: parts.main,

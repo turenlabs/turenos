@@ -4,14 +4,16 @@ import { handleOf, replyTarget } from "../team/format"
 import type { Answer } from "../team/types"
 import { clean, emit, indented, type Run } from "./context"
 import { whole, takes } from "./options"
-import { roomState } from "./team-room"
+import { readPage } from "./team-tail"
 import { activeTask, runDetail, runLine, taskText } from "./team-text"
 
 export async function show(run: Run) {
   const names = takes("team show", run.positionals, [], ["room"])
   const limit = whole("limit", run.values.limit, 30, 1, 100)
-  const state = await roomState(run, names[0], limit)
+  const page = await readPage(run, names[0], limit)
+  const state = page.state
   const runs = state.factoryRuns ?? []
+  const after = run.values.after
   return emit(
     run,
     {
@@ -22,6 +24,7 @@ export async function show(run: Run) {
       ...(state.room.factory ? { factory: state.room.factory } : {}),
       factoryRuns: runs,
       truncated: state.hasMore,
+      ...(page.timedOut === undefined ? {} : { status: "timeout" }),
     },
     [
       ...header(state),
@@ -30,11 +33,22 @@ export async function show(run: Run) {
       ...(state.teammates.length ? state.teammates.map(teammateLine) : ["  (none)"]),
       "",
       "messages:",
-      ...(state.hasMore ? [`[earlier messages are not shown${limit < 100 ? "; raise --limit" : ""}]`] : []),
+      ...(state.hasMore && after === undefined
+        ? [`[earlier messages are not shown${limit < 100 ? "; raise --limit" : ""}]`]
+        : []),
       ...(state.messages.length ? state.messages.map((message) => messageText(state, message)) : ["(no messages)"]),
+      ...(state.hasMore && after !== undefined
+        ? [`[more messages follow; continue with --after ${state.messages.at(-1)?.seq}]`]
+        : []),
+      ...(page.timedOut === undefined
+        ? []
+        : [
+            `timeout: no message after seq ${after} within ${page.timedOut}s; keep waiting with: turen-tui team show ${state.room.id} --after ${after} --wait${run.flags}`,
+          ]),
       ...activeTasks(state, run.flags),
       ...factory(state, run.flags),
     ].join("\n"),
+    page.timedOut === undefined ? 0 : 4,
   )
 }
 

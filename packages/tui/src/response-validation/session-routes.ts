@@ -35,6 +35,10 @@ export function sessionRoute(route: string[], init: RequestInit | undefined, val
   if (route[2] === "room") return roomRoute(route, init, response)
   if (route[2] === "shell") return shellRoute(init, response)
   if (route[2] === "prompt" || route[2] === "command") return admissionRoute(route[2], sessionID, init, response)
+  if (route[2] === "replay") {
+    array(response.data, 500)
+    cursor(response.cursor)
+  }
 }
 
 /** Key under which an oversized active map carries how many entries were dropped; no session ID can collide with it. */
