@@ -91,8 +91,8 @@ test("native terminal drains the final output of a busy child", async () => {
   )
   const exited = new Promise<number>((resolve) => pty.onExit((event) => resolve(event.exitCode)))
   try {
-    expect(await bounded(exited)).toBe(0)
-    await bounded(drained)
+    expect(await bounded(exited, () => `Native busy-child exit after ${output.length} output characters`)).toBe(0)
+    await bounded(drained, () => `Native busy-child output drain after exit: ${output.length} characters`)
     expect(output).toContain("output-complete")
     if (process.platform !== "win32") expect(output.split("X").length - 1).toBe(131072)
   } finally {
