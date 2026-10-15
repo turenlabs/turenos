@@ -687,6 +687,19 @@ const layer = Layer.effect(
             const lane = plan.payload.lanes.find((candidate) => candidate.key === decoded.lane)
             if (!lane)
               return yield* new Contract.InvalidStateError({ message: `Unknown lane: ${decoded.lane}` })
+            // A lane dropped by a plan and re-added later starts a new generation: only
+            // claims and releases after the plan that (re)introduced it count.
+            const plans = yield* primary
+              .select({ seq: SwarmRoomEntryTable.seq, payload: SwarmRoomEntryTable.payload })
+              .from(SwarmRoomEntryTable)
+              .where(and(eq(SwarmRoomEntryTable.room_id, room.id), eq(SwarmRoomEntryTable.kind, "plan")))
+              .orderBy(desc(SwarmRoomEntryTable.seq))
+              .all()
+              .pipe(Effect.orDie)
+            const dropped = plans.findIndex(
+              (row) => !(row.payload as { lanes?: { key: string }[] } | null)?.lanes?.some((item) => item.key === decoded.lane),
+            )
+            const introducedSeq = plans[(dropped === -1 ? plans.length : dropped) - 1]?.seq ?? 0
             const latest = yield* primary
               .select()
               .from(SwarmRoomEntryTable)
@@ -694,6 +707,7 @@ const layer = Layer.effect(
                 and(
                   eq(SwarmRoomEntryTable.room_id, room.id),
                   inArray(SwarmRoomEntryTable.kind, ["claim", "release"]),
+                  gt(SwarmRoomEntryTable.seq, introducedSeq),
                 ),
               )
               .orderBy(desc(SwarmRoomEntryTable.seq))
@@ -803,8 +817,8 @@ const layer = Layer.effect(
               laneMap.delete(key)
               claimOwner.delete(key)
             }
+          laneOrder.splice(0, laneOrder.length, ...keys)
           for (const lane of decoded.lanes) {
-            if (!laneMap.has(lane.key)) laneOrder.push(lane.key)
             const existing = laneMap.get(lane.key)
             laneMap.set(lane.key, {
               key: lane.key,
