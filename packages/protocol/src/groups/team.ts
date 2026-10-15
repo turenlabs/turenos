@@ -3,9 +3,9 @@ export * as TeamGroup from "./team"
 import { Schema } from "effect"
 import { Team } from "@turenlabs/schema/team"
 import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema, OpenApi } from "effect/unstable/httpapi"
-import { ConflictError, InvalidRequestError } from "../errors"
+import { ConflictError, InvalidRequestError, TeamNotFoundError } from "../errors"
 
-const errors = [InvalidRequestError, ConflictError] as const
+const errors = [InvalidRequestError, ConflictError, TeamNotFoundError] as const
 
 export const Group = HttpApiGroup.make("server.team")
   .add(
