@@ -80,6 +80,7 @@ const sampler = setInterval(() => {
 }, 5)
 const first = sample("warmup", 0)
 for (let round = 1; round <= rounds; round++) {
+  const roundStarted = performance.now()
   await Promise.all(
     Array.from({ length: concurrency }, async () => {
       if (create) {
@@ -131,6 +132,7 @@ for (let round = 1; round <= rounds; round++) {
   sample("post-shutdown", round)
   await Promise.all(childCompletions)
   sample("cleanup", round)
+  await Bun.sleep(Math.max(0, 225 - (performance.now() - roundStarted)))
 }
 await Bun.sleep(100)
 clearInterval(sampler)
