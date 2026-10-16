@@ -178,6 +178,18 @@ The prior Quality receipt records three matched service pairs; their overlapping
 
 ## Actual Runtime Workload
 
+Isolation correction: measurements collected before the isolation repair are unsafe and unqualified.
+Both harnesses inherited home, temporary, and explicit Forge config routing.
+Earlier scratch-only claims are invalid. Preserve those artifacts only as historical provenance, not acceptance evidence.
+This includes earlier service pairs and the baseline `8a3a968e` / candidate `e3e18b99` runtime pair.
+All matched pairs require fresh execution after independent isolation review.
+Both harnesses now clear inherited `FORGE_*`, `OTEL_*`, and `PLUGIN_META` before runtime imports.
+They set scratch home, temporary, XDG, database, and managed-config paths.
+Copy `script/team-output-isolation.ts` with either harness and record its hash.
+The runtime regression supplies invalid host config sentinels and checks that their files remain unchanged.
+With `NODE_ENV=test`, the managed-config override also excludes native macOS managed preferences.
+Normal production managed-preference behavior remains unchanged.
+
 The provider workload uses the loopback synthetic provider from `test/team/runtime.test.ts`.
 It executes the actual HTTP provider transport, Session runner, bash tool, Team dispatch, and factory plan/work/check phases.
 Each round runs one factory and cancels a second factory during its active provider request.
@@ -211,6 +223,8 @@ This bounded synthetic-provider workload does not explain the reported 16 GB inc
 
 Current local verification on Bun `1.4.2`: four workload/recovery tests passed with 28 assertions.
 The separate Team runtime suite passed 14 tests with 120 assertions.
-A combined invocation crashed inside Bun after the new workload test passed; the separate invocations completed successfully.
+A combined invocation crashed inside Bun with exit 139 after the new workload test passed.
+Independent Quality execution also observed standalone runtime exit 133 and a passing combined 18-test invocation.
+These intermittent failures remain unresolved; successful separate invocations do not erase them.
 Forge typechecking remains blocked by inherited donor dependency identities and TUI diagnostics.
 The final typecheck reported no diagnostic in the changed workload files. This is not a package typecheck pass.

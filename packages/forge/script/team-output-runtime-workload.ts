@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import fs from "node:fs/promises"
-import os from "node:os"
 import path from "node:path"
+import { isolateWorkload } from "./team-output-isolation"
 
 const rounds = Number(process.argv[2] ?? 3)
 const idleDurationMs = Number(process.argv[3] ?? 60_000)
@@ -17,16 +17,7 @@ if (!Number.isSafeInteger(toolBytes) || toolBytes < 32_768 || toolBytes > 262_14
 if (process.env.NODE_ENV !== "test") throw new Error("Use NODE_ENV=test with disposable state only")
 
 // Redirect state before importing any runtime service. Never use a developer vault key.
-const root = await fs.mkdtemp(path.join(os.tmpdir(), "team-output-runtime-"))
-await fs.chmod(root, 0o700)
-for (const kind of ["DATA", "CONFIG", "STATE", "CACHE"])
-  process.env[`XDG_${kind}_HOME`] = path.join(root, kind.toLowerCase())
-process.env.FORGE_DB = path.join(root, "runtime.sqlite")
-process.env.FORGE_DISABLE_MODELS_FETCH = "true"
-process.env.FORGE_MODELS_PATH = path.resolve("test/tool/fixtures/models-api.json")
-process.env.FORGE_TEST_KIMI = "0"
-delete process.env.FORGE_SECRET_VAULT_KEY
-delete process.env.FORGE_SECRET_VAULT_KEY_ID
+const root = await isolateWorkload("team-output-runtime-")
 
 const started = performance.now()
 const headProcess = Bun.spawn(["git", "rev-parse", "HEAD"], { stdout: "pipe", stderr: "ignore" })
@@ -35,6 +26,7 @@ assert.equal(await headProcess.exited, 0)
 const identity = {
   head,
   harnessSHA256: new Bun.CryptoHasher("sha256").update(await Bun.file(import.meta.path).bytes()).digest("hex"),
+  isolationSHA256: new Bun.CryptoHasher("sha256").update(await Bun.file(new URL("./team-output-isolation.ts", import.meta.url)).bytes()).digest("hex"),
   bun: Bun.version,
   pid: process.pid,
   ppid: process.ppid,

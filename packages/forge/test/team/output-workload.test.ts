@@ -1,10 +1,38 @@
 import { expect, test } from "bun:test"
+import fs from "node:fs/promises"
+import path from "node:path"
+import { tmpdir } from "../fixture/fixture"
+
+test("managed test override excludes native preferences", async () => {
+  const { ConfigManaged } = await import("../../src/config/managed")
+  expect(process.env.NODE_ENV).toBe("test")
+  expect(process.env.FORGE_TEST_MANAGED_CONFIG_DIR).toBeTruthy()
+  expect(await ConfigManaged.readManagedPreferences()).toBeUndefined()
+})
 
 test("actual runtime workload executes tools, reconciles retries, cancels providers, and tears down", async () => {
+  await using hostile = await tmpdir({})
+  const sentinel = "invalid host config sentinel"
+  for (const directory of ["home/.forge", "config", "managed"]) {
+    await fs.mkdir(path.join(hostile.path, directory), { recursive: true })
+    await Bun.write(path.join(hostile.path, directory, "forge.json"), sentinel)
+  }
+  const before = (await fs.readdir(hostile.path, { recursive: true })).sort()
   const child = Bun.spawn(
     [process.execPath, "run", "script/team-output-runtime-workload.ts", "1", "1000", "250", "32768"],
     {
-      env: { ...process.env, NODE_ENV: "test", FORGE_TEST_KIMI: "0" },
+      env: {
+        ...process.env,
+        NODE_ENV: "test",
+        HOME: path.join(hostile.path, "home"),
+        FORGE_TEST_HOME: path.join(hostile.path, "home"),
+        FORGE_CONFIG: path.join(hostile.path, "config/forge.json"),
+        FORGE_CONFIG_DIR: path.join(hostile.path, "config"),
+        FORGE_CONFIG_CONTENT: sentinel,
+        FORGE_TEST_MANAGED_CONFIG_DIR: path.join(hostile.path, "managed"),
+        FORGE_PLUGIN_META_FILE: path.join(hostile.path, "plugin-meta.json"),
+        FORGE_MODELS_PATH: path.join(hostile.path, "config/forge.json"),
+      },
       stdout: "pipe",
       stderr: "pipe",
       timeout: 50_000,
@@ -16,6 +44,9 @@ test("actual runtime workload executes tools, reconciles retries, cancels provid
     child.exited,
   ])
   expect(exit, stderr).toBe(0)
+  expect((await fs.readdir(hostile.path, { recursive: true })).sort()).toEqual(before)
+  for (const directory of ["home/.forge", "config", "managed"])
+    expect(await Bun.file(path.join(hostile.path, directory, "forge.json")).text()).toBe(sentinel)
   const rows = stdout.split("\n").flatMap((line) => {
     if (!line.startsWith("{")) return []
     const value = JSON.parse(line)
