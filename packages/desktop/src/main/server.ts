@@ -12,6 +12,7 @@ import type { CredentialVault } from "./secret-key"
 import { randomUUID } from "node:crypto"
 import { parseProxyCommand, parseProxyReply } from "./security-proxy-bridge"
 import type { SecurityProxy } from "@turenlabs/schema/security-proxy"
+import { checkHealth } from "./health"
 
 export type HealthCheck = { wait: Promise<void> }
 
@@ -348,32 +349,6 @@ export async function spawnLocalServer(
       },
     },
     health: { wait },
-  }
-}
-
-export async function checkHealth(url: string, password?: string | null): Promise<boolean> {
-  let healthUrl: URL
-  try {
-    healthUrl = new URL("/global/health", url)
-  } catch {
-    return false
-  }
-
-  const headers = new Headers()
-  if (password) {
-    const auth = Buffer.from(`forge:${password}`).toString("base64")
-    headers.set("authorization", `Basic ${auth}`)
-  }
-
-  try {
-    const res = await fetch(healthUrl, {
-      method: "GET",
-      headers,
-      signal: AbortSignal.timeout(3000),
-    })
-    return res.ok
-  } catch {
-    return false
   }
 }
 

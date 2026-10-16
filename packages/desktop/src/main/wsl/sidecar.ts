@@ -2,7 +2,7 @@ import { spawn } from "node:child_process"
 import { randomUUID } from "node:crypto"
 import { createServer } from "node:net"
 import { app } from "electron"
-import { checkHealth } from "../server"
+import { checkHealth } from "../health"
 import { type WslCommandLine, resolveWslForge, shellEscape, wslArgs } from "./runtime"
 import { pollWslHealth } from "./startup"
 import type { CredentialVault } from "../secret-key"
@@ -64,7 +64,7 @@ export async function spawnWslSidecar(
   })
   const url = `http://127.0.0.1:${port}`
   const startup = new AbortController()
-  const health = pollWslHealth(() => checkHealth(url, password), startup.signal)
+  const health = pollWslHealth((signal) => checkHealth(url, password, signal), startup.signal)
   const timeoutMs = opts.healthTimeoutMs ?? 30_000
   let timeout: ReturnType<typeof setTimeout>
   const timedOut = new Promise<never>(
