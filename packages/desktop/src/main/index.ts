@@ -14,7 +14,14 @@ import contextMenu from "electron-context-menu"
 import type { ServerReadyData } from "../preload/types"
 import { checkAppExists, resolveAppPath } from "./apps"
 import { CHANNEL } from "./constants"
-import { closeSecurityProxy, disconnectSecurityProxy, invokeSecurityProxy, registerIpcHandlers, sendDeepLinks, sendMenuCommand } from "./ipc"
+import {
+  closeSecurityProxy,
+  disconnectSecurityProxy,
+  invokeSecurityProxy,
+  registerIpcHandlers,
+  sendDeepLinks,
+  sendMenuCommand,
+} from "./ipc"
 import { forwardInitializationFailure } from "./initialization"
 import { exportDebugLogs, initCrashReporter, initLogging, startNetLog, write as writeLog } from "./logging"
 import { parseMarkdown } from "./markdown"
@@ -56,6 +63,7 @@ import { createShutdownCoordinator } from "./shutdown"
 import { createProfilerController, type ProfilerController } from "./profiler"
 import { withTeardownTimeout } from "./teardown-timeout"
 import { loadCredentialSecretKey } from "./secret-key"
+import { createSidecarSupervisor } from "./sidecar-supervisor"
 
 // Deliberately still "Forge" after the rename to TurenOS. Electron derives the
 // safeStorage keychain service name from `app.getName()` ("<name> Safe Storage"),
@@ -79,6 +87,8 @@ const jsCallStackFeature = "DocumentPolicyIncludeJSCallStacksInCrashReports"
 
 let logger: ReturnType<typeof initLogging>
 let server: SidecarListener | null = null
+let sidecarSupervisor: ReturnType<typeof createSidecarSupervisor> | undefined
+let sidecarsStopped = false
 let securityProxyOrigin: string | undefined
 let wslServers: WslServersController | undefined
 let sshServers: SshServersController | undefined
@@ -103,6 +113,8 @@ function emitDeepLinks(urls: string[]) {
 }
 
 async function killSidecar() {
+  sidecarsStopped = true
+  sidecarSupervisor?.stop()
   await boundTeardownStep("securityProxy", closeSecurityProxy)()
   // Every sidecar teardown path funnels through here - quit, relaunch, the
   // updater and the kill-sidecar IPC - so it is the one place an in-flight
@@ -484,55 +496,50 @@ const main = Effect.gen(function* () {
     logger.log("spawning sidecar", { url })
     // The sidecar has died cleanly in the field with main still alive (exit 0
     // seconds after ready), leaving every window pointed at a dead server with
-    // no path back short of relaunching the app. Supervise it: `killSidecar`
-    // nulls `server` before any deliberate stop, so an exit that still sees
-    // `server` set is unexpected and earns a bounded respawn on the same
+    // path back short of relaunching the app. Supervise it: `killSidecar`
+    // cancels supervision before any deliberate stop. Unexpected exits of
+    // an adopted listener earn a bounded respawn on the same
     // hostname/port/password — the renderer's connection info stays valid and
     // its event stream simply reconnects.
-    const SIDECAR_RESPAWN_LIMIT = 5
-    let sidecarRespawns = 0
-    const sidecarOptions = (): Parameters<typeof spawnLocalServer>[3] => ({
-      userDataPath: app.getPath("userData"),
-      credentialVault,
-      onStdout: (message) => writeLog("server", "stdout", { message }),
-      onStderr: (message) => writeLog("server", "stderr", { message }, "warn"),
-      onExit: (code) => handleSidecarExit(code),
-      securityProxyCommand: invokeSecurityProxy,
-    })
-    const handleSidecarExit = (code: number) => {
-      writeLog("utility", "sidecar exited", { code }, "warn")
-      if (!server) return
-      server = null
-      void boundTeardownStep("securityProxy", disconnectSecurityProxy)().catch(() => undefined)
-      if (sidecarRespawns >= SIDECAR_RESPAWN_LIMIT) {
+    const supervisor = createSidecarSupervisor({
+      spawn: (onExit) =>
+        spawnLocalServer(hostname, port, password, {
+          userDataPath: app.getPath("userData"),
+          credentialVault,
+          onStdout: (message) => writeLog("server", "stdout", { message }),
+          onStderr: (message) => writeLog("server", "stderr", { message }, "warn"),
+          onExit,
+          securityProxyCommand: invokeSecurityProxy,
+        }),
+      ready: ({ listener }) => {
+        server = listener
+      },
+      exited: (code) => {
+        writeLog("utility", "sidecar exited", { code }, "warn")
+        server = null
+        void boundTeardownStep("securityProxy", disconnectSecurityProxy)().catch(() => undefined)
+      },
+      exhausted: (code) => {
         writeLog("utility", "sidecar exited unexpectedly; respawn limit reached", { code }, "error")
-        return
-      }
-      const attempt = ++sidecarRespawns
-      writeLog("utility", "sidecar exited unexpectedly; respawning", { code, attempt }, "error")
-      setTimeout(() => {
-        void spawnLocalServer(hostname, port, password, sidecarOptions())
-          .then(({ listener: respawned }) => {
-            server = respawned
-            writeLog("utility", "sidecar respawned", { attempt })
-          })
-          .catch((error) => {
-            writeLog("utility", "sidecar respawn failed", { attempt, error: String(error) }, "error")
-          })
-      }, 1_000 * attempt)
-    }
+      },
+      respawning: (code, attempt) =>
+        writeLog("utility", "sidecar exited unexpectedly; respawning", { code, attempt }, "error"),
+      failed: (error, attempt) =>
+        writeLog("utility", "sidecar respawn failed", { attempt, error: String(error) }, "error"),
+    })
+    sidecarSupervisor = supervisor
+    if (sidecarsStopped) supervisor.stop()
     // `Effect.promise` converts a rejection into a defect, and the sidecar reports
     // startup failures over IPC rather than stderr — so a failed start produced a
     // dead backend with nothing in any log. Name the error before it propagates.
-    const { listener, health } = yield* Effect.tryPromise({
-      try: () => spawnLocalServer(hostname, port, password, sidecarOptions()),
+    const { health } = yield* Effect.tryPromise({
+      try: () => supervisor.start(),
       catch: (error) => {
         const detail = error instanceof Error ? (error.stack ?? error.message) : String(error)
         writeLog("utility", "sidecar failed to start", { error: detail }, "error")
         return error
       },
     }).pipe(Effect.orDie)
-    server = listener
     yield* Deferred.succeed(serverReady, {
       url,
       username: "forge",
