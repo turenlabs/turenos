@@ -1,5 +1,7 @@
 # Electron Process Attribution Fixture
 
+Status: prototype, as of 2026-10-16. Full Electron execution remains unverified.
+
 This diagnostic runs Electron main, a sandboxed renderer, and a synthetic Bun child.
 It bundles the current production `createSidecarSupervisor` without changing runtime source.
 It does not start the TurenOS backend, import the application, or open existing application data.
