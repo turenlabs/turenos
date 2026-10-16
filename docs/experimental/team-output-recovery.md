@@ -125,16 +125,21 @@ Run these commands from the candidate worktree's `packages/forge`:
 env FORGE_TEST_KIMI=0 bun test test/team/output-recovery.test.ts --timeout 60000
 env FORGE_TEST_KIMI=0 bun test test/team/runtime.test.ts --timeout 60000
 bun typecheck
-bun run script/team-output-service-workload.ts 3
+env NODE_ENV=test bun run script/team-output-service-workload.ts 3 93000 5000
 ```
 
-The service workload accepts one optional pass count from 2 through 20. The default is three.
+The service workload accepts pass count, idle duration in milliseconds, and sample interval in milliseconds.
+Defaults are three passes, 93,000 milliseconds idle, and 5,000 milliseconds between idle samples.
+Pass count must be 2 through 20. Idle duration must be 1,000 through 3,600,000 milliseconds.
+Sample interval must be at least 100 milliseconds and at most half the idle duration.
+Set `NODE_ENV=test` only for this disposable workload. It uses the test-only vault fallback in scratch state.
+Never use this setting with live app state or production credentials.
 It creates private scratch XDG directories and a file-backed database, then removes them on exit.
 It starts the actual production TeamRuntime, including its recovery timer and four-Session concurrency.
 Inputs are four Sessions with 128 assistant responses each and 16,384 synthetic tool-output bytes per response.
 One additional cancelled task checks publication isolation.
 Each churn pass adds one missed response per Session and observes the next real timer interval.
-Three additional 31-second idle observations precede service disposal and scratch cleanup.
+Configurable idle observations precede service disposal and scratch cleanup.
 The default run takes approximately 187 seconds, plus setup and recovery time.
 It uses natural GC only. It does not read the live app, credentials, process arguments, or production heaps.
 
@@ -166,3 +171,46 @@ Forge typechecking also failed under the existing dependency layout; changed fil
 The existing three SQL regressions still pass with 15 assertions.
 Owner for dependency-complete execution: `@quality`, coordinated by `@techlead` through normal CI or an existing complete environment.
 Do not install dependencies or treat the authored regressions as passing evidence.
+
+The preceding dependency limit records the earlier environment, not the current qualification state.
+On 2026-10-16, existing Quality dependency links enabled actual-service execution without installation.
+The prior Quality receipt records three matched service pairs; their overlapping RSS ranges do not prove a plateau.
+
+## Actual Runtime Workload
+
+The provider workload uses the loopback synthetic provider from `test/team/runtime.test.ts`.
+It executes the actual HTTP provider transport, Session runner, bash tool, Team dispatch, and factory plan/work/check phases.
+Each round runs one factory and cancels a second factory during its active provider request.
+Assertions check exact factory retries, tool output in the next provider request, successful tasks, cancellation, and provider disconnects.
+The test server drops captured request bodies after each round, before idle observations.
+The harness disposes instances, the HTTP handler, and the scoped provider server before scratch removal.
+No forced GC or test preload runs in the measured child.
+
+Run from `packages/forge`:
+
+```sh
+env NODE_ENV=test bun run script/team-output-runtime-workload.ts 3 300000 1000 65536
+env FORGE_TEST_KIMI=0 bun test test/team/output-workload.test.ts --timeout 60000
+```
+
+Arguments are rounds, idle duration, sample interval, and generated tool payload bytes.
+Bounds are 1 through 20 rounds, 1 through 3,600 seconds idle, and 32,768 through 262,144 payload bytes.
+The sample interval uses the same bounds as the service workload.
+Rounds are sequential. Each round expects five provider requests, one tool execution, and one provider cancellation.
+Tool truncation can reduce bytes passed to the next provider request. Generated payload bytes are not retained transcript bytes.
+The first round includes cold startup. Per-factory latency includes provider and tool execution, not just recovery CPU time.
+
+Collect stdout and stderr in a private directory with mode `0700`; use mode `0600` for files.
+Numeric NDJSON rows contain `harnessSHA256`; runtime logs can also appear on stdout.
+The summary reports counts, latency, durable bytes, sampled peak RSS, retained memory, idle samples, and endpoint RSS slope.
+Native allocation ownership is unavailable (`nativeBytes: null`). Periodic sampling can miss shorter peaks.
+For matched pairs, copy only this inspected script into each existing prepared baseline/candidate worktree.
+Run identical arguments serially. Record exact source heads and identical harness hashes.
+Do not copy candidate runtime sources into the baseline.
+This bounded synthetic-provider workload does not explain the reported 16 GB incident or prove a long-lived plateau.
+
+Current local verification on Bun `1.4.2`: four workload/recovery tests passed with 28 assertions.
+The separate Team runtime suite passed 14 tests with 120 assertions.
+A combined invocation crashed inside Bun after the new workload test passed; the separate invocations completed successfully.
+Forge typechecking remains blocked by inherited donor dependency identities and TUI diagnostics.
+The final typecheck reported no diagnostic in the changed workload files. This is not a package typecheck pass.

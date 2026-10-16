@@ -4,6 +4,13 @@ import path from "node:path"
 
 const passes = Number(process.argv[2] ?? 3)
 if (!Number.isSafeInteger(passes) || passes < 2 || passes > 20) throw new Error("Pass count must be 2..20")
+const idleDurationMs = Number(process.argv[3] ?? 93_000)
+const sampleIntervalMs = Number(process.argv[4] ?? 5_000)
+if (!Number.isSafeInteger(idleDurationMs) || idleDurationMs < 1_000 || idleDurationMs > 3_600_000)
+  throw new Error("Idle duration must be 1000..3600000 milliseconds")
+if (!Number.isSafeInteger(sampleIntervalMs) || sampleIntervalMs < 100 || sampleIntervalMs > idleDurationMs / 2)
+  throw new Error("Sample interval must be 100 milliseconds through half the idle duration")
+if (process.env.NODE_ENV !== "test") throw new Error("Use NODE_ENV=test with disposable state only")
 // Resolve all runtime imports only after redirecting every durable path to disposable state.
 const root = await fs.mkdtemp(path.join(os.tmpdir(), "team-output-service-"))
 await fs.chmod(root, 0o700)
@@ -40,6 +47,8 @@ try {
     toolBytes: 16384,
     concurrency: 4,
     passes,
+    idleDurationMs,
+    sampleIntervalMs,
   }
   const samples: { rss: number; heapUsed: number; external: number; phase: string; elapsedMs: number }[] = []
   const started = performance.now()
@@ -132,9 +141,11 @@ try {
       if (cancelled.length) return yield* Effect.die(new Error("Cancelled output was published"))
       sample(`churn-${pass}`, performance.now() - begin)
     }
-    for (let idle = 1; idle <= 3; idle++) {
-      yield* Effect.sleep("31 seconds")
-      sample(`idle-${idle}`)
+    const idleStarted = performance.now()
+    sample("idle-0")
+    while (performance.now() - idleStarted < idleDurationMs) {
+      yield* Effect.sleep(Math.min(sampleIntervalMs, idleDurationMs - (performance.now() - idleStarted)))
+      sample(`idle-${samples.filter((value) => value.phase.startsWith("idle-")).length}`)
     }
   }).pipe(Effect.provide(recoveryLayer(process.env.FORGE_DB, true)), Effect.scoped, Effect.runPromise)
   sample("services-disposed")
