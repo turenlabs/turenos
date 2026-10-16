@@ -34,42 +34,6 @@ const layer = Layer.effect(
     const owner = `${process.pid}:${crypto.randomUUID()}`
     const active = new Map<string, SessionV2.ID>()
 
-    const syncSessionOutput = (input: {
-      readonly sessionID: string
-      readonly assistantMessageID: string
-      readonly taskID: string
-      readonly finish: string
-      readonly recovery?: boolean
-    }) =>
-      Effect.gen(function* () {
-        if (input.finish !== "stop") return
-        const sessionID = SessionV2.ID.make(input.sessionID)
-        const assistantMessageID = SessionMessage.ID.make(input.assistantMessageID)
-        const message = yield* sessions.message({ sessionID, messageID: assistantMessageID })
-        if (
-          message?.type !== "assistant" ||
-          message.error ||
-          message.time.completed === undefined ||
-          message.finish !== "stop"
-        )
-          return
-        yield* team.publishSessionOutput({
-          sessionID,
-          taskID: input.taskID,
-          assistantMessageID,
-          text: teamSessionOutputText(message),
-          ...(input.recovery ? { recovery: true } : {}),
-        })
-      }).pipe(
-        Effect.catchCause((cause) =>
-          Effect.logError("Team Session output sync failed", {
-            sessionID: input.sessionID,
-            assistantMessageID: input.assistantMessageID,
-            cause: Cause.pretty(cause),
-          }),
-        ),
-      )
-
     const taskIDsForMessages = (sessionID: string, messages: ReadonlyArray<SessionMessage.Message>) =>
       Effect.forEach(
         new Set(
@@ -95,7 +59,7 @@ const layer = Layer.effect(
           const taskIDs = yield* taskIDsForMessages(event.data.sessionID, messages)
           const taskID = teamTaskIDForResponse(messages, event.data.assistantMessageID, taskIDs)
           if (!taskID) return
-          yield* syncSessionOutput({
+          yield* syncOutput({
             sessionID: event.data.sessionID,
             assistantMessageID: event.data.assistantMessageID,
             taskID,
@@ -111,55 +75,6 @@ const layer = Layer.effect(
     )
     yield* sessionOutputSync
 
-    const reconcileSessionOutputs = Effect.gen(function* () {
-      const pageSize = 100
-      for (let offset = 0; ; offset += pageSize) {
-        const sessionIDs = yield* team.taskSessions({ offset, limit: pageSize })
-        yield* Effect.forEach(
-          sessionIDs,
-          (id) =>
-            Effect.gen(function* () {
-              const sessionID = SessionV2.ID.make(id)
-              // Adopt legacy transcripts without loading their bodies into the recovery loop.
-              yield* sessions.messages({ sessionID, limit: 0 })
-              let after: number | undefined
-              while (true) {
-                const candidates = yield* team.sessionOutputCandidates({ sessionID: id, after, limit: pageSize })
-                yield* Effect.forEach(
-                  candidates,
-                  (candidate) =>
-                    Effect.gen(function* () {
-                      if (!candidate.taskID) return
-                      yield* syncSessionOutput({
-                        sessionID: id,
-                        assistantMessageID: candidate.id,
-                        taskID: candidate.taskID,
-                        finish: "stop",
-                        recovery: true,
-                      })
-                    }),
-                  { discard: true },
-                )
-                if (candidates.length < pageSize) break
-                after = candidates.at(-1)!.seq
-              }
-            }).pipe(
-              Effect.catchCause((cause) =>
-                Effect.logError("Team Session output reconciliation failed", {
-                  sessionID: id,
-                  cause: Cause.pretty(cause),
-                }),
-              ),
-            ),
-          { concurrency: 4, discard: true },
-        )
-        if (sessionIDs.length < pageSize) return
-      }
-    }).pipe(
-      Effect.catchCause((cause) =>
-        Effect.logError("Team Session output reconciliation failed", { cause: Cause.pretty(cause) }),
-      ),
-    )
     yield* Effect.gen(function* () {
       while (true) {
         yield* reconcileSessionOutputs
@@ -367,6 +282,94 @@ ${task.execution.prompt}${
     return Service.of({})
   }),
 )
+
+// The timer and service regressions run the same complete recovery pass.
+export const reconcileSessionOutputs = Effect.gen(function* () {
+  const team = yield* TeamWorkspace.Service
+  const sessions = yield* SessionV2.Service
+  const pageSize = 100
+  for (let offset = 0; ; offset += pageSize) {
+    const sessionIDs = yield* team.taskSessions({ offset, limit: pageSize })
+    yield* Effect.forEach(
+      sessionIDs,
+      (id) =>
+        Effect.gen(function* () {
+          const sessionID = SessionV2.ID.make(id)
+          // Adopt legacy transcripts without loading their bodies into the recovery loop.
+          yield* sessions.messages({ sessionID, limit: 0 })
+          let after: number | undefined
+          while (true) {
+            const candidates = yield* team.sessionOutputCandidates({ sessionID: id, after, limit: pageSize })
+            yield* Effect.forEach(
+              candidates,
+              (candidate) =>
+                candidate.taskID
+                  ? syncOutput({
+                      sessionID: id,
+                      assistantMessageID: candidate.id,
+                      taskID: candidate.taskID,
+                      finish: "stop",
+                      recovery: true,
+                    })
+                  : Effect.void,
+              { discard: true },
+            )
+            if (candidates.length < pageSize) break
+            after = candidates.at(-1)!.seq
+          }
+        }).pipe(
+          Effect.catchCause((cause) =>
+            Effect.logError("Team Session output reconciliation failed", { sessionID: id, cause: Cause.pretty(cause) }),
+          ),
+        ),
+      { concurrency: 4, discard: true },
+    )
+    if (sessionIDs.length < pageSize) return
+  }
+}).pipe(
+  Effect.catchCause((cause) =>
+    Effect.logError("Team Session output reconciliation failed", { cause: Cause.pretty(cause) }),
+  ),
+)
+
+function syncOutput(input: {
+  readonly sessionID: string
+  readonly assistantMessageID: string
+  readonly taskID: string
+  readonly finish: string
+  readonly recovery?: boolean
+}) {
+  return Effect.gen(function* () {
+    if (input.finish !== "stop") return
+    const team = yield* TeamWorkspace.Service
+    const sessions = yield* SessionV2.Service
+    const sessionID = SessionV2.ID.make(input.sessionID)
+    const assistantMessageID = SessionMessage.ID.make(input.assistantMessageID)
+    const message = yield* sessions.message({ sessionID, messageID: assistantMessageID })
+    if (
+      message?.type !== "assistant" ||
+      message.error ||
+      message.time.completed === undefined ||
+      message.finish !== "stop"
+    )
+      return
+    yield* team.publishSessionOutput({
+      sessionID,
+      taskID: input.taskID,
+      assistantMessageID,
+      text: teamSessionOutputText(message),
+      ...(input.recovery ? { recovery: true } : {}),
+    })
+  }).pipe(
+    Effect.catchCause((cause) =>
+      Effect.logError("Team Session output sync failed", {
+        sessionID: input.sessionID,
+        assistantMessageID: input.assistantMessageID,
+        cause: Cause.pretty(cause),
+      }),
+    ),
+  )
+}
 
 export function extractTeamTaskOutput(
   messages: ReadonlyArray<SessionMessage.Message>,
