@@ -185,7 +185,7 @@ This includes earlier service pairs and the baseline `8a3a968e` / candidate `e3e
 All matched pairs require fresh execution after independent isolation review.
 Both harnesses now clear inherited `FORGE_*`, `OTEL_*`, and `PLUGIN_META` before runtime imports.
 They set scratch home, temporary, XDG, database, and managed-config paths.
-Copy `script/team-output-isolation.ts` with either harness and record its hash.
+Copy `packages/forge/script/team-output-isolation.ts` with either harness and record its hash.
 The runtime regression supplies invalid host config sentinels and checks that their files remain unchanged.
 With `NODE_ENV=test`, the managed-config override also excludes native macOS managed preferences.
 Normal production managed-preference behavior remains unchanged.
