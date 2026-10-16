@@ -4,6 +4,7 @@ import { join } from "node:path"
 import type { SshServerConfig } from "../../preload/types"
 import type { CredentialVault } from "../secret-key"
 import { pollSshHealth } from "./startup"
+import { checkHealth } from "../health"
 import {
   REMOTE_ATTACH_PROBE_SCRIPT,
   classifyAttach,
@@ -112,9 +113,9 @@ export async function connectSshRemote(config: SshServerConfig, deps: SshConnect
     return ensureRemote(binary, deps.controlDir, target, deps)
   })
 
-  // Lazy: ../server pulls in Electron, which the persistent attach path never needs.
-  const { checkHealth } = await import("../server")
-  const { tunnel, url, stop } = await openTunnel(config, deps, state.port, (url) => checkHealth(url, state.password))
+  const { tunnel, url, stop } = await openTunnel(config, deps, state.port, (url, signal) =>
+    checkHealth(url, state.password, signal),
+  )
   return {
     listener: { stop, onExit: (cb) => tunnel.onExit(cb) },
     url,
@@ -129,12 +130,15 @@ async function attachPersistent(
   deps: SshConnectionDeps,
 ): Promise<SshConnection> {
   const authorization = `Basic ${Buffer.from(`${record.username}:${record.password}`).toString("base64")}`
-  const describe = (url: string) =>
-    fetch(new URL("/global/server", url), { headers: { authorization }, signal: AbortSignal.timeout(3000) })
+  const describe = (url: string, signal?: AbortSignal) =>
+    fetch(new URL("/global/server", url), {
+      headers: { authorization },
+      signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(3000)]) : AbortSignal.timeout(3000),
+    })
   // Any answer below 500 means the tunnel reaches the server. A rejection (a rotated password, or a
   // server without the descriptor route) will not change by retrying, so it is reported below at once.
-  const { tunnel, url, stop } = await openTunnel(config, deps, record.socketPath, (url) =>
-    describe(url).then(
+  const { tunnel, url, stop } = await openTunnel(config, deps, record.socketPath, (url, signal) =>
+    describe(url, signal).then(
       (response) => response.status < 500,
       () => false,
     ),
@@ -169,7 +173,7 @@ async function openTunnel(
   config: SshServerConfig,
   deps: SshConnectionDeps,
   remotePort: number | string,
-  healthy: (url: string) => Promise<boolean>,
+  healthy: (url: string, signal: AbortSignal) => Promise<boolean>,
 ) {
   const binary = deps.binary ?? sshBinary()
   const directory = await mkdtemp(join(deps.controlDir, "f-"))
@@ -222,7 +226,7 @@ async function openTunnel(
 
   const url = `http://127.0.0.1:${localPort}`
   const startup = new AbortController()
-  const health = pollSshHealth(() => healthy(url), startup.signal)
+  const health = pollSshHealth((signal) => healthy(url, signal), startup.signal)
   let timeout: ReturnType<typeof setTimeout>
   const timedOut = new Promise<never>((_, reject) => {
     timeout = setTimeout(() => reject(new Error("ssh tunnel health check timed out")), 20_000)

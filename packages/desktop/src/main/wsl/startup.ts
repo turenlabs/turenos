@@ -11,15 +11,16 @@ export function expectForgeVersion(installed: string | null, expected: string, d
 
 export const pendingRestartAfterWslInstall = (runtime: { available: boolean }) => !runtime.available
 
-export async function pollWslHealth(check: () => Promise<boolean>, signal: AbortSignal, interval = 100) {
+export async function pollWslHealth(check: (signal: AbortSignal) => Promise<boolean>, signal: AbortSignal, interval = 100) {
   while (!signal.aborted) {
-    if (await check()) return
+    if (await check(signal)) return
     await abortableDelay(interval, signal)
   }
 }
 
 function abortableDelay(duration: number, signal: AbortSignal) {
   return new Promise<void>((resolve) => {
+    if (signal.aborted) return resolve()
     const done = () => {
       clearTimeout(timeout)
       signal.removeEventListener("abort", done)

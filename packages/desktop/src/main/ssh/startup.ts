@@ -18,15 +18,16 @@ export function sshReconnectDelays() {
   return [1_000, 3_000, 10_000, 30_000, 60_000, 60_000]
 }
 
-export async function pollSshHealth(check: () => Promise<boolean>, signal: AbortSignal, interval = 100) {
+export async function pollSshHealth(check: (signal: AbortSignal) => Promise<boolean>, signal: AbortSignal, interval = 100) {
   while (!signal.aborted) {
-    if (await check()) return
+    if (await check(signal)) return
     await abortableDelay(interval, signal)
   }
 }
 
 function abortableDelay(duration: number, signal: AbortSignal) {
   return new Promise<void>((resolve) => {
+    if (signal.aborted) return resolve()
     const done = () => {
       clearTimeout(timeout)
       signal.removeEventListener("abort", done)
