@@ -496,9 +496,9 @@ const main = Effect.gen(function* () {
     logger.log("spawning sidecar", { url })
     // The sidecar has died cleanly in the field with main still alive (exit 0
     // seconds after ready), leaving every window pointed at a dead server with
-    // no path back short of relaunching the app. Supervise it: `killSidecar`
-    // nulls `server` before any deliberate stop, so an exit that still sees
-    // `server` set is unexpected and earns a bounded respawn on the same
+    // path back short of relaunching the app. Supervise it: `killSidecar`
+    // cancels supervision before any deliberate stop. Unexpected exits of
+    // an adopted listener earn a bounded respawn on the same
     // hostname/port/password — the renderer's connection info stays valid and
     // its event stream simply reconnects.
     const supervisor = createSidecarSupervisor({

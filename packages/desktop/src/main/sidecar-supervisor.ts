@@ -17,8 +17,9 @@ export function createSidecarSupervisor<T extends { listener: Listener }>(option
   const start = async (): Promise<T> => {
     if (stopped) throw new Error("Sidecar supervisor stopped")
     const owner = ++generation
+    let ready = false
     const result = await options.spawn((code) => {
-      if (stopped || owner !== generation) return
+      if (!ready || stopped || owner !== generation) return
       generation++
       options.exited(code)
       if (attempts >= 5) {
@@ -41,6 +42,7 @@ export function createSidecarSupervisor<T extends { listener: Listener }>(option
       await result.listener.stop()
       throw new Error("Sidecar startup superseded")
     }
+    ready = true
     options.ready(result)
     return result
   }

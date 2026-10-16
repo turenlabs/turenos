@@ -98,3 +98,24 @@ test("unexpected exits preserve the five-replacement limit", async () => {
   expect(f.failures).toHaveLength(0)
   f.supervisor.stop()
 })
+
+test("failed initial startup does not schedule a replacement", async () => {
+  let spawned = 0
+  const supervisor = createSidecarSupervisor({
+    spawn: async (exit) => {
+      spawned++
+      exit(1)
+      throw new Error("startup failed")
+    },
+    ready: () => {},
+    exited: () => {},
+    respawning: () => {},
+    exhausted: () => {},
+    failed: () => {},
+    delayMs: 1,
+  })
+  await expect(supervisor.start()).rejects.toThrow("startup failed")
+  await Bun.sleep(15)
+  expect(spawned).toBe(1)
+  supervisor.stop()
+})
