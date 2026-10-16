@@ -1,4 +1,9 @@
-# Team Output Recovery
+# Team output recovery benchmark
+
+Status: benchmark, as of 2026-10-16.
+
+This benchmark measures bounded Team output recovery with synthetic history.
+Its results do not establish full-runtime memory acceptance or explain the reported 16 GB incident.
 
 ## Scope
 
