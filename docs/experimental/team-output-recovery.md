@@ -125,7 +125,7 @@ Run these commands from the candidate worktree's `packages/forge`:
 env FORGE_TEST_KIMI=0 bun test test/team/output-recovery.test.ts --timeout 60000
 env FORGE_TEST_KIMI=0 bun test test/team/runtime.test.ts --timeout 60000
 bun typecheck
-env NODE_ENV=test bun run script/team-output-service-workload.ts 3 93000 5000
+/bin/sh script/team-output-launch.sh /absolute/path/to/bun service 3 93000 5000
 ```
 
 The service workload accepts pass count, idle duration in milliseconds, and sample interval in milliseconds.
@@ -153,10 +153,16 @@ It reports an endpoint idle RSS slope in bytes/second. Native allocation ownersh
 Phase sampling can miss intra-pass peaks. No retained-state plateau or calibrated service budget is claimed.
 
 For an actual baseline comparison, use baseline `8a3a968ec635d29ccb02fa5ac383f50b9d7b2171` in a separate isolated worktree.
-Apply only these two inspected harness files there, without changing baseline runtime sources:
+Apply the inspected diagnostic files and the managed-preference test guard before baseline execution:
 
 - `packages/forge/script/team-output-service-workload.ts`
 - `packages/forge/test/fixture/team-output-recovery.ts`
+- `packages/forge/script/team-output-isolation.ts`
+- `packages/forge/script/team-output-launch.sh`
+
+The baseline must have the identical `NODE_ENV=test` managed-preference override from `packages/forge/src/config/managed.ts`.
+Record that test-only overlay separately. Do not copy the candidate recovery algorithm.
+Require independent clearance of the baseline overlay and clean launcher before execution.
 
 Run the same command from each worktree's `packages/forge`, using complete existing dependencies.
 The fixture imports each worktree's own TeamRuntime. It does not select a modeled baseline algorithm.
@@ -183,10 +189,15 @@ Both harnesses inherited home, temporary, and explicit Forge config routing.
 Earlier scratch-only claims are invalid. Preserve those artifacts only as historical provenance, not acceptance evidence.
 This includes earlier service pairs and the baseline `8a3a968e` / candidate `e3e18b99` runtime pair.
 All matched pairs require fresh execution after independent isolation review.
-Both harnesses now clear inherited `FORGE_*`, `OTEL_*`, and `PLUGIN_META` before runtime imports.
+The earlier denylist-only helper was also unsafe because it retained credentials and startup controls.
+Direct inherited-environment workload commands are superseded and must not be reused.
+The clean launcher starts Bun with an explicit environment before runtime startup controls can run.
+Supply an inspected absolute Bun executable path, not a command found through inherited `PATH`.
+Both harnesses then remove all variables except `NODE_ENV` and the fixed executable search path before runtime imports.
 They set scratch home, temporary, XDG, database, and managed-config paths.
 Copy `packages/forge/script/team-output-isolation.ts` with either harness and record its hash.
-The runtime regression supplies invalid host config sentinels and checks that their files remain unchanged.
+The runtime regression supplies invalid host config, fake credential, startup, and shell sentinels.
+It checks that sentinel files remain unchanged. The actual tool child asserts that selected sentinel variables are absent.
 With `NODE_ENV=test`, the managed-config override also excludes native macOS managed preferences.
 Normal production managed-preference behavior remains unchanged.
 
@@ -201,8 +212,8 @@ No forced GC or test preload runs in the measured child.
 Run from `packages/forge`:
 
 ```sh
-env NODE_ENV=test bun run script/team-output-runtime-workload.ts 3 300000 1000 65536
-env FORGE_TEST_KIMI=0 bun test test/team/output-workload.test.ts --timeout 60000
+/bin/sh script/team-output-launch.sh /absolute/path/to/bun runtime 3 300000 1000 65536
+/usr/bin/env -i PATH=/usr/bin:/bin NODE_ENV=test /absolute/path/to/bun test test/team/output-workload.test.ts --timeout 60000
 ```
 
 Arguments are rounds, idle duration, sample interval, and generated tool payload bytes.
@@ -216,9 +227,10 @@ Collect stdout and stderr in a private directory with mode `0700`; use mode `060
 Numeric NDJSON rows contain `harnessSHA256`; runtime logs can also appear on stdout.
 The summary reports counts, latency, durable bytes, sampled peak RSS, retained memory, idle samples, and endpoint RSS slope.
 Native allocation ownership is unavailable (`nativeBytes: null`). Periodic sampling can miss shorter peaks.
-For matched pairs, copy only this inspected script into each existing prepared baseline/candidate worktree.
-Run identical arguments serially. Record exact source heads and identical harness hashes.
-Do not copy candidate runtime sources into the baseline.
+For matched pairs, copy this script, the isolation helper, and the clean launcher into the prepared baseline.
+Apply the identical managed-preference test guard, and record the fixture hash and each overlay separately.
+Run identical arguments serially. Record exact source heads and identical harness, helper, launcher, and fixture hashes.
+Do not copy candidate recovery algorithms into the baseline. Require independent clearance of the complete stopped overlay.
 This bounded synthetic-provider workload does not explain the reported 16 GB incident or prove a long-lived plateau.
 
 Current local verification on Bun `1.4.2`: four workload/recovery tests passed with 28 assertions.

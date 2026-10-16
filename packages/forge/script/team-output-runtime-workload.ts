@@ -20,7 +20,7 @@ if (process.env.NODE_ENV !== "test") throw new Error("Use NODE_ENV=test with dis
 const root = await isolateWorkload("team-output-runtime-")
 
 const started = performance.now()
-const headProcess = Bun.spawn(["git", "rev-parse", "HEAD"], { stdout: "pipe", stderr: "ignore" })
+const headProcess = Bun.spawn(["/usr/bin/git", "rev-parse", "HEAD"], { env: process.env, stdout: "pipe", stderr: "ignore" })
 const head = (await new Response(headProcess.stdout).text()).trim()
 assert.equal(await headProcess.exited, 0)
 const identity = {
@@ -147,7 +147,7 @@ try {
         const assignment = `Produce scratch output ${round}.`
         yield* llm.text(JSON.stringify({ assignments: [{ teammateID: member.id, prompt: assignment }] }))
         yield* llm.tool("bash", {
-          command: `bun -e 'process.stdout.write("workload-tool-${round}\\n" + "x".repeat(${toolBytes}))'`,
+          command: `${JSON.stringify(process.execPath)} -e 'for (const key of ["TUR_EN_SECRET_SENTINEL", "OPENAI_API_KEY", "AWS_SESSION_TOKEN", "BASH_ENV", "ENV", "NODE_OPTIONS", "BUN_OPTIONS", "LD_PRELOAD", "DYLD_INSERT_LIBRARIES"]) if (process.env[key] !== undefined) throw new Error("Inherited sentinel: " + key); process.stdout.write("workload-tool-${round}\\n" + "x".repeat(${toolBytes}))'`,
         })
         yield* llm.pushFactory(
           () => true,

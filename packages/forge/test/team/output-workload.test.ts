@@ -19,7 +19,7 @@ test("actual runtime workload executes tools, reconciles retries, cancels provid
   }
   const before = (await fs.readdir(hostile.path, { recursive: true })).sort()
   const child = Bun.spawn(
-    [process.execPath, "run", "script/team-output-runtime-workload.ts", "1", "1000", "250", "32768"],
+    ["/bin/sh", "script/team-output-launch.sh", process.execPath, "runtime", "1", "1000", "250", "32768"],
     {
       env: {
         ...process.env,
@@ -32,6 +32,13 @@ test("actual runtime workload executes tools, reconciles retries, cancels provid
         FORGE_TEST_MANAGED_CONFIG_DIR: path.join(hostile.path, "managed"),
         FORGE_PLUGIN_META_FILE: path.join(hostile.path, "plugin-meta.json"),
         FORGE_MODELS_PATH: path.join(hostile.path, "config/forge.json"),
+        TUR_EN_SECRET_SENTINEL: "fake-secret-sentinel",
+        OPENAI_API_KEY: "fake-secret-sentinel",
+        AWS_SESSION_TOKEN: "fake-secret-sentinel",
+        BASH_ENV: path.join(hostile.path, "missing-shell-startup"),
+        ENV: path.join(hostile.path, "missing-shell-startup"),
+        NODE_OPTIONS: "--no-warnings",
+        BUN_OPTIONS: "fake-startup-sentinel",
       },
       stdout: "pipe",
       stderr: "pipe",

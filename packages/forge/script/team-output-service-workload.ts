@@ -21,7 +21,7 @@ try {
   const { Database } = await import("@turenlabs/core/database/database")
   const { SessionMessageTable } = await import("@turenlabs/core/session/sql")
   const { recoveryLayer, seedRecoveryTask, recoveryOutputRow } = await import("../test/fixture/team-output-recovery")
-  const headProcess = Bun.spawn(["git", "rev-parse", "HEAD"], { stdout: "pipe", stderr: "ignore" })
+const headProcess = Bun.spawn(["/usr/bin/git", "rev-parse", "HEAD"], { env: process.env, stdout: "pipe", stderr: "ignore" })
   const head = (await new Response(headProcess.stdout).text()).trim()
   if (await headProcess.exited) throw new Error("Cannot resolve source head")
   const harnessSHA256 = new Bun.CryptoHasher("sha256")

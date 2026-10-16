@@ -4,11 +4,12 @@ import os from "node:os"
 import path from "node:path"
 
 export async function isolateWorkload(prefix: string) {
+  assert.equal(process.env.FORGE_WORKLOAD_LAUNCHED, "1", "Use the clean team-output-launch.sh launcher")
   const root = await fs.mkdtemp(path.join(os.tmpdir(), prefix))
   await fs.chmod(root, 0o700)
-  for (const key of Object.keys(process.env)) {
-    if (key.startsWith("FORGE_") || key.startsWith("OTEL_") || key === "PLUGIN_META") delete process.env[key]
-  }
+  for (const key of Object.keys(process.env))
+    if (key !== "NODE_ENV" && key !== "PATH") delete process.env[key]
+  process.env.PATH = `${path.dirname(process.execPath)}:/usr/bin:/bin`
   for (const kind of ["DATA", "CONFIG", "STATE", "CACHE"])
     process.env[`XDG_${kind}_HOME`] = path.join(root, kind.toLowerCase())
   process.env.HOME = path.join(root, "home")
