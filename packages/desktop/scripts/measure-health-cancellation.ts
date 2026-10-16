@@ -20,34 +20,58 @@ const retained: { at: number; rss: number }[] = []
 const sample = (phase: string, extra = {}) => {
   const memory = process.memoryUsage()
   peakRssBytes = Math.max(peakRssBytes, memory.rss)
-  console.log(JSON.stringify({
-    utc: new Date().toISOString(), head, bun: Bun.version, pid: process.pid, ppid: process.ppid,
-    phase, concurrency, rounds, payloadBytes, requestMs, active, peakActive,
-    rssBytes: memory.rss, heapUsedBytes: memory.heapUsed, heapTotalBytes: memory.heapTotal,
-    externalBytes: memory.external, arrayBufferBytes: memory.arrayBuffers,
-    peakRssBytes, elapsedMs: performance.now() - started, ...extra,
-  }))
+  console.log(
+    JSON.stringify({
+      utc: new Date().toISOString(),
+      head,
+      bun: Bun.version,
+      pid: process.pid,
+      ppid: process.ppid,
+      phase,
+      concurrency,
+      rounds,
+      payloadBytes,
+      requestMs,
+      active,
+      peakActive,
+      rssBytes: memory.rss,
+      heapUsedBytes: memory.heapUsed,
+      heapTotalBytes: memory.heapTotal,
+      externalBytes: memory.external,
+      arrayBufferBytes: memory.arrayBuffers,
+      peakRssBytes,
+      elapsedMs: performance.now() - started,
+      ...extra,
+    }),
+  )
 }
-const sampling = setInterval(() => { peakRssBytes = Math.max(peakRssBytes, process.memoryUsage().rss) }, 5)
+const sampling = setInterval(() => {
+  peakRssBytes = Math.max(peakRssBytes, process.memoryUsage().rss)
+}, 5)
 sample("start")
 for (let round = 0; round < rounds; round++) {
   const roundStarted = performance.now()
   const controllers = Array.from({ length: concurrency }, () => new AbortController())
   const work = controllers.map((controller, index) => {
     const poll = index % 2 ? pollSshHealth : pollWslHealth
-    return poll((signal?: AbortSignal) => new Promise<boolean>((resolve) => {
-      const payload = Buffer.alloc(payloadBytes, 1)
-      active++
-      peakActive = Math.max(peakActive, active)
-      const done = () => {
-        clearTimeout(timer)
-        signal?.removeEventListener("abort", done)
-        active--
-        resolve(payload[0] === 0)
-      }
-      const timer = setTimeout(done, requestMs)
-      signal?.addEventListener("abort", done, { once: true })
-    }), controller.signal, 1)
+    return poll(
+      (signal?: AbortSignal) =>
+        new Promise<boolean>((resolve) => {
+          const payload = Buffer.alloc(payloadBytes, 1)
+          active++
+          peakActive = Math.max(peakActive, active)
+          const done = () => {
+            clearTimeout(timer)
+            signal?.removeEventListener("abort", done)
+            active--
+            resolve(payload[0] === 0)
+          }
+          const timer = setTimeout(done, requestMs)
+          signal?.addEventListener("abort", done, { once: true })
+        }),
+      controller.signal,
+      1,
+    )
   })
   await Bun.sleep(5)
   const cancelled = performance.now()

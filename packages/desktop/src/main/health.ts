@@ -24,3 +24,23 @@ export async function checkHealth(url: string, password?: string | null, signal?
     return false
   }
 }
+
+export async function pollHealth(
+  check: (signal: AbortSignal) => Promise<boolean>,
+  signal: AbortSignal,
+  interval = 100,
+) {
+  while (!signal.aborted) {
+    if (await check(signal)) return
+    await new Promise<void>((resolve) => {
+      if (signal.aborted) return resolve()
+      const done = () => {
+        clearTimeout(timeout)
+        signal.removeEventListener("abort", done)
+        resolve()
+      }
+      const timeout = setTimeout(done, interval)
+      signal.addEventListener("abort", done, { once: true })
+    })
+  }
+}

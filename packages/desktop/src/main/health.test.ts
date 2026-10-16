@@ -21,8 +21,11 @@ test("health checks preserve the route and authentication", async () => {
   }
 })
 
-for (const poll of [pollSshHealth, pollWslHealth]) {
-  test(`${poll.name} aborts an active HTTP health request`, async () => {
+for (const [label, poll] of [
+  ["SSH", pollSshHealth],
+  ["WSL", pollWslHealth],
+] as const) {
+  test(`${label} polling aborts an active HTTP health request`, async () => {
     const entered = Promise.withResolvers<void>()
     const response = Promise.withResolvers<Response>()
     const server = Bun.serve({
@@ -52,18 +55,22 @@ for (const poll of [pollSshHealth, pollWslHealth]) {
     }
   })
 
-  test(`${poll.name} does not schedule a delay after cancellation during a check`, async () => {
+  test(`${label} polling does not schedule a delay after cancellation during a check`, async () => {
     const controller = new AbortController()
-    const work = poll(async (signal) => {
-      expect(signal).toBe(controller.signal)
-      controller.abort()
-      return false
-    }, controller.signal, 1000)
+    const work = poll(
+      async (signal) => {
+        expect(signal).toBe(controller.signal)
+        controller.abort()
+        return false
+      },
+      controller.signal,
+      1000,
+    )
     expect(await Promise.race([work.then(() => "stopped"), Bun.sleep(50).then(() => "pending")])).toBe("stopped")
     await work
   })
 
-  test(`${poll.name} does not check after cancellation`, async () => {
+  test(`${label} polling does not check after cancellation`, async () => {
     const controller = new AbortController()
     controller.abort()
     await poll(async () => {
