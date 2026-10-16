@@ -1,7 +1,20 @@
 import { expect, test } from "bun:test"
 import { readFileSync, rmSync, statSync } from "node:fs"
 import { join } from "node:path"
-import { prepareAttributionRoot } from "./process-attribution"
+import { hashAttributionSources, prepareAttributionRoot } from "./process-attribution"
+
+test("source identity hashes every launch file without starting Electron", async () => {
+  const hashes = await hashAttributionSources()
+  expect(Object.keys(hashes)).toEqual([
+    "process-attribution.ts",
+    "process-attribution-electron.cjs",
+    "process-attribution-bun.ts",
+    "../src/main/sidecar-supervisor.ts",
+  ])
+  for (const [file, hash] of Object.entries(hashes)) {
+    expect(hash).toBe(Bun.CryptoHasher.hash("sha256", await Bun.file(join(import.meta.dir, file)).bytes(), "hex"))
+  }
+})
 
 test("scratch preparation isolates every data directory and creates a fresh private key", () => {
   const first = prepareAttributionRoot()

@@ -29,6 +29,24 @@ export function prepareAttributionRoot() {
   return { root, env }
 }
 
+export async function hashAttributionSources() {
+  return Object.fromEntries(
+    await Promise.all(
+      [
+        "process-attribution.ts",
+        "process-attribution-electron.cjs",
+        "process-attribution-bun.ts",
+        "../src/main/sidecar-supervisor.ts",
+      ].map(async (file) => [
+        file,
+        createHash("sha256")
+          .update(await Bun.file(join(import.meta.dir, file)).bytes())
+          .digest("hex"),
+      ]),
+    ),
+  )
+}
+
 if (import.meta.main) {
   const electron = process.argv[2]
   const idleMs = Number(process.argv[3] ?? 4000)
@@ -39,22 +57,7 @@ if (import.meta.main) {
   const source = Bun.spawnSync(["git", "rev-parse", "HEAD"], { cwd: import.meta.dir, stdout: "pipe" })
   if (source.exitCode) throw new Error("Cannot identify source")
   const scratch = prepareAttributionRoot()
-  const sourceFiles = [
-    "process-attribution.ts",
-    "process-attribution-electron.cjs",
-    "process-attribution-bun.ts",
-    "../src/main/sidecar-supervisor.ts",
-  ]
-  const sourceHashes = Object.fromEntries(
-    await Promise.all(
-      sourceFiles.map(async (file) => [
-        file,
-        createHash("sha256")
-          .update(await Bun.file(join(import.meta.dir, file)).arrayBuffer())
-          .digest("hex"),
-      ]),
-    ),
-  )
+  const sourceHashes = await hashAttributionSources()
   writeFileSync(
     join(scratch.root, "source.json"),
     JSON.stringify({
