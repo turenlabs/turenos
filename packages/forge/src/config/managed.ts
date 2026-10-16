@@ -41,6 +41,8 @@ export function parseManagedPlist(json: string): string {
 }
 
 export async function readManagedPreferences() {
+  // The disposable test override must also exclude native managed preferences.
+  if (process.env.NODE_ENV === "test" && process.env.FORGE_TEST_MANAGED_CONFIG_DIR) return
   if (process.platform !== "darwin") return
 
   const user = (() => {

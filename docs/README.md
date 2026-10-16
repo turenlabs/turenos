@@ -133,6 +133,8 @@ outputs, ownership, failure behavior, and implementation links. These systems ha
 
 ## Experimental
 
+- [Team output recovery benchmark](./experimental/team-output-recovery.md): bounded history decoding, synthetic memory measurements, and remaining qualification limits.
+
 Prototypes and benchmarks that explore or measure rather than document shipped behavior. Each page states its status.
 
 - [Zero-Mem prototype](./experimental/zero-mem.md): isolated graph/hierarchy retrieval prototype and benchmark methodology.
