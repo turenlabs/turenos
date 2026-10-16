@@ -120,30 +120,29 @@ const layer = Layer.effect(
           (id) =>
             Effect.gen(function* () {
               const sessionID = SessionV2.ID.make(id)
-              const messages = yield* sessions.messages({ sessionID, order: "asc" })
-              const taskIDs = yield* taskIDsForMessages(id, messages)
-              yield* Effect.forEach(
-                messages.filter(
-                  (message): message is SessionMessage.Assistant =>
-                    message.type === "assistant" &&
-                    message.time.completed !== undefined &&
-                    !message.error &&
-                    message.finish === "stop",
-                ),
-                (message) => {
-                  const taskID = teamTaskIDForResponse(messages, message.id, taskIDs)
-                  return taskID
-                    ? syncSessionOutput({
+              // Adopt legacy transcripts without loading their bodies into the recovery loop.
+              yield* sessions.messages({ sessionID, limit: 0 })
+              let after: number | undefined
+              while (true) {
+                const candidates = yield* team.sessionOutputCandidates({ sessionID: id, after, limit: pageSize })
+                yield* Effect.forEach(
+                  candidates,
+                  (candidate) =>
+                    Effect.gen(function* () {
+                      if (!candidate.taskID) return
+                      yield* syncSessionOutput({
                         sessionID: id,
-                        assistantMessageID: message.id,
-                        taskID,
+                        assistantMessageID: candidate.id,
+                        taskID: candidate.taskID,
                         finish: "stop",
                         recovery: true,
                       })
-                    : Effect.void
-                },
-                { discard: true },
-              )
+                    }),
+                  { discard: true },
+                )
+                if (candidates.length < pageSize) break
+                after = candidates.at(-1)!.seq
+              }
             }).pipe(
               Effect.catchCause((cause) =>
                 Effect.logError("Team Session output reconciliation failed", {
