@@ -14,6 +14,10 @@ export type ExecutionLimits = {
   readonly maxToolCalls?: number
   /** Maximum UTF-8 bytes of model-facing output. No default: absent means no truncation. */
   readonly maxOutputBytes?: number
+  /** Cumulative logical allocation budget; checked before native amplification. Absent means unlimited. */
+  readonly maxAllocationBytes?: number
+  /** Cumulative interpreter and allocation traversal work. Absent means unlimited. */
+  readonly maxOperations?: number
 }
 
 /** Controls how much of the tool catalog is inlined in agent instructions. */
@@ -30,6 +34,8 @@ export type ResolvedExecutionLimits = {
   readonly timeoutMs: number | undefined
   readonly maxToolCalls: number | undefined
   readonly maxOutputBytes: number | undefined
+  readonly maxAllocationBytes: number | undefined
+  readonly maxOperations: number | undefined
 }
 
 /** Options for one CodeMode execution. */
@@ -70,6 +76,7 @@ export const DiagnosticKind = Schema.Literals([
   "TimeoutExceeded",
   "ToolFailure",
   "ExecutionFailure",
+  "ResourceLimitExceeded",
 ])
 /** Stable categories produced by program, schema, tool, and limit failures. */
 export type DiagnosticKind = typeof DiagnosticKind.Type
@@ -131,6 +138,8 @@ const resolveExecutionLimits = (limits?: ExecutionLimits): ResolvedExecutionLimi
   timeoutMs: validateLimit("timeoutMs", limits?.timeoutMs, 1),
   maxToolCalls: validateLimit("maxToolCalls", limits?.maxToolCalls, 0),
   maxOutputBytes: validateLimit("maxOutputBytes", limits?.maxOutputBytes, 0),
+  maxAllocationBytes: validateLimit("maxAllocationBytes", limits?.maxAllocationBytes, 0),
+  maxOperations: validateLimit("maxOperations", limits?.maxOperations, 0),
 })
 
 /** Executes one Effect-native CodeMode program without constructing a reusable runtime. */

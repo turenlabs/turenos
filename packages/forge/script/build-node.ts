@@ -155,6 +155,16 @@ const workerBuild = await Bun.build({
 
 if (!workerBuild.success) throw new Error("Forge worker build failed")
 
+// This worker moves into its own desktop resource directory, so keep it self-contained.
+const resultWorker = await Bun.build({
+  target: "node",
+  format: "esm",
+  entrypoints: ["../core/src/tool/result-compute-worker.ts"],
+  outdir: "./dist/node",
+  naming: "[name].js",
+})
+if (!resultWorker.success) throw new Error("Retained result worker build failed")
+
 await cp(ghidraRoot, "./dist/node/ghidra-decompiler/dist", { recursive: true })
 await cp(path.join(ghidraRoot, "../package.json"), "./dist/node/ghidra-decompiler/package.json")
 await cp(yaraRoot, "./dist/node/yara-x/dist", { recursive: true })

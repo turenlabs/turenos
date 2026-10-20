@@ -40,7 +40,12 @@ export const mapMethods = new Set(["get", "set", "has", "delete", "clear", "forE
 
 export const setMethods = new Set(["add", "has", "delete", "clear", "forEach", "keys", "values", "entries"])
 
-export const spreadItems = (value: unknown): Array<unknown> | undefined => {
+export const spreadItems = (value: unknown, budget?: ExecutionBudget): Array<unknown> | undefined => {
+  budget?.value(value)
+  if (typeof value === "string" || Array.isArray(value)) budget?.slots(value.length)
+  if (value instanceof SandboxMap) budget?.slots(value.map.size * 3)
+  if (value instanceof SandboxSet) budget?.slots(value.set.size)
+  if (value instanceof SandboxURLSearchParams) budget?.slots(value.params.size * 3)
   if (Array.isArray(value)) return value
   if (typeof value === "string") return Array.from(value)
   if (value instanceof SandboxMap) return Array.from(value.map.entries(), ([key, item]) => [key, item])
@@ -49,3 +54,4 @@ export const spreadItems = (value: unknown): Array<unknown> | undefined => {
   return undefined
 }
 import { SandboxMap, SandboxSet, SandboxURLSearchParams } from "../values.js"
+import type { ExecutionBudget } from "../interpreter/budget.js"

@@ -1,0 +1,181 @@
+{
+  "branch": "context-mode",
+  "terminalArtifact": "Draft pull request based on current origin/main, with integration checks and documentation validation recorded.",
+  "boundary": "Canonical tool settlement retains oversized captured text or JSON, returns a bounded initial view and opaque session reference, and permits authorized exact readback, within-result discovery and confined computation until expiry.",
+  "invariants": [
+    "Retention stores output protected by the secret-output boundary; captured text and JSON sizes are evaluated independently of initial model-view size.",
+    "Opaque references authorize nothing by themselves; trusted invocation session scope and current read permission govern every retrieval.",
+    "Result storage is immutable, private, integrity checked, bounded and expires after seven days.",
+    "Capture loss is disclosed; retained content never claims to recover bytes a producer did not capture.",
+    "Result references survive durable-output bounding and history pruning without repeated prompt rewrites.",
+    "Computation receives only already-authorized data, runs the restricted interpreter in a terminable worker and cannot call host tools.",
+    "Search is bounded lexical discovery within an explicit result; counts and absence claims require exhaustive inspection or computation.",
+    "Existing durable execution settlement remains the sole retry boundary; retrieval never re-executes the source tool."
+  ],
+  "tools": ["result_list", "result_read", "result_search", "result_compute"],
+  "limits": {
+    "captureEnvelopeBytes": 8388608,
+    "captureRetentionDays": 7,
+    "readPageBytes": 8192,
+    "searchOccurrences": 10000,
+    "listDirectoryScan": 256,
+    "computation": {
+      "codeBytes": 16384,
+      "responseEnvelopeBytes": 8192,
+      "interpreterTimeoutMs": 1000,
+      "workerWallTimeoutMs": 3000,
+      "concurrency": 1,
+      "logicalAllocationBytes": 134217728,
+      "operations": 1000000,
+      "qualification": "Allocation and fuel are conservative interpreter budgets, not OS isolation or an RSS guarantee. Node additionally applies worker heap limits; Bun does not enforce that worker option."
+    }
+  },
+  "knownLimitations": [
+    "Result discovery scans at most 256 directory entries and explicitly reports incomplete coverage. Exact access by known ID still works beyond that cap.",
+    "Unsupported or oversized structured-only captures receive an explicit omission marker; their original structured preview may be unavailable.",
+    "The 8 MiB cap bounds each capture envelope; this slice does not add an aggregate disk quota.",
+    "Capture cannot recover bytes the source producer omitted. Structured JSON is normalized, while text readback preserves UTF-8 bytes.",
+    "Filesystem protections do not defend against an actively hostile process running as the same OS user swapping ancestor directories."
+  ],
+  "deferrals": [
+    "Cross-session or child-session sharing requires an explicit authorization design.",
+    "Automatic embeddings, recursive model calls, corpus-wide indexing and default compaction-policy changes remain experiments.",
+    "Live model quality and billed-token evaluation is separate from local correctness checks.",
+    "Merge, release and deployment remain outside the draft pull request terminal condition."
+  ],
+  "preIntegrationCommit": "7c4168b9",
+  "preIntegrationGates": [
+    {
+      "name": "current-state audit and contracts",
+      "status": "complete"
+    },
+    {
+      "name": "storage, capture and bounded access",
+      "status": "complete"
+    },
+    {
+      "name": "worker computation and packaged integration",
+      "status": "complete"
+    },
+    {
+      "name": "permissions, durability and lifecycle integration tests",
+      "status": "complete"
+    },
+    {
+      "name": "independent adversarial review and fixes",
+      "status": "complete"
+    },
+    {
+      "name": "focused/full relevant tests, typechecks and packaged worker smoke",
+      "status": "complete"
+    }
+  ],
+  "preIntegrationVerification": {
+    "platform": "macOS ARM64; Bun 1.4.2",
+    "coreIntegration": {
+      "passed": 265,
+      "failed": 0,
+      "files": 14
+    },
+    "coreFinalChangedBoundaries": {
+      "passed": 32,
+      "failed": 0,
+      "files": 4,
+      "assertions": 286
+    },
+    "coreHostRegressions": {
+      "passed": 200,
+      "skipped": 1,
+      "failed": 0,
+      "files": 6
+    },
+    "codeModeFullSuite": {
+      "passed": 304,
+      "failed": 0,
+      "files": 8,
+      "assertions": 871
+    },
+    "typechecks": ["packages/core", "packages/codemode", "packages/forge", "packages/desktop"],
+    "builds": [
+      "packages/forge: bun script/build-node.ts",
+      "packages/desktop: bunx electron-vite build",
+      "Standalone CLI result worker: Bun target, ESM, minified, no shared chunks"
+    ],
+    "workerSmoke": {
+      "checks": ["JSON aggregation", "native array allocation rejection"],
+      "passed": [
+        "actual Forge Node bundle under Node",
+        "CLI Bun bundle under Bun",
+        "actual Desktop resource worker under Node"
+      ],
+      "desktopCopySha256": "c15e5b576d1b1aaa8ccb8e46a1f75364caeb6f46f9e13bd61bb4c7bbfaf2623a"
+    },
+    "review": "Independent adversarial reviewer found no remaining P0/P1 in the reviewed scope; two P2 usability limits are documented below.",
+    "formattingAndDiff": "Prettier checks and git diff --check passed",
+    "qualification": "Test runs overlap and must not be added together as a unique-test count. Signed/installed desktop packages and Windows/Linux artifacts were not exercised. No live model calls or billed-token evaluation were performed.",
+    "phase": "Historical local verification before rebasing onto current main; not evidence for the integrated branch."
+  },
+  "integration": {
+    "baseCommit": "c83dd98c41bff1a270228183510dc7089942e8a7",
+    "status": "local_checks_complete",
+    "required": [
+      "Resolve current-main secret-output integration before any retained artifact is written",
+      "Run affected-documentation map and both documentation/context checkers",
+      "Rerun relevant tests, typechecks and packaged worker checks after rebase",
+      "Publish the authorized draft pull request and record its URL and checks"
+    ]
+  },
+  "integrationVerification": {
+    "phase": "Current-main integration; reported 2026-10-20",
+    "coreSecurity": {
+      "passed": 52,
+      "assertions": 360
+    },
+    "coreDurability": {
+      "passed": 155
+    },
+    "sessionAndSpawn": {
+      "passed": 6,
+      "failed": 0,
+      "files": 2,
+      "assertions": 90
+    },
+    "codeModeFullSuite": {
+      "passed": 304,
+      "failed": 0,
+      "files": 8,
+      "assertions": 871
+    },
+    "typechecks": ["packages/core", "packages/codemode", "packages/forge", "packages/desktop"],
+    "builds": ["packages/forge: bun script/build-node.ts", "packages/desktop: bunx electron-vite build"],
+    "documentation": {
+      "affectedMap": "No stale references or undocumented new environment variables/CLI options",
+      "docsChecker": {
+        "pages": 93,
+        "errors": 0,
+        "warnings": 0
+      },
+      "contextChecker": {
+        "errors": 0,
+        "warnings": 0,
+        "notes": 9
+      },
+      "qualification": "Context checker notes are existing repository identifiers, not missing paths."
+    },
+    "qualification": "Overlapping test runs are not a unique-test total. Signed/installed Desktop and Windows/Linux artifacts were not exercised; live model quality and billed-token savings were not measured. PR CI is reported separately.",
+    "coreIntegration": {
+      "passed": 338,
+      "failed": 0,
+      "files": 16,
+      "assertions": 1559
+    },
+    "workerSmoke": {
+      "artifact": "Actual Node-target Forge worker through ResultComputeRuntime resource lookup",
+      "runtimes": ["Node", "Bun 1.4.2 (Desktop sidecar runtime)"],
+      "checks": ["JSON aggregation", "native array allocation rejection"],
+      "sha256": "c15e5b576d1b1aaa8ccb8e46a1f75364caeb6f46f9e13bd61bb4c7bbfaf2623a",
+      "desktopCopies": "Emitted server and standalone resource worker hashes match Forge output"
+    },
+    "review": "Fresh independent review found no remaining P0/P1 after main integration; secret protection, fail-closed behavior, retry identity, child availability, session isolation and sidecar packaging reviewed."
+  }
+}
