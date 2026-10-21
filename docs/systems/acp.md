@@ -17,7 +17,11 @@ configuration.
 4. `newSession` rejects any client MCP servers, snapshots the working directory's agents, models, and config options,
    and creates a TurenOS session with the default agent, model, and variant.
 5. Prompts, cancellation, mode (agent) and model changes, and config options go through the SDK client. Session events
-   are translated into ACP updates by `event.ts`, `tool.ts`, `content.ts`, and `usage.ts`.
+   are translated into ACP updates by `event.ts`, `tool.ts`, and `content.ts`. After each prompt, including slash
+   commands, `usage.ts` sends a `usage_update` with the input and cache-read tokens of the session's latest assistant
+   message, that model's context size, and the session's total cost in USD. It skips the update when the session's
+   messages can't be loaded, there is no assistant message yet, or the latest one's model or context size is unknown.
+   A failed update is logged and does not fail the prompt.
 6. A TurenOS permission request becomes an ACP `requestPermission` call with **Allow once**, **Always allow**, and
    **Reject**. If the client cannot show permission requests, or the request fails, TurenOS rejects the call.
 
@@ -66,6 +70,7 @@ bun test test/acp test/cli/acp
 - [`packages/forge/src/acp/service.ts`](../../packages/forge/src/acp/service.ts)
 - [`packages/forge/src/acp/permission.ts`](../../packages/forge/src/acp/permission.ts)
 - [`packages/forge/src/acp/event.ts`](../../packages/forge/src/acp/event.ts)
+- [`packages/forge/src/acp/usage.ts`](../../packages/forge/src/acp/usage.ts)
 - [`packages/forge/src/cli/network.ts`](../../packages/forge/src/cli/network.ts)
 - [`packages/forge/src/server/ownership.ts`](../../packages/forge/src/server/ownership.ts): the owner lock taken at startup
 - Tests: [`packages/forge/test/acp/`](../../packages/forge/test/acp/), [`packages/forge/test/cli/acp/`](../../packages/forge/test/cli/acp/)
