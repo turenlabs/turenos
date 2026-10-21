@@ -381,6 +381,110 @@ describe("Bedrock Converse route", () => {
     }),
   )
 
+  // Core strips provider metadata from failed turns, so their reasoning comes back without a
+  // signature, which Claude on Bedrock rejects.
+  it.effect("drops unsigned reasoning and keeps signed reasoning", () =>
+    Effect.gen(function* () {
+      const prepared = yield* LLMClient.prepare<BedrockConverse.BedrockConverseBody>(
+        LLM.request({
+          model,
+          messages: [
+            Message.user("Start."),
+            Message.assistant([
+              { type: "reasoning", text: "Interrupted thinking." },
+              { type: "text", text: "Partial answer." },
+            ]),
+            Message.user("Try again."),
+            Message.assistant([
+              { type: "reasoning", text: "Let me think.", providerMetadata: { bedrock: { signature: "sig_1" } } },
+              { type: "text", text: "Done." },
+            ]),
+          ],
+          cache: "none",
+        }),
+      )
+
+      expect(prepared.body.messages).toEqual([
+        { role: "user", content: [{ text: "Start." }] },
+        { role: "assistant", content: [{ text: "Partial answer." }] },
+        { role: "user", content: [{ text: "Try again." }] },
+        {
+          role: "assistant",
+          content: [
+            { reasoningContent: { reasoningText: { text: "Let me think.", signature: "sig_1" } } },
+            { text: "Done." },
+          ],
+        },
+      ])
+    }),
+  )
+
+  it.effect("drops an assistant turn that only held unsigned reasoning", () =>
+    Effect.gen(function* () {
+      const prepared = yield* LLMClient.prepare<BedrockConverse.BedrockConverseBody>(
+        LLM.request({
+          model,
+          messages: [
+            Message.user("Start."),
+            Message.assistant([{ type: "reasoning", text: "Interrupted thinking." }]),
+            Message.user("Try again."),
+          ],
+          cache: "none",
+        }),
+      )
+
+      // Dropping the turn leaves the two user turns next to each other. Whether they go out as one
+      // message or two depends on whether adjacent user messages are merged, so check the blocks in order.
+      expect(prepared.body.messages.map((message) => message.role)).not.toContain("assistant")
+      expect(prepared.body.messages.flatMap((message) => [...message.content])).toEqual([
+        { text: "Start." },
+        { text: "Try again." },
+      ])
+    }),
+  )
+
+  // Other models, such as DeepSeek R1, may not sign their reasoning, so it is still sent unsigned
+  // and no turn is dropped.
+  it.effect("keeps unsigned reasoning for a non-Claude model", () =>
+    Effect.gen(function* () {
+      const prepared = yield* LLMClient.prepare<BedrockConverse.BedrockConverseBody>(
+        LLM.request({
+          model: AmazonBedrock.configure({ baseURL: "https://bedrock-runtime.test", apiKey: "test-bearer" }).model(
+            "us.deepseek.r1-v1:0",
+          ),
+          messages: [
+            Message.user("Start."),
+            Message.assistant([
+              { type: "reasoning", text: "Unsigned thinking." },
+              { type: "text", text: "Partial answer." },
+            ]),
+            Message.user("Try again."),
+            Message.assistant([{ type: "reasoning", text: "Interrupted thinking." }]),
+            Message.user("Go on."),
+          ],
+          cache: "none",
+        }),
+      )
+
+      expect(prepared.body.messages).toEqual([
+        { role: "user", content: [{ text: "Start." }] },
+        {
+          role: "assistant",
+          content: [
+            { reasoningContent: { reasoningText: { text: "Unsigned thinking.", signature: undefined } } },
+            { text: "Partial answer." },
+          ],
+        },
+        { role: "user", content: [{ text: "Try again." }] },
+        {
+          role: "assistant",
+          content: [{ reasoningContent: { reasoningText: { text: "Interrupted thinking.", signature: undefined } } }],
+        },
+        { role: "user", content: [{ text: "Go on." }] },
+      ])
+    }),
+  )
+
   it.effect("emits provider-error for throttlingException", () =>
     Effect.gen(function* () {
       const body = eventStreamBody(

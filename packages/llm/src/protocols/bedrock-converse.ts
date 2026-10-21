@@ -303,6 +303,10 @@ const lowerMessages = Effect.fn("BedrockConverse.lowerMessages")(function* (
   request: LLMRequest,
   breakpoints: BedrockCache.Breakpoints,
 ) {
+  // Claude on Bedrock rejects reasoningText without a signature. Core strips provider metadata from
+  // failed turns, so their reasoning comes back unsigned; drop it for Claude, matched by model id
+  // ("anthropic.claude-…", "us.anthropic.claude-…"). Other models keep their reasoning as before.
+  const dropsUnsignedReasoning = request.model.id.toLowerCase().includes("claude")
   const messages: BedrockMessage[] = []
 
   for (const message of request.messages) {
@@ -350,11 +354,9 @@ const lowerMessages = Effect.fn("BedrockConverse.lowerMessages")(function* (
           continue
         }
         if (part.type === "reasoning") {
-          content.push({
-            reasoningContent: {
-              reasoningText: { text: part.text, signature: reasoningSignature(part) },
-            },
-          })
+          const signature = reasoningSignature(part)
+          if (signature === undefined && dropsUnsignedReasoning) continue
+          content.push({ reasoningContent: { reasoningText: { text: part.text, signature } } })
           continue
         }
         if (part.type === "tool-call") {
@@ -362,6 +364,8 @@ const lowerMessages = Effect.fn("BedrockConverse.lowerMessages")(function* (
           continue
         }
       }
+      // Bedrock rejects a message with empty content, so skip one that only held dropped reasoning.
+      if (content.length === 0 && message.content.length > 0) continue
       messages.push({ role: "assistant", content })
       continue
     }
