@@ -281,6 +281,13 @@ const lowerMessages = Effect.fn("Gemini.lowerMessages")(function* (request: LLMR
       }
       response.response.content = text.join("\n")
     }
+    // Parallel tool results arrive as separate tool messages, but Gemini requires the content after
+    // a function call turn to answer every functionCall in it, so consecutive results share one content.
+    const previous = contents.at(-1)
+    if (previous?.role === "user" && previous.parts.some((part) => "functionResponse" in part)) {
+      contents[contents.length - 1] = { role: "user", parts: [...previous.parts, ...parts] }
+      continue
+    }
     contents.push({ role: "user", parts })
   }
 

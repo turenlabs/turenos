@@ -299,6 +299,17 @@ const lowerToolResult = Effect.fn("BedrockConverse.lowerToolResult")(function* (
   } satisfies BedrockToolResultBlock
 })
 
+// Converse requires alternating roles and every toolResult of a toolUse turn in the next user
+// message, so system updates, prompts, and tool results that follow each other share one message.
+const appendUserMessage = (messages: BedrockMessage[], content: BedrockUserBlock[]) => {
+  const previous = messages.at(-1)
+  if (previous?.role === "user") {
+    messages[messages.length - 1] = { role: "user", content: [...previous.content, ...content] }
+    return
+  }
+  messages.push({ role: "user", content })
+}
+
 const lowerMessages = Effect.fn("BedrockConverse.lowerMessages")(function* (
   request: LLMRequest,
   breakpoints: BedrockCache.Breakpoints,
@@ -308,11 +319,7 @@ const lowerMessages = Effect.fn("BedrockConverse.lowerMessages")(function* (
   for (const message of request.messages) {
     if (message.role === "system") {
       const part = yield* ProviderShared.wrappedSystemUpdate("Bedrock Converse", message)
-      const content = textWithCache(breakpoints, part.text, part.cache)
-      const previous = messages.at(-1)
-      if (previous?.role === "user")
-        messages[messages.length - 1] = { role: "user", content: [...previous.content, ...content] }
-      else messages.push({ role: "user", content })
+      appendUserMessage(messages, textWithCache(breakpoints, part.text, part.cache))
       continue
     }
 
@@ -332,7 +339,7 @@ const lowerMessages = Effect.fn("BedrockConverse.lowerMessages")(function* (
           continue
         }
       }
-      messages.push({ role: "user", content })
+      appendUserMessage(messages, content)
       continue
     }
 
@@ -374,7 +381,7 @@ const lowerMessages = Effect.fn("BedrockConverse.lowerMessages")(function* (
       const cachePoint = BedrockCache.block(breakpoints, part.cache)
       if (cachePoint) content.push(cachePoint)
     }
-    messages.push({ role: "user", content })
+    appendUserMessage(messages, content)
   }
 
   return messages
