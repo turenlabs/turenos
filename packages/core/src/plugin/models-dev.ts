@@ -125,6 +125,7 @@ function reasoningVariants(model: ModelsDev.Model, packageName: string | undefin
 function applyModel(
   draft: ModelV2Info,
   model: ModelsDev.Model,
+  provider: Pick<ModelsDev.Provider, "npm" | "api">,
   input: {
     readonly name?: string
     readonly cost?: ModelV2Info["cost"]
@@ -134,17 +135,19 @@ function applyModel(
 ) {
   draft.name = input.name ?? model.name
   draft.family = model.family
-  draft.api = model.provider?.npm
+  const packageName = model.provider?.npm ?? provider.npm
+  const url = model.provider?.api ?? provider.api
+  draft.api = packageName
     ? {
         id: model.id,
         type: "aisdk",
-        package: model.provider.npm,
-        url: model.provider.api,
+        package: packageName,
+        url,
       }
     : {
         id: model.id,
         type: "native",
-        url: model.provider?.api,
+        url,
         settings: {},
       }
   draft.capabilities = {
@@ -214,11 +217,11 @@ export const ModelsDevPlugin = define({
             const baseCost = cost(model.cost)
             const variants = reasoningVariants(model, model.provider?.npm ?? item.npm)
             catalog.model.update(providerID, model.id, (draft) =>
-              applyModel(draft, model, { cost: baseCost, variants }),
+              applyModel(draft, model, item, { cost: baseCost, variants }),
             )
             for (const [mode, options] of Object.entries(model.experimental?.modes ?? {})) {
               catalog.model.update(providerID, `${model.id}-${mode}`, (draft) =>
-                applyModel(draft, model, {
+                applyModel(draft, model, item, {
                   name: modeName(model, mode),
                   cost: mergeCost(baseCost, options.cost),
                   variants,
