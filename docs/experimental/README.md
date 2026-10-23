@@ -4,6 +4,7 @@ Prototypes, experiments, and benchmarks that explore or measure rather than docu
 Each page starts with a status line. When a prototype ships, its behavior moves to a page under
 [systems](../systems/README.md) and the experimental page is marked `adopted`.
 
+- [Retained result research](./context-results/README.md): adopted offline probe behind Session V2 retained captures.
 - [Zero-Mem prototype](./zero-mem.md): isolated graph/hierarchy retrieval prototype and benchmark methodology.
 - [Recursive context plugin](./recursive-context.md): an opt-in plugin that moves tagged long context out of the
   prompt behind bounded search and read tools.

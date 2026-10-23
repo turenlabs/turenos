@@ -20,6 +20,7 @@ import { SessionDisclosure } from "./disclosure"
 import { SessionSchema } from "./schema"
 import { Token } from "../util/token"
 import { toLLMMessages } from "./runner/to-llm-message"
+import { ToolResultStore } from "../tool-result-store"
 
 const DEFAULT_BUFFER = 20_000
 /**
@@ -724,17 +725,27 @@ const completedOutputTokens = (state: SessionMessage.ToolStateCompleted) => Toke
 const prunedState = (
   state: SessionMessage.ToolStateCompleted,
   sentinel: string = PRUNED_TEXT,
-): SessionMessage.ToolStateCompleted => ({
-  status: "completed",
-  input: state.input,
-  // `content` must stay non-empty: an empty one makes `toResultValue` fall back to `structured`
-  // and ship the entire payload that was just cleared.
-  content: [{ type: "text", text: sentinel }],
-  structured: {},
-  // `attachments` and `result` are the other two carriers of the same bytes and are dropped with
-  // it; `outputPaths` are paths, not content, and other readers still resolve them.
-  ...(state.outputPaths === undefined ? {} : { outputPaths: state.outputPaths }),
-})
+): SessionMessage.ToolStateCompleted => {
+  const reference = ToolResultStore.referenceOf(state.structured)
+  return {
+    status: "completed",
+    input: state.input,
+    // `content` must stay non-empty: an empty one makes `toResultValue` fall back to `structured`
+    // and ship the entire payload that was just cleared.
+    content: [
+      {
+        type: "text",
+        text: reference
+          ? `${sentinel}\nCaptured result ${reference.id}; use result_read or result_compute. Expires ${new Date(reference.expiresAt).toISOString()}.`
+          : sentinel,
+      },
+    ],
+    structured: reference ? ToolResultStore.withReference({}, reference) : {},
+    // `attachments` and `result` are the other two carriers of the same bytes and are dropped with
+    // it; `outputPaths` are paths, not content, and other readers still resolve them.
+    ...(state.outputPaths === undefined ? {} : { outputPaths: state.outputPaths }),
+  }
+}
 
 /** Oversized string fields become the sentinel; paths, flags, and small values survive. */
 const prunedInput = (input: Record<string, unknown>) =>

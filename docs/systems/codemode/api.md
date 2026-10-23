@@ -30,15 +30,15 @@ Public tool types are grouped under the same namespace: `Tool.Definition`, `Tool
 Use `CodeMode.execute` for a single execution:
 
 ```ts
-const result =
-  yield *
-  CodeMode.execute({
+const program = Effect.gen(function* () {
+  return yield* CodeMode.execute({
     tools: { orders: { lookup: lookupOrder } },
     code: `return await tools.orders.lookup({ id: "order_42" })`,
     limits: { maxToolCalls: 10 },
     onToolCallStart: (call) => Effect.logDebug("CodeMode tool started", call),
     onToolCallEnd: (call) => Effect.logDebug("CodeMode tool settled", call),
   })
+})
 ```
 
 The Effect environment is inferred from the supplied tools. CodeMode does not erase service requirements introduced by tool implementations.

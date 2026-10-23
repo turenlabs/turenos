@@ -18,6 +18,7 @@ import { SessionCompaction } from "@turenlabs/core/session/compaction"
 import { SessionMessage } from "@turenlabs/core/session/message"
 import { TextPart } from "@turenlabs/core/session/prompt"
 import { SessionSchema } from "@turenlabs/core/session/schema"
+import { ToolResultStore } from "@turenlabs/core/tool-result-store"
 import { DateTime, Deferred, Effect, Fiber, Schema, Stream } from "effect"
 
 const created = DateTime.makeUnsafe(0)
@@ -406,6 +407,38 @@ describe("per-tool output budgets", () => {
 //
 
 describe("pruneEntries", () => {
+  test("durable pruning keeps an evidence reference without changing recorded history", () => {
+    const reference = ToolResultStore.Reference.make({
+      id: `res_0000000000000_${"a".repeat(32)}`,
+      tool: "bash",
+      toolCallID: "captured",
+      createdAt: 0,
+      expiresAt: 7 * 24 * 60 * 60 * 1000,
+      textBytes: 100_000,
+      structuredBytes: 0,
+      sha256: "0".repeat(64),
+      hasStructured: false,
+      captureTruncated: false,
+    })
+    const captured = tool({
+      id: "captured",
+      name: "bash",
+      output: "original evidence",
+      structured: ToolResultStore.withReference({ original: true }, reference),
+      pruned: true,
+    })
+    const original = [entry(assistant("retained", [captured]))]
+    const result = SessionCompaction.pruneEntries(original, { enabled: false })
+    const message = result.entries[0].message
+    if (message.type !== "assistant") throw new Error("missing assistant")
+    const projected = message.content[0]
+    if (projected.type !== "tool" || projected.state.status !== "completed") throw new Error("missing tool")
+    expect(projected.state.structured).toEqual({ retainedResult: reference })
+    expect(toolOutputOf(result.entries, "retained", "captured")).toContain(reference.id)
+    expect(toolOutputOf(result.entries, "retained", "captured")).toContain("result_read")
+    expect(captured.state).toMatchObject({ content: [{ type: "text", text: "original evidence" }] })
+  })
+
   // PRUNE_PROTECT is 40k tokens (~160k chars) and PRUNE_MINIMUM is 20k tokens (~80k chars),
   // so these sizes are chosen to straddle both thresholds exactly once.
   const protectedOutput = "p".repeat(120_000) // 30k tokens: fits inside the protect window

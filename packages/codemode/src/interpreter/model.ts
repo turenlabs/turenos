@@ -118,6 +118,7 @@ export type DiagnosticKind =
   | "TimeoutExceeded"
   | "ToolFailure"
   | "ExecutionFailure"
+  | "ResourceLimitExceeded"
 
 export const OptionalShortCircuit: unique symbol = Symbol("codemode.optional-short-circuit")
 
