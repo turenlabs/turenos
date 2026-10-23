@@ -110,6 +110,42 @@ describe("Gemini route", () => {
     }),
   )
 
+  it.effect("sends parallel tool results as one user content", () =>
+    Effect.gen(function* () {
+      const prepared = yield* LLMClient.prepare<Gemini.GeminiBody>(
+        LLM.request({
+          model,
+          messages: [
+            Message.assistant([
+              ToolCallPart.make({ id: "call_a", name: "lookup", input: { query: "a" } }),
+              ToolCallPart.make({ id: "call_b", name: "lookup", input: { query: "b" } }),
+            ]),
+            Message.tool({ id: "call_a", name: "lookup", result: { answer: "A" } }),
+            Message.tool({ id: "call_b", name: "lookup", result: { answer: "B" } }),
+          ],
+        }),
+      )
+
+      // Gemini requires the turn after a function call turn to carry one functionResponse per functionCall.
+      expect(prepared.body.contents).toEqual([
+        {
+          role: "model",
+          parts: [
+            { functionCall: { name: "lookup", args: { query: "a" } } },
+            { functionCall: { name: "lookup", args: { query: "b" } } },
+          ],
+        },
+        {
+          role: "user",
+          parts: [
+            { functionResponse: { name: "lookup", response: { name: "lookup", content: '{"answer":"A"}' } } },
+            { functionResponse: { name: "lookup", response: { name: "lookup", content: '{"answer":"B"}' } } },
+          ],
+        },
+      ])
+    }),
+  )
+
   it.effect("continues image tool results as inline vision input without base64 text", () =>
     Effect.gen(function* () {
       const prepared = yield* LLMClient.prepare<Gemini.GeminiBody>(

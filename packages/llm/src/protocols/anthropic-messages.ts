@@ -6,6 +6,7 @@ import { Framing } from "../route/framing"
 import { Protocol } from "../route/protocol"
 import {
   LLMEvent,
+  Message,
   Usage,
   type CacheHint,
   type FinishReason,
@@ -13,6 +14,7 @@ import {
   type LLMRequest,
   type MediaPart,
   type ProviderMetadata,
+  type ReasoningPart,
   type ToolCallPart,
   type ToolDefinition,
   type ToolContent,
@@ -263,10 +265,12 @@ const cacheControl = (breakpoints: Cache.Breakpoints, cache: CacheHint | undefin
 
 const anthropicMetadata = (metadata: Record<string, unknown>): ProviderMetadata => ({ anthropic: metadata })
 
-const signatureFromMetadata = (metadata: ProviderMetadata | undefined): string | undefined => {
-  const anthropic = metadata?.anthropic
-  if (!ProviderShared.isRecord(anthropic)) return undefined
-  return typeof anthropic.signature === "string" ? anthropic.signature : undefined
+const reasoningSignature = (part: ReasoningPart) => {
+  const anthropic = part.providerMetadata?.anthropic
+  return (
+    part.encrypted ??
+    (ProviderShared.isRecord(anthropic) && typeof anthropic.signature === "string" ? anthropic.signature : undefined)
+  )
 }
 
 const lowerTool = (breakpoints: Cache.Breakpoints, tool: ToolDefinition, inputSchema: JsonSchema): AnthropicTool => ({
@@ -410,17 +414,36 @@ const lowerNativeSystemUpdate = Effect.fn("AnthropicMessages.lowerNativeSystemUp
   }
 })
 
+// Anthropic rejects a Claude thinking block without a signature. Core strips provider metadata from
+// failed turns, so their reasoning comes back unsigned; drop it, and drop an assistant message left
+// empty. This runs before lowering so system-update placement sees the history that is sent.
+const withoutUnsignedReasoning = (messages: LLMRequest["messages"]) =>
+  messages.flatMap((message) => {
+    if (message.role !== "assistant") return [message]
+    const content = message.content.filter(
+      (part) => part.type !== "reasoning" || reasoningSignature(part) !== undefined,
+    )
+    if (content.length === message.content.length) return [message]
+    if (content.length === 0) return []
+    return [new Message({ ...message, content })]
+  })
+
 const lowerMessages = Effect.fn("AnthropicMessages.lowerMessages")(function* (
   request: LLMRequest,
   breakpoints: Cache.Breakpoints,
 ) {
+  // Unsigned reasoning is dropped only for Claude, matched by model id ("claude-…", "anthropic/claude-…").
+  // Other models on this route, such as MiniMax, may not sign their thinking and ask for it back unchanged.
+  const history = request.model.id.toLowerCase().includes("claude")
+    ? withoutUnsignedReasoning(request.messages)
+    : request.messages
   const messages: AnthropicMessage[] = []
 
-  for (const [index, message] of request.messages.entries()) {
+  for (const [index, message] of history.entries()) {
     if (message.role === "system") {
-      if (splitsLocalToolResults(request.messages, index))
+      if (splitsLocalToolResults(history, index))
         return yield* invalid("Anthropic Messages system updates cannot split a local tool call from its tool result")
-      if (supportsNativeSystemUpdates(request) && canUseNativeSystemUpdate(request.messages, index)) {
+      if (supportsNativeSystemUpdates(request) && canUseNativeSystemUpdate(history, index)) {
         messages.push(yield* lowerNativeSystemUpdate(message, breakpoints))
         continue
       }
@@ -461,7 +484,7 @@ const lowerMessages = Effect.fn("AnthropicMessages.lowerMessages")(function* (
           content.push({
             type: "thinking",
             thinking: part.text,
-            signature: part.encrypted ?? signatureFromMetadata(part.providerMetadata),
+            signature: reasoningSignature(part),
           })
           continue
         }

@@ -7,6 +7,8 @@ import { PermissionV2 } from "../permission"
 import { SessionMessage } from "../session/message"
 import { SessionSchema } from "../session/schema"
 import { ToolOutputStore } from "../tool-output-store"
+import { ToolResultStore } from "../tool-result-store"
+import { BoundedJson } from "../util/bounded-json"
 import { Wildcard } from "../util/wildcard"
 import { ApplicationTools } from "./application-tools"
 import { ToolInterceptor } from "./interceptor"
@@ -168,17 +170,45 @@ const registryLayer = Layer.effect(
         ),
       )
       if ("result" in pending) return pending
+      // Discard unsupported structured source shapes before strict recursive protection. The
+      // surviving view still passes through the operation's protection before any storage.
+      const candidate = yield* Effect.try({
+        try: () =>
+          pending.output.structured !== undefined &&
+          BoundedJson.encode(pending.output.structured, ToolResultStore.MAX_BYTES) === undefined
+            ? {
+                ...pending.output,
+                structured: {
+                  retentionUnavailable: "Structured capture exceeded JSON limits or used an unsupported value.",
+                  truncated: true,
+                },
+              }
+            : pending.output,
+        catch: () => true,
+      }).pipe(
+        Effect.catch(() =>
+          Effect.succeed({
+            ...pending.output,
+            structured: {
+              retentionUnavailable: "Structured capture exceeded JSON limits or used an unsupported value.",
+              truncated: true,
+            },
+          }),
+        ),
+      )
       // Redact before bounding: the overflow writer otherwise retains the original.
       const safe = yield* Effect.try({
-        try: () => redactOutput(pending.output, protection),
+        try: () => redactOutput(candidate, protection),
         catch: () => "Tool output withheld because secret redaction failed",
       }).pipe(Effect.result)
       if (safe._tag === "Failure") return { result: { type: "error" as const, value: safe.failure } }
-      const output = safe.success
       const bounded = yield* resources.bound({
         sessionID: input.sessionID,
         toolCallID: input.call.id,
-        output,
+        assistantMessageID: input.assistantMessageID,
+        tool: input.call.name,
+        retain: !["result_list", "result_read", "result_search", "result_compute"].includes(input.call.name),
+        output: safe.success,
         protection,
       })
       const result = ToolOutput.toResultValue(bounded.output)

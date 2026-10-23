@@ -1,4 +1,5 @@
 import { parse } from "acorn"
+import { ExecutionBudget } from "./budget.js"
 import { Cause, Effect, Exit, Fiber, Semaphore } from "effect"
 import {
   copyIn,
@@ -341,7 +342,13 @@ const instanceofValue = (lhs: unknown, rhs: unknown, node: AstNode): boolean => 
   )
 }
 
-const invokeStringMethod = (value: string, name: string, args: Array<unknown>, node: AstNode): unknown => {
+const invokeStringMethod = (
+  value: string,
+  name: string,
+  args: Array<unknown>,
+  node: AstNode,
+  budget?: ExecutionBudget,
+): unknown => {
   const str = (index: number): string => {
     const arg = args[index]
     if (typeof arg !== "string")
@@ -356,6 +363,58 @@ const invokeStringMethod = (value: string, name: string, args: Array<unknown>, n
   }
   const optNum = (index: number): number | undefined => (args[index] === undefined ? undefined : num(index))
   const optStr = (index: number): string | undefined => (args[index] === undefined ? undefined : str(index))
+
+  if (budget) {
+    budget.string(value.length)
+    if (name === "repeat") budget.string(value.length * Math.max(0, Math.trunc(num(0))))
+    if (name === "padStart" || name === "padEnd") budget.string(Math.max(value.length, num(0)))
+    if (name === "concat")
+      budget.string(
+        value.length + args.reduce<number>((sum, item) => sum + (typeof item === "string" ? item.length : 0), 0),
+      )
+    if (name === "normalize") budget.string(value.length * 18)
+    if (name === "toLowerCase" || name === "toUpperCase") budget.string(value.length * 3)
+    const pattern = args[0] instanceof SandboxRegExp ? args[0].regex : undefined
+    const source =
+      pattern?.source ??
+      (typeof args[0] === "string" && (name === "match" || name === "matchAll" || name === "search") ? args[0] : "")
+    if (!pattern && source) budget.string(source.length * 64)
+    const groups = regexGroups(source)
+    if (name === "split") {
+      const limit = args[1] === undefined ? value.length + 1 : Number(args[1]) >>> 0
+      let count = Math.min(value.length + 1, limit)
+      if (typeof args[0] === "string" && args[0].length > 0) {
+        count = Math.min(1, limit)
+        let offset = 0
+        while (count < limit) {
+          budget.step()
+          const found = value.indexOf(args[0], offset)
+          if (found < 0) break
+          count++
+          offset = found + args[0].length
+        }
+      }
+      budget.slots(count * groups)
+      budget.string(value.length * groups * (source.includes("(?") ? value.length + 1 : 1))
+    }
+    if (name === "matchAll" || (name === "match" && pattern?.global)) {
+      budget.slots((value.length + 1) * groups * 4)
+      budget.string(value.length * groups * (source.includes("(?") ? value.length + 1 : 1))
+    }
+    if (name === "match" && !pattern?.global) {
+      budget.slots(groups * 4)
+      budget.string(value.length * groups)
+    }
+    if ((name === "replace" || name === "replaceAll") && typeof args[1] === "string") {
+      const repeated = name === "replaceAll" || pattern?.global
+      const count = repeated ? value.length + 1 : 1
+      const contextual =
+        /\$[`']/.test(args[1]) || (pattern?.source.includes("(?") && /\$(?:\d|<)/.test(args[1]))
+          ? value.length * args[1].length
+          : 0
+      budget.string(value.length * (args[1].length + 1) + count * (args[1].length + contextual))
+    }
+  }
 
   let result: unknown
   switch (name) {
@@ -517,7 +576,51 @@ const invokeStringMethod = (value: string, name: string, args: Array<unknown>, n
   return boundedData(result, `String.${name} result`)
 }
 
-const invokeArrayStatic = (name: string, args: Array<unknown>, node: AstNode): unknown => {
+function regexGroups(source: string) {
+  let count = 1
+  let escaped = false
+  let characterClass = false
+  for (let index = 0; index < source.length; index++) {
+    const char = source[index]
+    if (escaped) {
+      escaped = false
+      continue
+    }
+    if (char === "\\") {
+      escaped = true
+      continue
+    }
+    if (char === "[") characterClass = true
+    if (char === "]") characterClass = false
+    if (
+      char === "(" &&
+      !characterClass &&
+      (source[index + 1] !== "?" ||
+        (source[index + 2] === "<" && source[index + 3] !== "=" && source[index + 3] !== "!"))
+    )
+      count++
+  }
+  return count
+}
+
+const invokeArrayStatic = (name: string, args: Array<unknown>, node: AstNode, budget?: ExecutionBudget): unknown => {
+  if (name === "of") budget?.slots(args.length)
+  if (name === "from" && budget) {
+    const source = args[0]
+    const length =
+      typeof source === "string" || Array.isArray(source)
+        ? source.length
+        : source instanceof SandboxMap
+          ? source.map.size * 3
+          : source instanceof SandboxSet
+            ? source.set.size
+            : source instanceof SandboxURLSearchParams
+              ? source.params.size * 3
+              : isRecord(source) && typeof source.length === "number"
+                ? Math.max(0, Math.floor(source.length))
+                : 0
+    budget.slots(length)
+  }
   switch (name) {
     case "isArray":
       return Array.isArray(args[0])
@@ -556,15 +659,23 @@ const invokeArrayStatic = (name: string, args: Array<unknown>, node: AstNode): u
   }
 }
 
-const invokeGlobalMethod = (ref: GlobalMethodReference, args: Array<unknown>, node: AstNode): unknown => {
+const invokeGlobalMethod = (
+  ref: GlobalMethodReference,
+  args: Array<unknown>,
+  node: AstNode,
+  budget?: ExecutionBudget,
+): unknown => {
   if (ref.namespace === "console")
     throw new InterpreterRuntimeError(`console.${ref.name} is not available in CodeMode.`, node)
   if (ref.namespace === "Object") return invokeObjectMethod(ref.name, args, node)
   if (ref.namespace === "Math") return invokeMathMethod(ref.name, args, node)
-  if (ref.namespace === "Array") return invokeArrayStatic(ref.name, args, node)
+  if (ref.namespace === "Array") return invokeArrayStatic(ref.name, args, node, budget)
   if (ref.namespace === "Number") return invokeNumberStatic(ref.name, args, node)
   if (ref.namespace === "String") return invokeStringStatic(ref.name, args, node)
-  if (ref.namespace === "URL") return invokeURLStatic(ref.name, args, node)
+  if (ref.namespace === "URL") {
+    budget?.value(args, 16)
+    return invokeURLStatic(ref.name, args, node)
+  }
   if (ref.namespace === "Date") {
     if (!dateStatics.has(ref.name))
       throw new InterpreterRuntimeError(`Date.${ref.name} is not available in CodeMode.`, node)
@@ -578,7 +689,7 @@ const invokeGlobalMethod = (ref: GlobalMethodReference, args: Array<unknown>, no
   ) {
     throw new InterpreterRuntimeError(`${ref.namespace}.${ref.name} is not available in CodeMode.`, node)
   }
-  return invokeJsonMethod(ref.name, args, node)
+  return invokeJsonMethod(ref.name, args, node, budget)
 }
 
 // Every identifier a parameter pattern binds, used to seed TDZ slots before defaults run.
@@ -627,6 +738,7 @@ class Interpreter<R> {
     invokeTool: (path: ReadonlyArray<string>, args: Array<unknown>) => Effect.Effect<unknown, unknown, R>,
     toolKeys: (path: ReadonlyArray<string>) => ReadonlyArray<string>,
     logs: Array<string> = [],
+    private readonly budget?: ExecutionBudget,
   ) {
     const globalScope = new Map<string, Binding>()
     this.scopes = [globalScope]
@@ -784,7 +896,13 @@ class Interpreter<R> {
     return Effect.failCause(exit.cause)
   }
 
+  private data(value: unknown, label: string): unknown {
+    this.budget?.value(value)
+    return boundedData(value, label)
+  }
+
   private evaluateStatement(node: AstNode): Effect.Effect<StatementResult, unknown, R> {
+    this.budget?.step()
     switch (node.type) {
       case "ExpressionStatement":
         return Effect.map(this.evaluateExpression(getNode(node, "expression")), (value) => ({ kind: "value", value }))
@@ -855,6 +973,7 @@ class Interpreter<R> {
   }
 
   private createFunction(node: AstNode): CodeModeFunction {
+    this.budget?.slots(this.scopes.length + 1)
     if (node.generator === true) {
       throw new InterpreterRuntimeError(
         "Generator functions are not supported in CodeMode.",
@@ -1027,6 +1146,7 @@ class Interpreter<R> {
       while (testNode ? yield* self.evaluateExpression(testNode) : true) {
         let iterationScope: Map<string, Binding> | undefined
         if (perIterationBindings.length > 0) {
+          self.budget?.slots(perIterationBindings.length * 2 + 1)
           iterationScope = new Map(
             perIterationBindings.map((name) => {
               const binding = self.currentScope().get(name)!
@@ -1088,7 +1208,9 @@ class Interpreter<R> {
 
       // Arrays iterate in place; strings iterate code points; Maps iterate [key, value]
       // pairs and Sets iterate values over a snapshot (mutation during iteration is safe).
-      const iterable = Array.isArray(right) ? right : spreadItems(right)
+      self.budget?.value(right)
+      if (typeof right === "string") self.budget?.slots(right.length)
+      const iterable = Array.isArray(right) ? right : spreadItems(right, self.budget)
       if (iterable === undefined) {
         throw new InterpreterRuntimeError("for...of requires an array, string, Map, or Set value in CodeMode.", node)
       }
@@ -1262,7 +1384,10 @@ class Interpreter<R> {
 
   private evaluateThrowStatement(node: AstNode): Effect.Effect<StatementResult, unknown, R> {
     const argument = getNode(node, "argument")
-    return Effect.flatMap(this.evaluateExpression(argument), (value) => Effect.fail(new ProgramThrow(value)))
+    return Effect.flatMap(this.evaluateExpression(argument), (value) => {
+      this.budget?.value(value, 8)
+      return Effect.fail(new ProgramThrow(value))
+    })
   }
 
   private evaluateTryStatement(node: AstNode): Effect.Effect<StatementResult, unknown, R> {
@@ -1349,6 +1474,7 @@ class Interpreter<R> {
       }
 
       if (pattern.type === "ObjectPattern") {
+        self.budget?.value(value)
         if (value === null || typeof value !== "object" || Array.isArray(value) || isRuntimeReference(value)) {
           throw new InterpreterRuntimeError(
             "Object destructuring requires a data object value.",
@@ -1400,6 +1526,7 @@ class Interpreter<R> {
           const element = asNode(item, `elements[${index}]`)
           // Array rest: `[head, ...tail]` - binds the remaining elements (must be last).
           if (element.type === "RestElement") {
+            self.budget?.slots(Math.max(0, value.length - index))
             yield* self.declarePattern(getNode(element, "argument"), value.slice(index), mutable, element)
             break
           }
@@ -1413,6 +1540,7 @@ class Interpreter<R> {
   }
 
   private evaluateExpression(node: AstNode): Effect.Effect<unknown, unknown, R> {
+    this.budget?.step()
     switch (node.type) {
       case "Literal": {
         // A regex literal parses as a Literal node carrying { pattern, flags }; construct the
@@ -1423,7 +1551,7 @@ class Interpreter<R> {
             this.constructRegExp([regex.pattern, typeof regex.flags === "string" ? regex.flags : ""], node),
           )
         }
-        return Effect.sync(() => boundedData(node.value, "Literal"))
+        return Effect.sync(() => this.data(node.value, "Literal"))
       }
       case "Identifier":
         return Effect.sync(() => this.getIdentifierValue(getString(node, "name"), node))
@@ -1491,12 +1619,14 @@ class Interpreter<R> {
       return Effect.gen(function* () {
         const arg =
           argNodes.length > 0 ? yield* self.evaluateExpression(asNode(argNodes[0], "arguments[0]")) : undefined
+        self.budget?.value(arg, 4)
         return createErrorValue(name, arg === undefined ? "" : coerceToString(arg))
       })
     }
     if (valueConstructors.has(name)) {
       return Effect.gen(function* () {
         const args = yield* self.evaluateCallArguments(argNodes)
+        self.budget?.value(args)
         switch (name) {
           case "Date":
             return self.constructDate(args)
@@ -1531,6 +1661,7 @@ class Interpreter<R> {
   }
 
   private constructRegExp(args: Array<unknown>, node: AstNode): SandboxRegExp {
+    this.budget?.value(args, 64)
     const first = args[0]
     const pattern =
       first instanceof SandboxRegExp ? first.regex.source : first === undefined ? "" : coerceToString(first)
@@ -1559,6 +1690,8 @@ class Interpreter<R> {
   }
 
   private constructMap(init: unknown, node: AstNode): SandboxMap {
+    this.budget?.value(init, 2)
+    this.budget?.slots(1)
     const target = new SandboxMap()
     if (init === undefined || init === null) return target
     const entries = Array.isArray(init)
@@ -1582,6 +1715,9 @@ class Interpreter<R> {
   }
 
   private constructSet(init: unknown, node: AstNode): SandboxSet {
+    this.budget?.value(init, 2)
+    if (typeof init === "string") this.budget?.slots(init.length)
+    this.budget?.slots(1)
     const target = new SandboxSet()
     if (init === undefined || init === null) return target
     const items = Array.isArray(init)
@@ -1599,6 +1735,7 @@ class Interpreter<R> {
   }
 
   private constructURL(args: Array<unknown>, node: AstNode): SandboxURL {
+    this.budget?.value(args, 16)
     if (args.length === 0) {
       throw new InterpreterRuntimeError("new URL(...) requires a URL string and an optional base URL.", node).as(
         "TypeError",
@@ -1617,6 +1754,8 @@ class Interpreter<R> {
   }
 
   private constructURLSearchParams(init: unknown, node: AstNode): SandboxURLSearchParams {
+    this.budget?.value(init, 4)
+    if (typeof init === "string") this.budget?.slots(init.length)
     if (init === undefined) return new SandboxURLSearchParams(new URLSearchParams())
     if (init instanceof SandboxURLSearchParams) {
       return new SandboxURLSearchParams(new URLSearchParams(init.params))
@@ -1647,7 +1786,7 @@ class Interpreter<R> {
       return new SandboxURLSearchParams(new URLSearchParams(entries))
     }
     if (isSandboxValue(init)) return new SandboxURLSearchParams(new URLSearchParams())
-    const data = boundedData(init, "new URLSearchParams input")
+    const data = this.data(init, "new URLSearchParams input")
     if (data === null || typeof data !== "object") {
       throw new InterpreterRuntimeError(
         "new URLSearchParams(...) expects a query string, data object, array of pairs, or URLSearchParams.",
@@ -1669,7 +1808,7 @@ class Interpreter<R> {
       // function operand is a legitimate question, not an error), so it is handled before
       // the data-only operand check.
       if (operator === "instanceof") return instanceofValue(lhs, rhs, node)
-      return boundedData(self.applyBinaryOperator(operator, lhs, rhs, node), "Binary expression result")
+      return self.data(self.applyBinaryOperator(operator, lhs, rhs, node), "Binary expression result")
     })
   }
 
@@ -1679,6 +1818,8 @@ class Interpreter<R> {
    * exactly like `x = x op y`, coercion included).
    */
   private applyBinaryOperator(operator: string, lhs: unknown, rhs: unknown, node: AstNode): unknown {
+    this.budget?.value(lhs)
+    this.budget?.value(rhs)
     if (containsOpaqueReference(lhs) || containsOpaqueReference(rhs)) {
       throw new InterpreterRuntimeError("Binary operators require data values in CodeMode.", node, "InvalidDataValue")
     }
@@ -1697,6 +1838,7 @@ class Interpreter<R> {
     const r = coerceOperand(rhs)
     switch (operator) {
       case "+":
+        if (typeof l === "string" || typeof r === "string") this.budget?.string(String(l).length + String(r).length)
         return (l as string) + (r as string)
       case "-":
         return (l as number) - (r as number)
@@ -1771,6 +1913,7 @@ class Interpreter<R> {
       return Effect.succeed("undefined")
     }
     return Effect.map(this.evaluateExpression(argument), (value) => {
+      this.budget?.value(value)
       // `typeof` and `!` never throw in JS - they observe any value (functions and runtime
       // references included) without coercing it, so feature detection and negation work.
       if (operator === "typeof") return typeofValue(value)
@@ -1801,7 +1944,7 @@ class Interpreter<R> {
         default:
           throw new InterpreterRuntimeError(`Unsupported unary operator '${operator}'.`, node)
       }
-      return boundedData(result, "Unary expression result")
+      return this.data(result, "Unary expression result")
     })
   }
 
@@ -1817,7 +1960,7 @@ class Interpreter<R> {
       if (left.type === "Identifier") {
         const name = getString(left, "name")
         if (operator === "=") return self.setIdentifierValue(name, rightValue, left)
-        const next = boundedData(
+        const next = self.data(
           self.applyCompoundAssignment(operator, self.getIdentifierValue(name, left), rightValue, node),
           "Assignment result",
         )
@@ -1826,10 +1969,7 @@ class Interpreter<R> {
       if (left.type === "MemberExpression") {
         if (operator === "=") return yield* self.writeMember(left, rightValue)
         return yield* self.modifyMember(left, (current) => {
-          const next = boundedData(
-            self.applyCompoundAssignment(operator, current, rightValue, node),
-            "Assignment result",
-          )
+          const next = self.data(self.applyCompoundAssignment(operator, current, rightValue, node), "Assignment result")
           return Effect.succeed({ write: true, next, result: next })
         })
       }
@@ -1883,7 +2023,9 @@ class Interpreter<R> {
     if (argument.type === "Identifier") {
       return Effect.sync(() => {
         const name = getString(argument, "name")
-        const current = Number(this.getIdentifierValue(name, argument))
+        const value = this.getIdentifierValue(name, argument)
+        this.budget?.value(value, 4)
+        const current = Number(value)
         const next = current + increment
         this.setIdentifierValue(name, next, argument)
         return prefix ? next : current
@@ -1892,6 +2034,7 @@ class Interpreter<R> {
 
     if (argument.type === "MemberExpression") {
       return this.modifyMember(argument, (current) => {
+        this.budget?.value(current, 4)
         const value = Number(current)
         const next = value + increment
         return Effect.succeed({ write: true, next, result: prefix ? next : value })
@@ -1912,6 +2055,7 @@ class Interpreter<R> {
       if ((callable === null || callable === undefined) && node.optional === true) return OptionalShortCircuit
 
       const args = yield* self.evaluateCallArguments(argNodes)
+      self.budget?.value(args)
 
       if (callable instanceof ToolReference) {
         if (callable.path.length === 0) throw new InterpreterRuntimeError("The tools root is not callable.", callee)
@@ -1932,12 +2076,16 @@ class Interpreter<R> {
         if (callable.namespace === "Object" && args[0] instanceof ToolReference) {
           return self.invokeObjectMethodOnTools(callable.name, args[0] as ToolReference, node)
         }
-        return boundedData(invokeGlobalMethod(callable, args, node), `${callable.namespace}.${callable.name} result`)
+        return self.data(
+          invokeGlobalMethod(callable, args, node, self.budget),
+          `${callable.namespace}.${callable.name} result`,
+        )
       }
       if (callable instanceof CoercionFunction) {
-        return boundedData(invokeCoercion(callable, args, node), `${callable.name} result`)
+        return self.data(invokeCoercion(callable, args, node), `${callable.name} result`)
       }
       if (callable instanceof UriFunction) {
+        self.budget?.value(args, 12)
         return invokeUriFunction(callable, args, node)
       }
       // `Error("msg")` without `new` constructs an error exactly like `new Error("msg")`, as in JS.
@@ -1954,7 +2102,7 @@ class Interpreter<R> {
   // with a pointer at the working idioms instead of the generic plain-objects-only message.
   private invokeObjectMethodOnTools(name: string, ref: ToolReference, node: AstNode): unknown {
     if (name === "keys") {
-      return boundedData(this.enumerableKeys(ref)!, "Object.keys result")
+      return this.data(this.enumerableKeys(ref)!, "Object.keys result")
     }
     throw new InterpreterRuntimeError(
       `Object.${name}(...) cannot read tool references: they are not plain data. Use Object.keys(tools) for names, or tools.$codemode.search({ query }) for signatures.`,
@@ -1964,6 +2112,7 @@ class Interpreter<R> {
   }
 
   private invokeConsole(name: string, args: Array<unknown>, node: AstNode): undefined {
+    this.budget?.value(args, 32)
     if (!consoleMethods.has(name))
       throw new InterpreterRuntimeError(`console.${name} is not available in CodeMode.`, node)
     this.logs.push(publicErrorMessage(this.formatConsoleMessage(name, args, node)))
@@ -2040,10 +2189,19 @@ class Interpreter<R> {
     // Sandbox values are legitimate table data (cells render their friendly forms); only
     // truly opaque references (functions, tools, promises) collapse to the marker.
     if (containsOpaqueReference(value)) return "[CodeMode reference]"
-    const data = boundedData(value, "console.table argument")
+    const data = this.data(value, "console.table argument")
     const columns = this.consoleTableColumns(columnsArgument, node)
+    if (columns) {
+      const count = Array.isArray(data)
+        ? data.length
+        : data !== null && typeof data === "object" && !isSandboxValue(data)
+          ? Object.keys(data).length
+          : 1
+      this.budget?.slots(count * columns.length * 4)
+    }
     const rows = this.consoleTableRows(data, columns)
     const keys = columns ?? this.consoleTableInferredColumns(rows)
+    if (!columns) this.budget?.slots(rows.length * keys.length * 4)
     const header = ["(index)", ...keys].join("\t")
     return [
       header,
@@ -2089,6 +2247,7 @@ class Interpreter<R> {
   }
 
   private formatConsoleTableCell(value: unknown): string {
+    this.budget?.value(value, 8)
     if (value === undefined) return ""
     if (typeof value === "string") return value
     return this.formatConsoleValue(value, new Set(), 0)
@@ -2102,14 +2261,17 @@ class Interpreter<R> {
         const argNode = asNode(arg, `arguments[${index}]`)
         if (argNode.type === "SpreadElement") {
           const spread = yield* self.evaluateExpression(getNode(argNode, "argument"))
-          const items = spreadItems(spread)
+          self.budget?.value(spread)
+          const items = spreadItems(spread, self.budget)
           if (items === undefined)
             throw new InterpreterRuntimeError(
               "Spread arguments require an array, string, Map, or Set in CodeMode.",
               argNode,
             )
+          self.budget?.slots(items.length)
           args.push(...items)
         } else {
+          self.budget?.slots(1)
           args.push(yield* self.evaluateExpression(argNode))
         }
       }
@@ -2140,7 +2302,7 @@ class Interpreter<R> {
       return Effect.sync(() => new SandboxPromise(undefined, Effect.fail(new ProgramThrow(args[0]))))
     }
 
-    const items = Array.isArray(args[0]) ? args[0] : spreadItems(args[0])
+    const items = Array.isArray(args[0]) ? args[0] : spreadItems(args[0], self.budget)
     if (items === undefined) {
       throw new InterpreterRuntimeError(
         `Promise.${ref.name} expects an array of promises or plain values (e.g. Promise.${ref.name}(items.map((item) => tools.ns.tool(item)))).`,
@@ -2235,6 +2397,7 @@ class Interpreter<R> {
     const self = this
     return Effect.suspend(() => {
       const savedScopes = self.scopes
+      self.budget?.slots(fn.capturedScopes.length + 1)
       self.scopes = [...fn.capturedScopes, new Map<string, Binding>()]
       const run = Effect.gen(function* () {
         // Seed every parameter name into the scope as a TDZ slot first, so a default that
@@ -2276,6 +2439,8 @@ class Interpreter<R> {
     args: Array<unknown>,
     node: AstNode,
   ): Effect.Effect<unknown, unknown, R> {
+    this.budget?.value(ref.receiver)
+    this.budget?.value(args)
     if (typeof ref.receiver === "string") {
       if (
         (ref.name === "replace" || ref.name === "replaceAll") &&
@@ -2283,7 +2448,7 @@ class Interpreter<R> {
       ) {
         return this.invokeStringReplacer(ref.receiver, ref.name, args, node)
       }
-      return Effect.succeed(invokeStringMethod(ref.receiver, ref.name, args, node))
+      return Effect.succeed(invokeStringMethod(ref.receiver, ref.name, args, node, this.budget))
     }
     if (typeof ref.receiver === "number") {
       return Effect.succeed(invokeNumberMethod(ref.receiver, ref.name, args, node))
@@ -2295,6 +2460,7 @@ class Interpreter<R> {
       return Effect.succeed(invokeDateMethod(ref.receiver, ref.name, node))
     }
     if (ref.receiver instanceof SandboxRegExp) {
+      this.budget?.string(coerceToString(args[0]).length * (ref.receiver.regex.source.length + 1))
       return Effect.succeed(invokeRegExpMethod(ref.receiver, ref.name, args, node))
     }
     if (ref.receiver instanceof SandboxMap) {
@@ -2318,6 +2484,7 @@ class Interpreter<R> {
     args: Array<unknown>,
     node: AstNode,
   ): Effect.Effect<unknown, unknown, R> {
+    const self = this
     const apply = this.applyCollectionCallback(args[1], `String.${name}`, node)
     const matches: Array<{ readonly match: string; readonly offset: number; readonly args: Array<unknown> }> = []
     const collect = (...callbackArgs: Array<unknown>): string => {
@@ -2335,6 +2502,8 @@ class Interpreter<R> {
         }
         callbackArgs[callbackArgs.length - 1] = safeGroups
       }
+      this.budget?.value(callbackArgs)
+      this.budget?.slots(4)
       matches.push({ match, offset, args: callbackArgs })
       return match
     }
@@ -2361,14 +2530,16 @@ class Interpreter<R> {
       const output: Array<string> = []
       let end = 0
       for (const match of matches) {
-        output.push(
-          value.slice(end, match.offset),
-          coerceToString(boundedData(yield* apply(match.args), `String.${name} replacer result`)),
-        )
+        const replacement = coerceToString(self.data(yield* apply(match.args), `String.${name} replacer result`))
+        self.budget?.string(match.offset - end + replacement.length)
+        self.budget?.slots(2)
+        output.push(value.slice(end, match.offset), replacement)
         end = match.offset + match.match.length
       }
+      self.budget?.string(value.length - end)
       output.push(value.slice(end))
-      return boundedData(output.join(""), `String.${name} result`)
+      self.budget?.value(output)
+      return self.data(output.join(""), `String.${name} result`)
     })
   }
 
@@ -2387,11 +2558,17 @@ class Interpreter<R> {
       throw new InterpreterRuntimeError(`${name} expects a function callback.`, node)
     }
     return (callbackArgs) =>
-      callback instanceof CoercionFunction
-        ? Effect.succeed(invokeCoercion(callback, callbackArgs, node))
-        : callback instanceof UriFunction
-          ? Effect.succeed(invokeUriFunction(callback, callbackArgs, node))
-          : this.invokeFunction(callback, callbackArgs)
+      Effect.suspend(() => {
+        if (callback instanceof CoercionFunction || callback instanceof UriFunction) {
+          this.budget?.value(callbackArgs[0], callback instanceof UriFunction ? 12 : 4)
+          return Effect.succeed(
+            callback instanceof UriFunction
+              ? invokeUriFunction(callback, callbackArgs, node)
+              : invokeCoercion(callback, callbackArgs, node),
+          )
+        }
+        return this.invokeFunction(callback, callbackArgs)
+      })
   }
 
   private invokeMapMethod(
@@ -2407,6 +2584,7 @@ class Interpreter<R> {
         return Effect.succeed(target.map.has(args[0]))
       case "set":
         return Effect.sync(() => {
+          this.budget?.slots(2)
           target.map.set(args[0], args[1])
           return target
         })
@@ -2447,6 +2625,7 @@ class Interpreter<R> {
         return Effect.succeed(target.set.has(args[0]))
       case "add":
         return Effect.sync(() => {
+          this.budget?.slots(1)
           target.set.add(args[0])
           return target
         })
@@ -2493,6 +2672,8 @@ class Interpreter<R> {
       case "append": {
         requireArgs(2)
         return Effect.sync(() => {
+          this.budget?.slots(2)
+          this.budget?.string((arg(0).length + arg(1).length) * 3)
           target.params.append(arg(0), arg(1))
           return undefined
         })
@@ -2519,6 +2700,8 @@ class Interpreter<R> {
       case "set": {
         requireArgs(2)
         return Effect.sync(() => {
+          this.budget?.slots(2)
+          this.budget?.string((arg(0).length + arg(1).length) * 3)
           target.params.set(arg(0), arg(1))
           return undefined
         })
@@ -2566,7 +2749,8 @@ class Interpreter<R> {
         if (args.length > 1 || (args.length === 1 && typeof args[0] !== "string")) {
           throw new InterpreterRuntimeError("Array.join expects zero arguments or one string separator.", node)
         }
-        const input = boundedData(target, "Array.join input") as Array<unknown>
+        this.budget?.string(Math.max(0, target.length - 1) * (args.length === 0 ? 1 : (args[0] as string).length))
+        const input = this.data(target, "Array.join input") as Array<unknown>
         return Effect.succeed(
           input.map((item) => coerceToString(item ?? "")).join(args.length === 0 ? "," : (args[0] as string)),
         )
@@ -2612,11 +2796,13 @@ class Interpreter<R> {
         // Validate before mutating (so no rollback is needed): inserting a container into
         // itself would create a cycle no later walk could survive.
         for (const item of args) this.rejectCircularInsertion(target, item, "Array.push result", node)
+        this.budget?.slots(args.length)
         target.push(...args)
         return Effect.succeed(target.length)
       }
       case "unshift": {
         for (const item of args) this.rejectCircularInsertion(target, item, "Array.unshift result", node)
+        this.budget?.slots(args.length)
         target.unshift(...args)
         return Effect.succeed(target.length)
       }
@@ -2633,6 +2819,7 @@ class Interpreter<R> {
         const deleteCount = optNumber(args[1], "delete count") ?? 0
         const inserted = args.slice(2)
         for (const item of inserted) this.rejectCircularInsertion(target, item, "Array.splice result", node)
+        this.budget?.slots(target.length + inserted.length)
         return Effect.succeed(target.splice(start, deleteCount, ...inserted))
       }
       case "fill": {
@@ -2669,12 +2856,7 @@ class Interpreter<R> {
     // Accept a user function or supported builtin callable, so idioms such as
     // `filter(Boolean)`, `map(String)`, and `map(encodeURIComponent)` work as in JS. Builtins
     // are synchronous; only CodeModeFunctions can await tool calls.
-    const apply = (callbackArgs: Array<unknown>): Effect.Effect<unknown, unknown, R> =>
-      callback instanceof CoercionFunction
-        ? Effect.succeed(invokeCoercion(callback, callbackArgs, node))
-        : callback instanceof UriFunction
-          ? Effect.succeed(invokeUriFunction(callback, callbackArgs, node))
-          : self.invokeFunction(callback, callbackArgs)
+    const apply = this.applyCollectionCallback(callback, `Array.${name}`, node)
     return Effect.gen(function* () {
       // Iterate a snapshot taken at call time so a callback that mutates the array can't
       // self-extend the loop - matching JS, where elements appended during iteration are not visited.
@@ -2682,13 +2864,17 @@ class Interpreter<R> {
       switch (name) {
         case "map": {
           const values: Array<unknown> = []
-          for (const [index, item] of items.entries()) values.push(yield* apply([item, index, items]))
+          for (const [index, item] of items.entries()) {
+            self.budget?.slots(1)
+            values.push(yield* apply([item, index, items]))
+          }
           return values
         }
         case "flatMap": {
           const values: Array<unknown> = []
           for (const [index, item] of items.entries()) {
             const mapped = yield* apply([item, index, items])
+            self.budget?.slots(Array.isArray(mapped) ? mapped.length : 1)
             if (Array.isArray(mapped)) values.push(...mapped)
             else values.push(mapped)
           }
@@ -2697,7 +2883,10 @@ class Interpreter<R> {
         case "filter": {
           const values: Array<unknown> = []
           for (const [index, item] of items.entries()) {
-            if (yield* apply([item, index, items])) values.push(item)
+            if (yield* apply([item, index, items])) {
+              self.budget?.slots(1)
+              values.push(item)
+            }
           }
           return values
         }
@@ -2803,7 +2992,9 @@ class Interpreter<R> {
         while (leftIndex < left.length && rightIndex < right.length) {
           // Coerce the comparator's result like JS ToNumber (data objects -> NaN, never a host
           // crash) and treat NaN as 0 - the spec's "no consistent order" -> keep the left element.
-          const order = coerceToNumber(yield* self.invokeFunction(comparator, [left[leftIndex], right[rightIndex]]))
+          const compared = yield* self.invokeFunction(comparator, [left[leftIndex], right[rightIndex]])
+          self.budget?.value(compared, 4)
+          const order = coerceToNumber(compared)
           if (Number.isNaN(order) || order <= 0) merged.push(left[leftIndex++])
           else merged.push(right[rightIndex++])
         }
@@ -2837,9 +3028,11 @@ class Interpreter<R> {
               "InvalidDataValue",
             )
           }
+          self.budget?.value(spread)
           for (const [key, value] of Object.entries(spread)) {
             if (isBlockedMember(key))
               throw new InterpreterRuntimeError(`Property '${key}' is not available in CodeMode.`, property)
+            self.budget?.slots(1)
             objectValue[key] = value
           }
           continue
@@ -2872,6 +3065,7 @@ class Interpreter<R> {
         if (isBlockedMember(String(key))) {
           throw new InterpreterRuntimeError(`Property '${String(key)}' is not available in CodeMode.`, keyNode)
         }
+        self.budget?.slots(1)
         objectValue[String(key)] = yield* self.evaluateExpression(valueNode)
       }
 
@@ -2887,20 +3081,24 @@ class Interpreter<R> {
     return Effect.gen(function* () {
       for (const elementValue of elements) {
         if (elementValue === null) {
+          self.budget?.slots(1)
           values.push(undefined)
           continue
         }
         const element = asNode(elementValue, "elements")
         if (element.type === "SpreadElement") {
           const spread = yield* self.evaluateExpression(getNode(element, "argument"))
-          const items = spreadItems(spread)
+          self.budget?.value(spread)
+          const items = spreadItems(spread, self.budget)
           if (items === undefined)
             throw new InterpreterRuntimeError(
               "Array spread requires an array, string, Map, or Set in CodeMode.",
               element,
             )
+          self.budget?.slots(items.length)
           values.push(...items)
         } else {
+          self.budget?.slots(1)
           values.push(yield* self.evaluateExpression(element))
         }
       }
@@ -2924,13 +3122,16 @@ class Interpreter<R> {
           throw new InterpreterRuntimeError("Invalid template literal quasi.", quasi)
         }
 
+        self.budget?.string(output.length + rawValue.cooked.length)
         output += rawValue.cooked
 
         if (index < expressions.length) {
           const raw = yield* self.evaluateExpression(asNode(expressions[index], "expressions"))
           // The preserving checkpoint keeps sandbox values intact, so coerceToString renders
           // them directly (ISO date, /regex/ literal form) instead of a JSON-serialized husk.
-          output += coerceToString(boundedData(raw, "Template interpolation"))
+          const interpolation = coerceToString(self.data(raw, "Template interpolation"))
+          self.budget?.string(output.length + interpolation.length)
+          output += interpolation
         }
       }
 
@@ -3236,11 +3437,14 @@ class Interpreter<R> {
           "InvalidDataValue",
         )
       }
+      this.budget?.slots(Math.max(1, index + 1 - target.length))
+      this.budget?.value(next)
       this.rejectCircularInsertion(target, next, "Array assignment result", node)
       target[index] = next
       return
     }
     if (reference.target instanceof SandboxURL) {
+      this.budget?.value(next, 16)
       const property = key as string
       if (!urlWritableProperties.has(property)) {
         throw new InterpreterRuntimeError(`URL.${property} is read-only.`, node).as("TypeError")
@@ -3256,6 +3460,8 @@ class Interpreter<R> {
     }
     const target = reference.target as SafeObject
     const objectKey = key as string
+    this.budget?.slots(1)
+    this.budget?.value(next)
     this.rejectCircularInsertion(target, next, "Object assignment result", node)
     target[objectKey] = next
   }
@@ -3269,6 +3475,7 @@ class Interpreter<R> {
   }
 
   private declare(name: string, value: unknown, mutable: boolean, node: AstNode): void {
+    this.budget?.slots(1)
     const scope = this.currentScope()
 
     // A pre-seeded parameter slot (initialized === false) is being bound for the first time;
@@ -3335,6 +3542,7 @@ class Interpreter<R> {
   }
 
   private pushScope(): void {
+    this.budget?.slots(1)
     this.scopes.push(new Map())
   }
 
@@ -3382,8 +3590,13 @@ export const executeWithLimits = <const Tools extends Record<string, unknown>>(
 
   const operation = Effect.gen(function* () {
     const program = yield* Effect.promise(() => parseProgram(options.code))
-    const interpreter = new Interpreter<Services<Tools>>(tools.invoke, tools.keys, logs)
+    const budget =
+      limits.maxAllocationBytes === undefined && limits.maxOperations === undefined
+        ? undefined
+        : new ExecutionBudget(limits.maxAllocationBytes, limits.maxOperations)
+    const interpreter = new Interpreter<Services<Tools>>(tools.invoke, tools.keys, logs, budget)
     const value = yield* interpreter.run(program)
+    budget?.value(value, 8)
     const result = copyOut(copyIn(value, "Execution result"), true) as DataValue
     return {
       ok: true,

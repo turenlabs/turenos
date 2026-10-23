@@ -67,6 +67,7 @@ import { WhiteboardTool } from "./whiteboard"
 import { VisualizeTool } from "./visualize"
 import { AnimateTool } from "./animate"
 import { SecurityProxyTool } from "./security-proxy"
+import { ResultTools } from "./results"
 
 /**
  * Composes only the shipped Location-scoped built-in tool transforms.
@@ -104,6 +105,7 @@ export const node = makeLocationNode({
     WebSearchTool.node,
     WriteTool.node,
     MemoryTool.node,
+    ResultTools.node,
     ReflectionTool.node,
     HexviewTool.node,
     DecompileTool.node,

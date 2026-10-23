@@ -32,6 +32,10 @@ const decompilerWorkerResource = {
   from: "out/main/chunks/decompiler-worker.js",
   to: "decompiler/decompiler-worker.js",
 }
+const resultComputeWorkerResource = {
+  from: "out/main/chunks/result-compute/",
+  to: "result-compute/",
+}
 const decompilerAssetsResource = {
   from: "out/main/chunks/ghidra-decompiler/",
   to: "decompiler/ghidra-decompiler/",
@@ -389,6 +393,7 @@ const getBase = (appId: string): Configuration => ({
     "!out/main/server/**/*",
     "!out/**/*.map",
     "!out/main/chunks/decompiler-worker.js",
+    "!out/main/chunks/result-compute/**/*",
     "!out/main/chunks/ghidra-decompiler/**/*",
     "!out/main/chunks/yara-worker.js",
     "!out/main/chunks/yara-x/**/*",
@@ -430,6 +435,7 @@ const getBase = (appId: string): Configuration => ({
       filter: ["index.js", "index.d.ts", "build/Release/mac_window.node", "swift-build/**"],
     },
     decompilerWorkerResource,
+    resultComputeWorkerResource,
     decompilerAssetsResource,
     yaraWorkerResource,
     yaraAssetsResource,

@@ -299,20 +299,31 @@ const lowerToolResult = Effect.fn("BedrockConverse.lowerToolResult")(function* (
   } satisfies BedrockToolResultBlock
 })
 
+// Converse requires alternating roles and every toolResult of a toolUse turn in the next user
+// message, so system updates, prompts, and tool results that follow each other share one message.
+const appendUserMessage = (messages: BedrockMessage[], content: BedrockUserBlock[]) => {
+  const previous = messages.at(-1)
+  if (previous?.role === "user") {
+    messages[messages.length - 1] = { role: "user", content: [...previous.content, ...content] }
+    return
+  }
+  messages.push({ role: "user", content })
+}
+
 const lowerMessages = Effect.fn("BedrockConverse.lowerMessages")(function* (
   request: LLMRequest,
   breakpoints: BedrockCache.Breakpoints,
 ) {
+  // Claude on Bedrock rejects reasoningText without a signature. Core strips provider metadata from
+  // failed turns, so their reasoning comes back unsigned; drop it for Claude, matched by model id
+  // ("anthropic.claude-…", "us.anthropic.claude-…"). Other models keep their reasoning as before.
+  const dropsUnsignedReasoning = request.model.id.toLowerCase().includes("claude")
   const messages: BedrockMessage[] = []
 
   for (const message of request.messages) {
     if (message.role === "system") {
       const part = yield* ProviderShared.wrappedSystemUpdate("Bedrock Converse", message)
-      const content = textWithCache(breakpoints, part.text, part.cache)
-      const previous = messages.at(-1)
-      if (previous?.role === "user")
-        messages[messages.length - 1] = { role: "user", content: [...previous.content, ...content] }
-      else messages.push({ role: "user", content })
+      appendUserMessage(messages, textWithCache(breakpoints, part.text, part.cache))
       continue
     }
 
@@ -332,7 +343,7 @@ const lowerMessages = Effect.fn("BedrockConverse.lowerMessages")(function* (
           continue
         }
       }
-      messages.push({ role: "user", content })
+      appendUserMessage(messages, content)
       continue
     }
 
@@ -350,11 +361,9 @@ const lowerMessages = Effect.fn("BedrockConverse.lowerMessages")(function* (
           continue
         }
         if (part.type === "reasoning") {
-          content.push({
-            reasoningContent: {
-              reasoningText: { text: part.text, signature: reasoningSignature(part) },
-            },
-          })
+          const signature = reasoningSignature(part)
+          if (signature === undefined && dropsUnsignedReasoning) continue
+          content.push({ reasoningContent: { reasoningText: { text: part.text, signature } } })
           continue
         }
         if (part.type === "tool-call") {
@@ -362,6 +371,8 @@ const lowerMessages = Effect.fn("BedrockConverse.lowerMessages")(function* (
           continue
         }
       }
+      // Bedrock rejects a message with empty content, so skip one that only held dropped reasoning.
+      if (content.length === 0 && message.content.length > 0) continue
       messages.push({ role: "assistant", content })
       continue
     }
@@ -374,7 +385,7 @@ const lowerMessages = Effect.fn("BedrockConverse.lowerMessages")(function* (
       const cachePoint = BedrockCache.block(breakpoints, part.cache)
       if (cachePoint) content.push(cachePoint)
     }
-    messages.push({ role: "user", content })
+    appendUserMessage(messages, content)
   }
 
   return messages

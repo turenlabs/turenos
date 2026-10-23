@@ -38,10 +38,11 @@ the key against every sealed store first. See
 [Secure storage](../systems/secure-storage.md#database-identity-ownership-and-verification) and
 [`packages/core/src/database/server-owner.ts`](../../packages/core/src/database/server-owner.ts).
 
-Large or bounded tool results have a second storage path. `ToolOutputStore` keeps normal output
-inline, and writes oversized text under the data directory when it exceeds the configured line or
-byte limits. The model receives a head/tail preview and a path to the full output. This is a bound,
-not a sandbox: the shell tool still has host-user authority, as documented in
+Tool results have managed file storage in addition to the durable event stream. `ToolOutputStore` bounds the
+model-facing view; `ToolResultStore` retains protected oversized text or JSON independently of that view's size.
+[Retained tool results](../systems/retained-results.md) are immutable session-scoped envelopes under the data directory,
+with an 8 MiB per-envelope bound, seven-day expiry, and permission-checked read/search/compute tools. Existing overflow
+paths remain available. These storage bounds do not change the shell's host-user authority; see
 [Dangerous commands](../systems/dangerous-commands/README.md).
 
 Credentials and other small sensitive values use `SecretVault`, which derives a scope-bound key and
