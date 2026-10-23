@@ -1,5 +1,5 @@
 diff --git a/dist/cjs/client/auth.d.ts b/dist/cjs/client/auth.d.ts
-index 520d8b6d9b4111aab52e252f4c929f0a6a9ad302..d04ba5f5691bf8e5abbcfceb65d4834a7431b21d 100644
+index 520d8b6d..d04ba5f5 100644
 --- a/dist/cjs/client/auth.d.ts
 +++ b/dist/cjs/client/auth.d.ts
 @@ -216,6 +216,15 @@ export declare function selectClientAuthMethod(clientInformation: OAuthClientInf
@@ -19,7 +19,7 @@ index 520d8b6d9b4111aab52e252f4c929f0a6a9ad302..d04ba5f5691bf8e5abbcfceb65d4834a
   * Orchestrates the full auth flow with a server.
   *
 diff --git a/dist/cjs/client/auth.js b/dist/cjs/client/auth.js
-index 09eadc8264c9fcb249f5b95792f381b08b7afe90..08c80870fea14d09f06a3ba33f4babf1666c81e4 100644
+index 4c87a15f..52e79524 100644
 --- a/dist/cjs/client/auth.js
 +++ b/dist/cjs/client/auth.js
 @@ -7,6 +7,7 @@ exports.UnauthorizedError = void 0;
@@ -30,7 +30,7 @@ index 09eadc8264c9fcb249f5b95792f381b08b7afe90..08c80870fea14d09f06a3ba33f4babf1
  exports.isHttpsUrl = isHttpsUrl;
  exports.selectResourceURL = selectResourceURL;
  exports.extractWWWAuthenticateParams = extractWWWAuthenticateParams;
-@@ -224,6 +225,19 @@ async function auth(provider, options) {
+@@ -226,6 +227,19 @@ async function auth(provider, options) {
          throw error;
      }
  }
@@ -50,7 +50,7 @@ index 09eadc8264c9fcb249f5b95792f381b08b7afe90..08c80870fea14d09f06a3ba33f4babf1
  async function authInternal(provider, { serverUrl, authorizationCode, scope, resourceMetadataUrl, fetchFn }) {
      // Check if the provider has cached discovery state to skip discovery
      const cachedState = await provider.discoveryState?.();
-@@ -289,12 +303,12 @@ async function authInternal(provider, { serverUrl, authorizationCode, scope, res
+@@ -291,12 +305,12 @@ async function authInternal(provider, { serverUrl, authorizationCode, scope, res
      // provider's own `validateResourceURL` is used as returned.
      const selectedResource = await selectResourceURL(serverUrl, provider, resourceMetadata);
      const resource = selectedResource && resourceMetadata && !provider.validateResourceURL ? resourceMetadata.resource : selectedResource;
@@ -69,7 +69,7 @@ index 09eadc8264c9fcb249f5b95792f381b08b7afe90..08c80870fea14d09f06a3ba33f4babf1
      // Handle client registration if needed. Client information stamped for a different
      // authorization server reads back as `undefined`, so the flow re-registers exactly as if
      // nothing were stored.
-@@ -831,7 +845,7 @@ async function startAuthorization(authorizationServerUrl, { metadata, clientInfo
+@@ -833,7 +847,7 @@ async function startAuthorization(authorizationServerUrl, { metadata, clientInfo
      if (scope) {
          authorizationUrl.searchParams.set('scope', scope);
      }
@@ -79,7 +79,7 @@ index 09eadc8264c9fcb249f5b95792f381b08b7afe90..08c80870fea14d09f06a3ba33f4babf1
          // we need to set the prompt to "consent" to ensure the user is prompted to grant offline access
          // https://openid.net/specs/openid-connect-core-1_0.html#OfflineAccess
 diff --git a/dist/cjs/client/index.d.ts b/dist/cjs/client/index.d.ts
-index 6f567a193626587a2730b5a49293ca5dfd4181ea..5b7c841c000508e389ce617f559f7c2a5126ca9f 100644
+index 6f567a19..5b7c841c 100644
 --- a/dist/cjs/client/index.d.ts
 +++ b/dist/cjs/client/index.d.ts
 @@ -428,6 +428,8 @@ export declare class Client<RequestT extends Request = Request, NotificationT ex
@@ -92,7 +92,7 @@ index 6f567a193626587a2730b5a49293ca5dfd4181ea..5b7c841c000508e389ce617f559f7c2a
          [x: string]: unknown;
          content: ({
 diff --git a/dist/cjs/client/index.js b/dist/cjs/client/index.js
-index 6581be2e5d67a12698cc782d810a6cbd0dc4f046..1518666501e3e59bbf071c97df9435b4bba0f423 100644
+index 6581be2e..15186665 100644
 --- a/dist/cjs/client/index.js
 +++ b/dist/cjs/client/index.js
 @@ -277,41 +277,16 @@ class Client extends protocol_js_1.Protocol {
@@ -206,10 +206,10 @@ index 6581be2e5d67a12698cc782d810a6cbd0dc4f046..1518666501e3e59bbf071c97df9435b4
      }
      /**
 diff --git a/dist/cjs/client/streamableHttp.js b/dist/cjs/client/streamableHttp.js
-index 1b54595cc05a301e0332da7be9f98e46dd7e365b..aecce749b52b2ae010831aa446499a0c2242b050 100644
+index a8f4e59e..65ae36cd 100644
 --- a/dist/cjs/client/streamableHttp.js
 +++ b/dist/cjs/client/streamableHttp.js
-@@ -291,7 +291,38 @@ class StreamableHTTPClientTransport {
+@@ -304,7 +304,38 @@ class StreamableHTTPClientTransport {
          this.onclose?.();
      }
      async send(message, options) {
@@ -248,7 +248,7 @@ index 1b54595cc05a301e0332da7be9f98e46dd7e365b..aecce749b52b2ae010831aa446499a0c
              const { resumptionToken, onresumptiontoken } = options || {};
              if (resumptionToken) {
                  // If we have at last event ID, we need to reconnect the SSE stream
-@@ -299,6 +330,7 @@ class StreamableHTTPClientTransport {
+@@ -312,6 +343,7 @@ class StreamableHTTPClientTransport {
                  return;
              }
              const headers = await this._commonHeaders();
@@ -256,7 +256,7 @@ index 1b54595cc05a301e0332da7be9f98e46dd7e365b..aecce749b52b2ae010831aa446499a0c
              headers.set('content-type', 'application/json');
              headers.set('accept', 'application/json, text/event-stream');
              const init = {
-@@ -311,11 +343,20 @@ class StreamableHTTPClientTransport {
+@@ -324,11 +356,20 @@ class StreamableHTTPClientTransport {
              const response = await (0, transport_js_1.fetchWithinOrigin)(this._fetch ?? fetch)(this._url, init);
              // Handle session ID received during initialization
              const sessionId = response.headers.get('mcp-session-id');
@@ -278,7 +278,7 @@ index 1b54595cc05a301e0332da7be9f98e46dd7e365b..aecce749b52b2ae010831aa446499a0c
                  if (response.status === 401 && this._authProvider) {
                      // Prevent infinite recursion when server returns 401 after successful auth
                      if (this._hasCompletedAuthFlow) {
-@@ -336,7 +377,7 @@ class StreamableHTTPClientTransport {
+@@ -349,7 +390,7 @@ class StreamableHTTPClientTransport {
                      // Mark that we completed auth flow
                      this._hasCompletedAuthFlow = true;
                      // Purposely _not_ awaited, so we don't call onerror twice
@@ -287,7 +287,7 @@ index 1b54595cc05a301e0332da7be9f98e46dd7e365b..aecce749b52b2ae010831aa446499a0c
                  }
                  if (response.status === 403 && this._authProvider) {
                      const { resourceMetadataUrl, scope, error } = (0, auth_js_1.extractWWWAuthenticateParams)(response);
-@@ -363,7 +404,7 @@ class StreamableHTTPClientTransport {
+@@ -376,7 +417,7 @@ class StreamableHTTPClientTransport {
                          if (result !== 'AUTHORIZED') {
                              throw new auth_js_1.UnauthorizedError();
                          }
@@ -297,10 +297,10 @@ index 1b54595cc05a301e0332da7be9f98e46dd7e365b..aecce749b52b2ae010831aa446499a0c
                  }
                  throw new StreamableHTTPError(response.status, `Error POSTing to endpoint: ${this._unfollowedRedirect(response, this._url) ?? text}`);
 diff --git a/dist/cjs/shared/protocol.js b/dist/cjs/shared/protocol.js
-index 3617e787f0ba70447c99501aee7aa67584d89758..4ee4d158391558fdc1f977f5134b7cacfc45e8c3 100644
+index 2eaacb78..b3eeb28b 100644
 --- a/dist/cjs/shared/protocol.js
 +++ b/dist/cjs/shared/protocol.js
-@@ -744,7 +744,12 @@ class Protocol {
+@@ -772,7 +772,12 @@ class Protocol {
              }
              else {
                  // No related task - send through transport normally
@@ -315,7 +315,7 @@ index 3617e787f0ba70447c99501aee7aa67584d89758..4ee4d158391558fdc1f977f5134b7cac
                      reject(error);
                  });
 diff --git a/dist/esm/client/auth.d.ts b/dist/esm/client/auth.d.ts
-index 520d8b6d9b4111aab52e252f4c929f0a6a9ad302..d04ba5f5691bf8e5abbcfceb65d4834a7431b21d 100644
+index 520d8b6d..d04ba5f5 100644
 --- a/dist/esm/client/auth.d.ts
 +++ b/dist/esm/client/auth.d.ts
 @@ -216,6 +216,15 @@ export declare function selectClientAuthMethod(clientInformation: OAuthClientInf
@@ -335,10 +335,10 @@ index 520d8b6d9b4111aab52e252f4c929f0a6a9ad302..d04ba5f5691bf8e5abbcfceb65d4834a
   * Orchestrates the full auth flow with a server.
   *
 diff --git a/dist/esm/client/auth.js b/dist/esm/client/auth.js
-index c2aba1357cc03838102d49a124d54c07cab53ddc..3e55aa2c424f5f4fce69235f4610ec14f87f96d8 100644
+index 9b184c01..94d5cef8 100644
 --- a/dist/esm/client/auth.js
 +++ b/dist/esm/client/auth.js
-@@ -199,6 +199,19 @@ export async function auth(provider, options) {
+@@ -201,6 +201,19 @@ export async function auth(provider, options) {
          throw error;
      }
  }
@@ -358,7 +358,7 @@ index c2aba1357cc03838102d49a124d54c07cab53ddc..3e55aa2c424f5f4fce69235f4610ec14
  async function authInternal(provider, { serverUrl, authorizationCode, scope, resourceMetadataUrl, fetchFn }) {
      // Check if the provider has cached discovery state to skip discovery
      const cachedState = await provider.discoveryState?.();
-@@ -264,12 +277,12 @@ async function authInternal(provider, { serverUrl, authorizationCode, scope, res
+@@ -266,12 +279,12 @@ async function authInternal(provider, { serverUrl, authorizationCode, scope, res
      // provider's own `validateResourceURL` is used as returned.
      const selectedResource = await selectResourceURL(serverUrl, provider, resourceMetadata);
      const resource = selectedResource && resourceMetadata && !provider.validateResourceURL ? resourceMetadata.resource : selectedResource;
@@ -377,7 +377,7 @@ index c2aba1357cc03838102d49a124d54c07cab53ddc..3e55aa2c424f5f4fce69235f4610ec14
      // Handle client registration if needed. Client information stamped for a different
      // authorization server reads back as `undefined`, so the flow re-registers exactly as if
      // nothing were stored.
-@@ -806,7 +819,7 @@ export async function startAuthorization(authorizationServerUrl, { metadata, cli
+@@ -808,7 +821,7 @@ export async function startAuthorization(authorizationServerUrl, { metadata, cli
      if (scope) {
          authorizationUrl.searchParams.set('scope', scope);
      }
@@ -387,7 +387,7 @@ index c2aba1357cc03838102d49a124d54c07cab53ddc..3e55aa2c424f5f4fce69235f4610ec14
          // we need to set the prompt to "consent" to ensure the user is prompted to grant offline access
          // https://openid.net/specs/openid-connect-core-1_0.html#OfflineAccess
 diff --git a/dist/esm/client/index.d.ts b/dist/esm/client/index.d.ts
-index 6f567a193626587a2730b5a49293ca5dfd4181ea..5b7c841c000508e389ce617f559f7c2a5126ca9f 100644
+index 6f567a19..5b7c841c 100644
 --- a/dist/esm/client/index.d.ts
 +++ b/dist/esm/client/index.d.ts
 @@ -428,6 +428,8 @@ export declare class Client<RequestT extends Request = Request, NotificationT ex
@@ -400,7 +400,7 @@ index 6f567a193626587a2730b5a49293ca5dfd4181ea..5b7c841c000508e389ce617f559f7c2a
          [x: string]: unknown;
          content: ({
 diff --git a/dist/esm/client/index.js b/dist/esm/client/index.js
-index 30795e5ecf60925d980c844a54c0a763b4f0dcf3..bb6253494840470bac1d332487c938b94136ea50 100644
+index 30795e5e..bb625349 100644
 --- a/dist/esm/client/index.js
 +++ b/dist/esm/client/index.js
 @@ -273,41 +273,16 @@ export class Client extends Protocol {
@@ -514,7 +514,7 @@ index 30795e5ecf60925d980c844a54c0a763b4f0dcf3..bb6253494840470bac1d332487c938b9
      }
      /**
 diff --git a/dist/esm/client/streamableHttp.js b/dist/esm/client/streamableHttp.js
-index 49c9662c58bd2079b4be982125e2b11a45723ba9..6ca5a3204242a592904f71d3059cd97f15b9c970 100644
+index 3409dfcb..7529f018 100644
 --- a/dist/esm/client/streamableHttp.js
 +++ b/dist/esm/client/streamableHttp.js
 @@ -1,6 +1,6 @@
@@ -525,7 +525,7 @@ index 49c9662c58bd2079b4be982125e2b11a45723ba9..6ca5a3204242a592904f71d3059cd97f
  import { auth, extractWWWAuthenticateParams, UnauthorizedError } from './auth.js';
  import { EventSourceParserStream } from 'eventsource-parser/stream';
  // Default reconnection options for StreamableHTTP connections
-@@ -287,7 +287,38 @@ export class StreamableHTTPClientTransport {
+@@ -300,7 +300,38 @@ export class StreamableHTTPClientTransport {
          this.onclose?.();
      }
      async send(message, options) {
@@ -564,7 +564,7 @@ index 49c9662c58bd2079b4be982125e2b11a45723ba9..6ca5a3204242a592904f71d3059cd97f
              const { resumptionToken, onresumptiontoken } = options || {};
              if (resumptionToken) {
                  // If we have at last event ID, we need to reconnect the SSE stream
-@@ -295,6 +326,7 @@ export class StreamableHTTPClientTransport {
+@@ -308,6 +339,7 @@ export class StreamableHTTPClientTransport {
                  return;
              }
              const headers = await this._commonHeaders();
@@ -572,7 +572,7 @@ index 49c9662c58bd2079b4be982125e2b11a45723ba9..6ca5a3204242a592904f71d3059cd97f
              headers.set('content-type', 'application/json');
              headers.set('accept', 'application/json, text/event-stream');
              const init = {
-@@ -307,11 +339,20 @@ export class StreamableHTTPClientTransport {
+@@ -320,11 +352,20 @@ export class StreamableHTTPClientTransport {
              const response = await fetchWithinOrigin(this._fetch ?? fetch)(this._url, init);
              // Handle session ID received during initialization
              const sessionId = response.headers.get('mcp-session-id');
@@ -594,7 +594,7 @@ index 49c9662c58bd2079b4be982125e2b11a45723ba9..6ca5a3204242a592904f71d3059cd97f
                  if (response.status === 401 && this._authProvider) {
                      // Prevent infinite recursion when server returns 401 after successful auth
                      if (this._hasCompletedAuthFlow) {
-@@ -332,7 +373,7 @@ export class StreamableHTTPClientTransport {
+@@ -345,7 +386,7 @@ export class StreamableHTTPClientTransport {
                      // Mark that we completed auth flow
                      this._hasCompletedAuthFlow = true;
                      // Purposely _not_ awaited, so we don't call onerror twice
@@ -603,7 +603,7 @@ index 49c9662c58bd2079b4be982125e2b11a45723ba9..6ca5a3204242a592904f71d3059cd97f
                  }
                  if (response.status === 403 && this._authProvider) {
                      const { resourceMetadataUrl, scope, error } = extractWWWAuthenticateParams(response);
-@@ -359,7 +400,7 @@ export class StreamableHTTPClientTransport {
+@@ -372,7 +413,7 @@ export class StreamableHTTPClientTransport {
                          if (result !== 'AUTHORIZED') {
                              throw new UnauthorizedError();
                          }
@@ -613,10 +613,10 @@ index 49c9662c58bd2079b4be982125e2b11a45723ba9..6ca5a3204242a592904f71d3059cd97f
                  }
                  throw new StreamableHTTPError(response.status, `Error POSTing to endpoint: ${this._unfollowedRedirect(response, this._url) ?? text}`);
 diff --git a/dist/esm/shared/protocol.js b/dist/esm/shared/protocol.js
-index bfa2b7120a0f50c569364ea5264e6f811076f44f..dec477d16a0fd796854542c1144279a6e86567f2 100644
+index 58100ad8..e36ff0f3 100644
 --- a/dist/esm/shared/protocol.js
 +++ b/dist/esm/shared/protocol.js
-@@ -740,7 +740,12 @@ export class Protocol {
+@@ -768,7 +768,12 @@ export class Protocol {
              }
              else {
                  // No related task - send through transport normally
