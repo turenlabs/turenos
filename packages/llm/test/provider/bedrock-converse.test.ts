@@ -194,6 +194,47 @@ describe("Bedrock Converse route", () => {
     }),
   )
 
+  it.effect("sends parallel tool results and a following prompt as one user message", () =>
+    Effect.gen(function* () {
+      const prepared = yield* LLMClient.prepare<BedrockConverse.BedrockConverseBody>(
+        LLM.request({
+          model,
+          messages: [
+            Message.user("Compare two lookups."),
+            Message.assistant([
+              ToolCallPart.make({ id: "tool_a", name: "lookup", input: { query: "a" } }),
+              ToolCallPart.make({ id: "tool_b", name: "lookup", input: { query: "b" } }),
+            ]),
+            Message.tool({ id: "tool_a", name: "lookup", result: { answer: "A" } }),
+            Message.tool({ id: "tool_b", name: "lookup", result: { answer: "B" } }),
+            Message.user("Now summarize."),
+          ],
+          cache: "none",
+        }),
+      )
+
+      // Converse requires alternating roles, with every toolResult in the user message after the toolUse turn.
+      expect(prepared.body.messages).toEqual([
+        { role: "user", content: [{ text: "Compare two lookups." }] },
+        {
+          role: "assistant",
+          content: [
+            { toolUse: { toolUseId: "tool_a", name: "lookup", input: { query: "a" } } },
+            { toolUse: { toolUseId: "tool_b", name: "lookup", input: { query: "b" } } },
+          ],
+        },
+        {
+          role: "user",
+          content: [
+            { toolResult: { toolUseId: "tool_a", content: [{ json: { answer: "A" } }], status: "success" } },
+            { toolResult: { toolUseId: "tool_b", content: [{ json: { answer: "B" } }], status: "success" } },
+            { text: "Now summarize." },
+          ],
+        },
+      ])
+    }),
+  )
+
   it.effect("lowers image content in tool-result messages", () =>
     Effect.gen(function* () {
       const prepared = yield* LLMClient.prepare(
