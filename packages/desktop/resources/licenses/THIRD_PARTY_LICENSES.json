@@ -4597,7 +4597,7 @@
     },
     {
       "name": "electron",
-      "version": "42.11.1",
+      "version": "42.11.16",
       "license": "MIT",
       "source": "https://github.com/electron/electron",
       "licenseFiles": [
