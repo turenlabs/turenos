@@ -7,6 +7,7 @@ The workspace package supports one-shot execution with `CodeMode.execute({ tools
 - [API and result contract](./api.md): tool definitions, execution options, results, hooks, and OpenAPI adaptation.
 - [Tool discovery](./discovery.md): budgeted catalog entries and runtime search.
 - [Language, limits, and diagnostics](./execution.md): supported programs, resource controls, and failure data.
+- [Retained tool results](../retained-results.md): Session V2 computes over an authorized capture with no host tools.
 
 ## Quick start
 
@@ -85,9 +86,10 @@ default: `FORGE_EXPERIMENTAL_CODE_MODE` falls back to the umbrella `FORGE_EXPERI
 contains the connected MCP tools the agent and session permissions allow, grouped by server, and while CodeMode is on
 those MCP tools are not offered to the model directly. Each run is limited to 120 seconds, 32 tool calls, and 256 KiB of
 output, and the tool result is then bounded to 2,000 lines or 50 KiB like other tool output. Session V2 does not
-register it.
+register this MCP-orchestration tool; its separate [retained result](../retained-results.md) tool, `result_compute`,
+uses CodeMode over authorized data with an empty host-tool tree and its own worker budgets.
 
-Each nested MCP call:
+Each legacy nested MCP call:
 
 - Runs the `tool.execute.before` and `tool.execute.after` plugin hooks and a permission `ask` for the MCP tool.
 - Has its result truncated to 2,000 lines or 50 KiB before it enters the program; a truncated result becomes

@@ -10,6 +10,7 @@ import { ProviderV2 } from "@turenlabs/core/provider"
 import { SecretOutput } from "@turenlabs/core/secret-output"
 import { SecretRedaction } from "@turenlabs/core/secret-redaction"
 import { createLLMEventPublisher } from "@turenlabs/core/session/runner/publish-llm-event"
+import { ToolResultStore } from "@turenlabs/core/tool-result-store"
 
 const sessionID = SessionV2.ID.make("ses_tool_event_test")
 const base64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB"
@@ -220,6 +221,37 @@ test("provider-executed success retains its compatibility result", async () => {
   await Effect.runPromise(publisher.publish(LLMEvent.toolResult({ ...result, providerExecuted: true })))
   const success = published.find((event) => event.type === "session.next.tool.success.1")
   expect(success?.data).toHaveProperty("result")
+})
+
+test("durable output bounding preserves retained evidence references", async () => {
+  const reference = ToolResultStore.Reference.make({
+    id: `res_0000000000000_${"a".repeat(32)}`,
+    tool: "read",
+    toolCallID: call.id,
+    createdAt: 0,
+    expiresAt: 7 * 24 * 60 * 60 * 1000,
+    textBytes: 0,
+    structuredBytes: 1024 * 1024,
+    sha256: "0".repeat(64),
+    hasStructured: true,
+    captureTruncated: false,
+  })
+  const { published, publisher } = capture()
+  await Effect.runPromise(publisher.publish(call))
+  await Effect.runPromise(
+    publisher.publish(
+      LLMEvent.toolResult({
+        ...result,
+        output: {
+          structured: ToolResultStore.withReference({ data: "x".repeat(1024 * 1024) }, reference),
+          content: [{ type: "text", text: "Captured evidence" }],
+        },
+      }),
+    ),
+  )
+  const success = published.find((event) => event.type === "session.next.tool.success.1")
+  expect(success?.data).toMatchObject({ structured: { truncated: true, retainedResult: reference } })
+  expect(JSON.stringify(success).length).toBeLessThan(4096)
 })
 
 test("provider-executed tool output is bounded before durable storage", async () => {

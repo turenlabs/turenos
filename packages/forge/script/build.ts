@@ -167,8 +167,7 @@ if (singleFlag && process.env.RUST_TARGET && !requestedTarget) {
 const targets = platformFlag
   ? allTargets.filter(
       (item) =>
-        item.os === (requestedTarget?.os ?? process.platform) &&
-        item.arch === (requestedTarget?.arch ?? process.arch),
+        item.os === (requestedTarget?.os ?? process.platform) && item.arch === (requestedTarget?.arch ?? process.arch),
     )
   : singleFlag
     ? allTargets.filter((item) => {
@@ -283,6 +282,16 @@ for (const item of targets) {
       asset: "asset-[hash][ext]",
     },
   })
+
+  const resultWorker = await Bun.build({
+    target: "bun",
+    format: "esm",
+    entrypoints: ["../core/src/tool/result-compute-worker.ts"],
+    outdir: `dist/${name}/bin`,
+    naming: "[name].js",
+    minify: true,
+  })
+  if (!resultWorker.success) throw new Error("Retained result worker build failed")
 
   await cp(ghidraRoot, path.join("dist", name, "bin", "ghidra-decompiler", "dist"), { recursive: true })
   await cp(

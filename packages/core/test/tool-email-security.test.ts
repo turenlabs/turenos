@@ -142,12 +142,14 @@ describe("EmailSecurityTools", () => {
               input: { path: "message.eml" },
             },
           })
-          expect(sanitized.type).toBe("text")
-          if (sanitized.type !== "text") return
-          expect(sanitized.value).toContain('href="https://example.test/login"')
-          expect(sanitized.value).not.toContain("javascript:")
-          expect(sanitized.value).not.toContain("onclick")
-          expect(sanitized.value).not.toContain("alert(3)")
+          expect(sanitized.type).toBe("content")
+          if (sanitized.type !== "content") return
+          const sanitizedText = sanitized.value.flatMap((item) => (item.type === "text" ? [item.text] : [])).join("")
+          expect(sanitizedText).toContain("[Captured result res_")
+          expect(sanitizedText).toContain('href="https://example.test/login"')
+          expect(sanitizedText).not.toContain("javascript:")
+          expect(sanitizedText).not.toContain("onclick")
+          expect(sanitizedText).not.toContain("alert(3)")
         }).pipe(
           Effect.provide(
             AppNodeBuilder.build(

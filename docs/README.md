@@ -57,6 +57,7 @@ outputs, ownership, failure behavior, and implementation links. These systems ha
   - [Lobby](./systems/lobby.md): the beta shared-room surface where local agents answer through capability-limited
     sessions.
 - Tools and shell
+  - [Retained tool results](./systems/retained-results.md): session-scoped protected captures, exact readback, literal discovery, and confined computation.
   - [Tool registry](./systems/tool-registry.md): how Session V2 registers, materializes, defers, intercepts, and settles
     tool calls, with a table of the built-in tools.
   - [Web tools](./systems/web-tools.md): the `websearch` and `webfetch` agent tools, their search backends, and limits.
@@ -135,6 +136,7 @@ outputs, ownership, failure behavior, and implementation links. These systems ha
 
 Prototypes and benchmarks that explore or measure rather than document shipped behavior. Each page states its status.
 
+- [Retained result research](./experimental/context-results/README.md): adopted offline probe with separate historical and integration evidence.
 - [Zero-Mem prototype](./experimental/zero-mem.md): isolated graph/hierarchy retrieval prototype and benchmark methodology.
 - [Recursive context plugin](./experimental/recursive-context.md): an opt-in plugin that moves tagged long context out of
   the prompt behind bounded search and read tools.

@@ -13,8 +13,7 @@
  *
  * Tool output bounding facts asserted below (tool-output-store.ts): the model-facing text of a
  * tool result is capped at `MAX_BYTES` (50KB) / `MAX_LINES` (2000); over-limit output is replaced
- * by a head/tail preview around the literal marker
- * `... output truncated; full content saved to <path> ...`, the full text is written to a managed
+ * by a head/tail preview with a retained-result reference. The full text is written to a managed
  * file, and the file path lands durably on the completed tool state as `outputPaths`.
  */
 import { describe } from "bun:test"
@@ -27,7 +26,7 @@ import { eq } from "drizzle-orm"
 import { Duration, Effect } from "effect"
 import { reply, replyWithTool, requestUserTexts, simulate, type ScenarioContext } from "./harness"
 
-const TRUNCATION_MARKER = "output truncated; full content saved to"
+const TRUNCATION_MARKER = "output excerpted. Captured result res_"
 
 /** All assistant messages of a durable context, in order. */
 const assistantsOf = (messages: ReadonlyArray<SessionMessage.Message>): SessionMessage.Assistant[] =>

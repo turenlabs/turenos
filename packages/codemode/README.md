@@ -4,9 +4,12 @@ Effect-native confined code execution over explicit, schema-described host tools
 
 ```ts
 import { CodeMode, Tool } from "@turenlabs/codemode"
+import { Effect } from "effect"
 
 const runtime = CodeMode.make({ tools })
-const result = yield * runtime.execute(code)
+const program = Effect.gen(function* () {
+  return yield* runtime.execute(code)
+})
 ```
 
 ## Install
@@ -29,6 +32,7 @@ Hosts also depend on `effect` for tool implementations and results.
 - [API and result contract](../../docs/systems/codemode/api.md)
 - [Tool discovery](../../docs/systems/codemode/discovery.md)
 - [Language, limits, and diagnostics](../../docs/systems/codemode/execution.md)
+- [Session V2 retained result computation](../../docs/systems/retained-results.md)
 
 ## Testing
 
