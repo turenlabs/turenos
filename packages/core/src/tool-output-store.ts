@@ -297,7 +297,10 @@ const layer = Layer.effect(
       const output = hint
         ? {
             structured: reference ? ToolResultStore.withReference(base.structured, reference) : base.structured,
-            content: [...protectedOutput.content, { type: "text" as const, text: `\n\n[${hint}]` }],
+            // Keep structured-only results visible through ToolOutput.toResultValue.
+            content: protectedOutput.content.length
+              ? [...protectedOutput.content, { type: "text" as const, text: `\n\n[${hint}]` }]
+              : [],
           }
         : protectedOutput
       if (
