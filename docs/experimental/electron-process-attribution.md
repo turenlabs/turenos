@@ -1,6 +1,6 @@
 # Electron Process Attribution Fixture
 
-Status: prototype, as of 2026-10-16. Full Electron execution remains unverified.
+Status: prototype, as of 2026-10-23. Full Electron execution remains unverified.
 
 This diagnostic runs Electron main, a sandboxed renderer, and a synthetic Bun child.
 It bundles the current production `createSidecarSupervisor` without changing runtime source.
@@ -103,16 +103,15 @@ The package TypeScript configuration includes `src`, not this diagnostic's `scri
 That attempted package check does not independently typecheck these new scripts.
 
 Full Electron execution remains unverified.
-Both the Desktop worker and coordinator received an exact-command permission denial before launch.
-No Electron fixture process or measurement artifact was created by those denied commands.
-The factory task admission owner must grant the exact scratch command before execution.
-The denial is not a missing Electron binary or a dependency-install requirement.
-After a grant, the authorized executor must inspect the stopped files and run:
+On 2026-10-23, static inspection confirmed the committed controller, Electron fixture, Bun fixture, and production supervisor source.
+Binary metadata inspection received an exact-command tool denial before execution. The executor stopped without a retry or Electron launch.
+This denial does not prove the installed Electron binary is missing or unusable.
+No new process measurements or lifecycle results are available from that attempt.
+The existing unit evidence covers synthetic fixtures, not the actual backend or packaged application.
 
-```sh
-bun .team-repairs/electron-memory-attribution/packages/desktop/script/process-attribution.ts /Users/tom/turenos/.memory-dev/node_modules/.bun/electron@42.11.1+759ce506b1ed1a42/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron 4000
-```
-
-Run that command from the shared repository root.
-Keep the resulting private root and source hashes in the qualification receipt.
-Then repeat with a longer idle duration only under an applicable exact command grant.
+Use the committed runner in the Run section, not a private historical controller path.
+Before execution, verify installed binary identities and source hashes under the current tool policy.
+Obtain Security clearance and explicit serial execution ownership when required by the test coordinator.
+For a 4000-millisecond idle run, apply an external deadline of at most 30 seconds and retain the 2 MiB output bound.
+Record the exact process group, final process absence, and private scratch evidence in the qualification receipt.
+Do not infer cleanup success from the controller exit alone.
