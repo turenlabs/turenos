@@ -94,7 +94,7 @@ Review conventions that no validator checks:
 
 HTTP MCP transports reject redirects to another host or port by default. Configure the final endpoint URL instead of a cross-origin redirect.
 The SDK also permits HTTP-to-HTTPS redirects on the same host when both URLs use default ports. See the
-[transport regression](../../../packages/forge/test/mcp/sdk-patch.test.ts).
+[transport regression](../../../packages/forge/test/mcp/lifecycle.test.ts).
 
 `services/catalog/manifests/tools/` entries bind security scanners to their audited `security:<id>` adapters in `packages/forge/src/security`. A tool manifest's `commands` must match the adapter's `executables`, and its `tools.allow` must match the adapter's tool names; the registry refuses to load otherwise (see [Security MCP integration conventions](../../development/security-integrations.md)). The user installs the scanner executables; only Batou is downloaded by TurenOS.
 
