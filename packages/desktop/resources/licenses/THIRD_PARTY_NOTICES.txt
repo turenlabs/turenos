@@ -42258,7 +42258,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 --------------------------------------------------------------------------------
-electron@42.11.1
+electron@42.11.16
 License: MIT
 Source: https://github.com/electron/electron
 
