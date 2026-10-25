@@ -139,6 +139,36 @@ describe("v2 location HttpApi", () => {
     expect((await request(`/api/loop/${loopID}`, second.path)).status).toBe(200)
   })
 
+  test("keeps Core's Loop validation message in 400 responses", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const create = (schedule: Record<string, unknown>) =>
+      request("/api/loop", tmp.path, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name: "Invalid loop",
+          prompt: "Check the location",
+          location: { directory: tmp.path },
+          paused: true,
+          ...schedule,
+        }),
+      })
+
+    const cron = await create({ cronExpression: "0 25 * * *", timezone: "UTC" })
+    expect(cron.status).toBe(400)
+    expect(await cron.json()).toMatchObject({
+      message: "Cron value out of range: 25",
+      kind: "LoopInvalidInputError",
+    })
+
+    const expired = await create({ intervalSeconds: 60, expiresAt: Date.now() - 60_000 })
+    expect(expired.status).toBe(400)
+    expect(await expired.json()).toMatchObject({
+      message: "Expiry must be in the future",
+      kind: "LoopInvalidInputError",
+    })
+  })
+
   test("serves guarded durable session goal lifecycle endpoints", async () => {
     await using tmp = await tmpdir({ git: true })
     const created = await request("/api/session", tmp.path, {
