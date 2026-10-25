@@ -28,6 +28,8 @@ export function input(ctx: DialogContext, dialog: ModalState, label: string, val
     placeholderColor: color.muted,
   })
   dialog.form.add(frameField(ctx.renderer, field, 1))
+  // OpenTUI puts the caret at `value.length`, but offsets count display cells: wide text would start mid-value.
+  field.gotoBufferEnd()
   caption.onMouseDown = (event) => {
     event.preventDefault()
     field.focus()
@@ -163,13 +165,16 @@ export function requireWord(dialog: ModalState, field: InputRenderable, word: st
   }
 }
 
-/** `bare` leaves out the caption and the Send button, for the reply editor that stays docked while typing. */
+/**
+ * `bare` leaves out the caption and the Send button, for the reply editor that stays docked while typing.
+ * `cursor` is a saved `cursorOffset`, in display cells; without one the caret starts at the end.
+ */
 export function prompt(
   ctx: DialogContext,
   dialog: ModalState,
   label: string,
   value = "",
-  cursor = value.length,
+  cursor?: number,
   bare = false,
 ) {
   const caption = new TextRenderable(ctx.renderer, { content: label, fg: color.text, attributes: TextAttributes.BOLD })
@@ -203,7 +208,9 @@ export function prompt(
     dialog.error.fg = color.error
   }
   dialog.form.add(field)
-  field.cursorOffset = Math.max(0, Math.min(cursor, value.length))
+  // A wide character takes two cells, so the end is the buffer's last offset, not `value.length`.
+  field.gotoBufferEnd()
+  if (cursor !== undefined) field.cursorOffset = Math.max(0, Math.min(cursor, field.cursorOffset))
   dialog.editor = field
   if (!bare) addSendButton(ctx, dialog)
   caption.onMouseDown = (event) => {

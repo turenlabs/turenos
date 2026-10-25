@@ -1,5 +1,8 @@
 import { expect, test } from "bun:test"
-import { dashboard } from "./support"
+import { mkdtempSync, rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { cleanup, dashboard } from "./support"
 
 const running = { "GET /api/session/active": () => ({ data: { ses_main: { type: "running" } } }) }
 const permission = (save?: string[]) => ({
@@ -83,21 +86,45 @@ test("Esc Esc on an idle session with no messages says there is nothing to undo"
 })
 
 test("Ctrl+G opens the reply draft in $EDITOR like F2", async () => {
-  const saved = process.env.VISUAL
-  const editor = process.env.EDITOR
-  delete process.env.VISUAL
-  delete process.env.EDITOR
-  try {
+  await withEditor(undefined, async () => {
     const { view, screen } = await dashboard({})
     view.mockInput.pressKey("f")
     await screen("Typing")
     view.mockInput.pressKey("g", { ctrl: true })
     await screen("$EDITOR")
-  } finally {
-    if (saved !== undefined) process.env.VISUAL = saved
-    if (editor !== undefined) process.env.EDITOR = editor
-  }
+  })
 })
+
+test("a wide-character draft back from $EDITOR keeps the caret at its end, which counts display cells", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "turen-tui-test-"))
+  cleanup.push(() => rmSync(directory, { recursive: true, force: true }))
+  const script = join(directory, "fake-editor.ts")
+  await Bun.write(script, `await Bun.write(process.argv[2], "修复测试")\n`)
+  await withEditor(`"${process.execPath}" "${script}"`, async () => {
+    const { view, screen } = await dashboard({})
+    view.mockInput.pressKey("f")
+    await screen("Typing")
+    view.mockInput.pressKey("g", { ctrl: true })
+    await screen("Draft updated from your editor")
+    await view.mockInput.typeText("X")
+    expect(view.renderer.currentFocusedEditor?.plainText).toBe("修复测试X")
+  })
+})
+
+/** Runs `body` with $VISUAL unset and $EDITOR set to `command`, or unset, then puts both back. */
+async function withEditor(command: string | undefined, body: () => Promise<void>) {
+  const saved = { VISUAL: process.env.VISUAL, EDITOR: process.env.EDITOR }
+  delete process.env.VISUAL
+  delete process.env.EDITOR
+  if (command) process.env.EDITOR = command
+  try {
+    await body()
+  } finally {
+    delete process.env.EDITOR
+    if (saved.VISUAL !== undefined) process.env.VISUAL = saved.VISUAL
+    if (saved.EDITOR !== undefined) process.env.EDITOR = saved.EDITOR
+  }
+}
 
 test("the reply editor says Send while idle and remembers Queue per session while running", async () => {
   const idle = await dashboard({})

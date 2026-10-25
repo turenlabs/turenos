@@ -47,6 +47,14 @@ test("Edit opens with the cursor after the prefilled objective and the overview 
   expect(editor.plainText).toBe("Original objective edited")
 })
 
+test("Edit opens after a wide-character objective, whose cursor counts display cells", async () => {
+  const app = await fixture({ ...goal(), objective: "修复测试" })
+  await app.open()
+  await app.choose("Edit")
+  await app.view.mockInput.typeText("X")
+  expect((app.state.modal!.fields[0] as TextareaRenderable).plainText).toBe("修复测试X")
+})
+
 test("Set is explicit, Enter inserts newline, Ctrl+S starts with captured settings", async () => {
   const app = await fixture(null)
   await app.open()
