@@ -311,6 +311,8 @@ const echo = Layer.effectDiscard(
 const echoNode = makeLocationNode({ name: "test/session-runner-tools", layer: echo, deps: [ToolRegistry.node] })
 let modelResolveHook = Effect.void
 let currentModel = model
+// The catalog id the resolved ref records. Unset, it equals the wire id, as for most catalog models.
+let catalogID: string | undefined
 // Stands in for a ChatGPT sign-in: models carry `access` until a resolve asks to refresh it, and
 // that refresh fails when there is no `refreshed` token to hand out.
 let signIn: { readonly access: string; readonly refreshed?: string } | undefined
@@ -329,7 +331,7 @@ const models = SessionRunnerModel.layerWith((session, _request, options) =>
             ? model
             : Model.update(model, { route: model.route.with({ auth: Auth.bearer(access) }) }),
         ref: ModelV2.Ref.make({
-          id: ModelV2.ID.make(model.id),
+          id: ModelV2.ID.make(catalogID ?? model.id),
           providerID: ProviderV2.ID.make(model.provider),
           ...(session.model?.variant === undefined ? {} : { variant: session.model.variant }),
         }),
@@ -594,6 +596,7 @@ const setup = Effect.gen(function* () {
   systemLoadHook = Effect.void
   modelResolveHook = Effect.void
   currentModel = model
+  catalogID = undefined
   signIn = undefined
   refreshResolves = 0
   skillBaselines.clear()
@@ -3198,6 +3201,36 @@ describe("SessionRunnerLLM", () => {
           text: "Encrypted thought",
           providerMetadata: { openai: { itemId: "rs_1", reasoningEncryptedContent: "encrypted-state" } },
         },
+      ])
+    }),
+  )
+
+  it.effect("restores reasoning provider metadata when the catalog id differs from the wire id", () =>
+    Effect.gen(function* () {
+      yield* setup
+      // A models.dev mode such as `claude-opus-5-fast` sends its base model's id on the wire.
+      catalogID = "fake-model-fast"
+      const session = yield* SessionV2.Service
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Think first" }), resume: false })
+
+      requests.length = 0
+      response = [
+        LLMEvent.stepStart({ index: 0 }),
+        LLMEvent.reasoningStart({ id: "reasoning-fast" }),
+        LLMEvent.reasoningDelta({ id: "reasoning-fast", text: "Signed thought" }),
+        LLMEvent.reasoningEnd({ id: "reasoning-fast", providerMetadata: { anthropic: { signature: "sig_1" } } }),
+        LLMEvent.stepFinish({ index: 0, reason: "stop" }),
+        LLMEvent.finish({ reason: "stop" }),
+      ]
+      yield* session.resume(sessionID)
+
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Continue" }), resume: false })
+      response = []
+      yield* session.resume(sessionID)
+
+      expect(requests[1]?.model.id).toBe(model.id)
+      expect(requests[1]?.messages[1]?.content).toEqual([
+        { type: "reasoning", text: "Signed thought", providerMetadata: { anthropic: { signature: "sig_1" } } },
       ])
     }),
   )

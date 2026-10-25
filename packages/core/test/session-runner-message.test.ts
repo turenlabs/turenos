@@ -775,4 +775,93 @@ Recent work
       },
     ])
   })
+
+  test("keeps provider-native metadata when the catalog id differs from the wire id", () => {
+    // A models.dev mode such as `claude-opus-5-fast` records its catalog id but sends the base id on the wire.
+    const ref = ModelV2.Ref.make({
+      id: ModelV2.ID.make("claude-opus-5-fast"),
+      providerID: ProviderV2.ID.make("anthropic"),
+    })
+    const messages = toLLMMessages(
+      [
+        SessionMessage.Assistant.make({
+          id: id("assistant-fast-mode"),
+          type: "assistant",
+          agent: "build",
+          model: ref,
+          content: [
+            SessionMessage.AssistantReasoning.make({
+              type: "reasoning",
+              id: "reasoning-fast-mode",
+              text: "Private chain of thought",
+              providerMetadata: { anthropic: { signature: "sig_1" } },
+            }),
+            SessionMessage.AssistantTool.make({
+              type: "tool",
+              id: "call_1",
+              name: "read",
+              provider: {
+                executed: false,
+                metadata: { anthropic: { caller: "direct" } },
+              },
+              state: SessionMessage.ToolStateCompleted.make({
+                status: "completed",
+                input: { path: "a.ts" },
+                content: [],
+                structured: { text: "Hello" },
+              }),
+              time: { created, completed: created },
+            }),
+          ],
+          time: { created, completed: created },
+        }),
+      ],
+      Model.make({ id: "claude-opus-5", provider: "anthropic", route: OpenAIChat.route }),
+      ref,
+    )
+
+    expect(messages[0]?.content).toEqual([
+      { type: "reasoning", text: "Private chain of thought", providerMetadata: { anthropic: { signature: "sig_1" } } },
+      {
+        type: "tool-call",
+        id: "call_1",
+        name: "read",
+        input: { path: "a.ts" },
+        providerExecuted: false,
+        providerMetadata: { anthropic: { caller: "direct" } },
+      },
+    ])
+  })
+
+  test("keeps a base model's provider-native metadata after a switch to its mode", () => {
+    // `claude-opus-5-fast` sends `claude-opus-5` on the wire, so the base model's turns came from the same wire model.
+    const messages = toLLMMessages(
+      [
+        SessionMessage.Assistant.make({
+          id: id("assistant-base-model"),
+          type: "assistant",
+          agent: "build",
+          model: ModelV2.Ref.make({
+            id: ModelV2.ID.make("claude-opus-5"),
+            providerID: ProviderV2.ID.make("anthropic"),
+          }),
+          content: [
+            SessionMessage.AssistantReasoning.make({
+              type: "reasoning",
+              id: "reasoning-base-model",
+              text: "Base thought",
+              providerMetadata: { anthropic: { signature: "sig_base" } },
+            }),
+          ],
+          time: { created, completed: created },
+        }),
+      ],
+      Model.make({ id: "claude-opus-5", provider: "anthropic", route: OpenAIChat.route }),
+      ModelV2.Ref.make({ id: ModelV2.ID.make("claude-opus-5-fast"), providerID: ProviderV2.ID.make("anthropic") }),
+    )
+
+    expect(messages[0]?.content).toEqual([
+      { type: "reasoning", text: "Base thought", providerMetadata: { anthropic: { signature: "sig_base" } } },
+    ])
+  })
 })

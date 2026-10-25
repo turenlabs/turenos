@@ -1003,7 +1003,8 @@ const layer = Layer.effect(
       // A one-time note when this window first crosses a budget threshold. Claimed per Session, window and
       // level so it is added once and stays in the frame, instead of repeating as a new message every turn.
       const windowTokens = model.route.defaults.limits?.context
-      const occupancy = windowTokens === undefined ? undefined : SessionCompaction.reportedOccupancy(history, model)
+      const occupancy =
+        windowTokens === undefined ? undefined : SessionCompaction.reportedOccupancy(history, model, modelRef)
       const budgetLevel =
         occupancy === undefined || windowTokens === undefined || windowTokens <= 0
           ? undefined
@@ -1077,7 +1078,7 @@ const layer = Layer.effect(
               },
             ]),
       ]
-      const messages = toLLMMessages(context, model)
+      const messages = toLLMMessages(context, model, modelRef)
       // Insert one-turn guidance before new user input, never ahead of the cached prefix and
       // never after a newly promoted human instruction. Retrying the same turn adds nothing.
       const boundary = messages.findIndex((message) => message.role === "user")
@@ -1141,7 +1142,7 @@ const layer = Layer.effect(
       if (
         compactBeforeTurn &&
         prepared.frame?.turn !== turn &&
-        SessionCompaction.needsPruning({ entries: measured, model, request })
+        SessionCompaction.needsPruning({ entries: measured, model, modelRef, request })
       ) {
         // Rebuild from pinned bytes, not live files, and omit budget-only runtime rows.
         const sourceIDs = new Set(history.map((entry) => entry.message.id))
@@ -1157,6 +1158,7 @@ const layer = Layer.effect(
           const tail = toLLMMessages(
             entries.slice(cutoff).map((entry) => entry.message),
             model,
+            modelRef,
           )
           const boundary = tail.findIndex((message) => message.role === "user")
           const insertion = boundary === -1 ? tail.length : boundary
@@ -1171,6 +1173,7 @@ const layer = Layer.effect(
                 ...toLLMMessages(
                   entries.slice(0, cutoff).map((entry) => entry.message),
                   model,
+                  modelRef,
                 ),
                 ...tail.slice(0, insertion),
                 ...instructions,
@@ -1204,6 +1207,7 @@ const layer = Layer.effect(
           sessionID: session.id,
           entries: history,
           model,
+          modelRef,
           request,
           measured,
         }))
@@ -1214,7 +1218,7 @@ const layer = Layer.effect(
       // shrink it to what the window still holds. A no-op for every healthy request.
       // Clamp against the pinned view plus appended runtime overhead. Measuring raw history
       // would re-count freed bytes and shrink the allowance for no reason.
-      let wireRequest = SessionCompaction.clampOutput({ entries: measured, model, request })
+      let wireRequest = SessionCompaction.clampOutput({ entries: measured, model, modelRef, request })
       yield* SessionContextRequest.save(db, session.id, {
         baselineSeq: system.baselineSeq,
         identity,
