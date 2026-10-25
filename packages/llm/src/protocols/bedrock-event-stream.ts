@@ -7,7 +7,8 @@ import { ProviderShared } from "./shared"
 // Bedrock streams responses using the AWS event stream binary protocol — each
 // frame is `[length:4][headers-length:4][prelude-crc:4][headers][payload][crc:4]`.
 // We use `@smithy/eventstream-codec` to validate framing and CRCs, then
-// reconstruct the JSON wrapping by `:event-type` so the chunk schema can match.
+// reconstruct the JSON wrapping by `:event-type` (or `:exception-type` for
+// exception frames) so the chunk schema can match.
 const eventCodec = new EventStreamCodec(toUtf8, fromUtf8)
 const utf8 = new TextDecoder()
 
@@ -54,8 +55,12 @@ const consumeFrames = (route: string) => (state: FrameBufferState, chunk: Uint8A
       })
       cursor = { buffer: cursor.buffer, offset: cursor.offset + totalLength }
 
-      if (decoded.headers[":message-type"]?.value !== "event") continue
-      const eventType = decoded.headers[":event-type"]?.value
+      const messageType = decoded.headers[":message-type"]?.value
+      if (messageType !== "event" && messageType !== "exception") continue
+      // Modeled stream errors (throttlingException, validationException, ...)
+      // arrive as `exception` frames named by `:exception-type`, not as events.
+      // Rewrap both the same way so the chunk schema sees one member per frame.
+      const eventType = decoded.headers[messageType === "event" ? ":event-type" : ":exception-type"]?.value
       if (typeof eventType !== "string") continue
       const payload = utf8.decode(decoded.body)
       if (!payload) continue
@@ -81,8 +86,8 @@ const consumeFrames = (route: string) => (state: FrameBufferState, chunk: Uint8A
 /**
  * AWS event-stream framing for Bedrock Converse. Each frame is decoded by
  * `@smithy/eventstream-codec` (length + header + payload + CRC) and rewrapped
- * under its `:event-type` header so the chunk schema can match the JSON
- * payload directly.
+ * under its `:event-type` header, or `:exception-type` for exception frames,
+ * so the chunk schema can match the JSON payload directly.
  */
 export const framing = (route: string): Framing<object> => ({
   id: "aws-event-stream",

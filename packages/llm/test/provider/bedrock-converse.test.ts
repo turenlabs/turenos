@@ -35,6 +35,19 @@ const eventFrame = (type: string, payload: object) =>
     body: utf8Encoder.encode(JSON.stringify(payload)),
   })
 
+// Modeled stream errors (throttlingException, validationException, ...) are
+// not events on the wire: AWS sends them as `:message-type=exception` frames
+// named by `:exception-type`.
+const exceptionFrame = (type: string, payload: object) =>
+  codec.encode({
+    headers: {
+      ":message-type": { type: "string", value: "exception" },
+      ":exception-type": { type: "string", value: type },
+      ":content-type": { type: "string", value: "application/json" },
+    },
+    body: utf8Encoder.encode(JSON.stringify(payload)),
+  })
+
 const concat = (frames: ReadonlyArray<Uint8Array>) => {
   const total = frames.reduce((sum, frame) => sum + frame.length, 0)
   const out = new Uint8Array(total)
@@ -526,17 +539,35 @@ describe("Bedrock Converse route", () => {
     }),
   )
 
-  it.effect("emits provider-error for throttlingException", () =>
+  it.effect("emits provider-error for a mid-stream throttlingException frame", () =>
     Effect.gen(function* () {
-      const body = eventStreamBody(
-        ["messageStart", { role: "assistant" }],
-        ["throttlingException", { message: "Slow down" }],
-      )
+      const body = concat([
+        eventFrame("messageStart", { role: "assistant" }),
+        eventFrame("contentBlockDelta", { contentBlockIndex: 0, delta: { text: "Hel" } }),
+        exceptionFrame("throttlingException", { message: "Too many tokens, please wait before trying again." }),
+      ])
+      const response = yield* LLMClient.generate(baseRequest).pipe(Effect.provide(fixedBytes(body)))
+
+      expect(response.text).toBe("Hel")
+      expect(response.events.find((event) => event.type === "provider-error")).toEqual({
+        type: "provider-error",
+        message: "Too many tokens, please wait before trying again.",
+        retryable: true,
+      })
+    }),
+  )
+
+  it.effect("emits retryable provider-error for a modelStreamErrorException frame", () =>
+    Effect.gen(function* () {
+      const body = concat([
+        eventFrame("messageStart", { role: "assistant" }),
+        exceptionFrame("modelStreamErrorException", { message: "Model stream failed" }),
+      ])
       const response = yield* LLMClient.generate(baseRequest).pipe(Effect.provide(fixedBytes(body)))
 
       expect(response.events.find((event) => event.type === "provider-error")).toEqual({
         type: "provider-error",
-        message: "Slow down",
+        message: "Model stream failed",
         retryable: true,
       })
     }),
@@ -546,7 +577,7 @@ describe("Bedrock Converse route", () => {
     Effect.gen(function* () {
       const response = yield* LLMClient.generate(baseRequest).pipe(
         Effect.provide(
-          fixedBytes(eventStreamBody(["validationException", { message: "Input is too long for requested model" }])),
+          fixedBytes(exceptionFrame("validationException", { message: "Input is too long for requested model" })),
         ),
       )
 

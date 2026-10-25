@@ -152,9 +152,10 @@ const BedrockUsageSchema = Schema.Struct({
 type BedrockUsageSchema = Schema.Schema.Type<typeof BedrockUsageSchema>
 
 // Streaming event shape — the AWS event stream wraps each JSON payload by its
-// `:event-type` header (e.g. `messageStart`, `contentBlockDelta`). We
-// reconstruct that wrapping in `decodeFrames` below so the event schema can
-// stay a plain discriminated record.
+// `:event-type` header (e.g. `messageStart`, `contentBlockDelta`), or by its
+// `:exception-type` header for the `*Exception` members. `BedrockEventStream`
+// reconstructs that wrapping so the event schema can stay a plain
+// discriminated record.
 const BedrockEvent = Schema.Struct({
   messageStart: Schema.optional(Schema.Struct({ role: Schema.String })),
   contentBlockStart: Schema.optional(
