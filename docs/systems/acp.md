@@ -23,7 +23,10 @@ configuration.
    messages can't be loaded, there is no assistant message yet, or the latest one's model or context size is unknown.
    A failed update is logged and does not fail the prompt.
 6. A TurenOS permission request becomes an ACP `requestPermission` call with **Allow once**, **Always allow**, and
-   **Reject**. If the client cannot show permission requests, or the request fails, TurenOS rejects the call.
+   **Reject**. If the client cannot show permission requests, or the request fails, TurenOS rejects the call. A
+   request from a subagent's child session goes to the ACP session it descends from: `permission.ts` follows the
+   session's `parentID` chain through the SDK, using the directory of the event that raised the request. Requests from
+   sessions with no ACP ancestor are ignored.
 
 ## Configuration
 
