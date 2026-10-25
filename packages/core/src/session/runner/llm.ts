@@ -1000,6 +1000,9 @@ const layer = Layer.effect(
             ]
           : []),
       ]
+      // Compactions so far, which is the ordinal of the current context window. Counted from the database
+      // because `history` holds only the latest checkpoint.
+      const contextWindow = yield* SessionHistory.compactionCount(db, session.id)
       // A one-time note when this window first crosses a budget threshold. Claimed per Session, window and
       // level so it is added once and stays in the frame, instead of repeating as a new message every turn.
       const windowTokens = model.route.defaults.limits?.context
@@ -1013,7 +1016,7 @@ const layer = Layer.effect(
           ? undefined
           : (yield* contextManagement.claimNudge({
                 sessionID: session.id,
-                window: history.filter((entry) => entry.message.type === "compaction").length,
+                window: contextWindow,
                 level: budgetLevel,
               }))
             ? Message.make({
@@ -1106,9 +1109,8 @@ const layer = Layer.effect(
         },
         metadata: {
           ...(claudeMcpToken ? ClaudeCodeMcp.requestMetadata(claudeMcpToken) : {}),
-          // Compactions so far; routes that tell the provider which context window a request belongs to read it.
-          [OpenAICodex.CONTEXT_WINDOW_METADATA_KEY]: history.filter((entry) => entry.message.type === "compaction")
-            .length,
+          // Routes that tell the provider which context window a request belongs to read it.
+          [OpenAICodex.CONTEXT_WINDOW_METADATA_KEY]: contextWindow,
         },
         system: base,
         messages: [
