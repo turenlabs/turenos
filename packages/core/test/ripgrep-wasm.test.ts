@@ -124,6 +124,22 @@ describe("ripgrep wasm", () => {
     expect(got.every((m) => m.entry.path.endsWith(".ts"))).toBe(true)
   })
 
+  // A --json match record carries the whole matching line, so one match in a
+  // minified bundle or source map makes a record of hundreds of kilobytes.
+  test("grep on a line over 64 KiB matches native", async () => {
+    const long = fs.mkdtempSync(path.join(os.tmpdir(), "rgwasm-long-"))
+    fs.writeFileSync(path.join(long, "app.min.js"), `${"x".repeat(200_000)} needle ${"y".repeat(1_000)}\n`)
+    fs.writeFileSync(path.join(long, "short.ts"), "const needle = 1\n")
+    const input = { cwd: long, pattern: "needle", limit: 100 }
+    const native = await runNative((r) => r.grep(input))
+    const got = await runWasm((r) => r.grep(input))
+    expect(Object.fromEntries(native.map((m) => [m.entry.path, m]))).toEqual(
+      Object.fromEntries(got.map((m) => [m.entry.path, m])),
+    )
+    expect(native.map((m) => String(m.entry.path)).sort()).toEqual(["app.min.js", "short.ts"])
+    expect(native.find((m) => m.entry.path === "app.min.js")?.text).toBe(`${"x".repeat(2_000)}...`)
+  })
+
   // The host hands file contents to the wasm side in bounded batches (8 MiB). A
   // candidate list larger than one batch used to trap or silently drop every file
   // after the first batch, so the needles sit at the start, middle and end.
