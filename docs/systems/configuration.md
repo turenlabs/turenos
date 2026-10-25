@@ -24,7 +24,8 @@ How a key combines across documents depends on the key:
 - `shell` resolves the same way, but only over the global config files (`Config.shell`); repository documents can't set
   it. The shell runs every `bash` tool call, user shell command, and terminal, so a repository value such as
   `./.forge/sh` would run the repository's own program ahead of each approved command. The legacy `packages/forge`
-  runtime still reads `shell` from every document.
+  loader also drops `shell` from walked `forge.json` files and repository `.forge/` documents. It still reads `shell`
+  from global config, `~/.forge/`, `FORGE_CONFIG`, `FORGE_CONFIG_DIR`, `FORGE_CONFIG_CONTENT`, and managed config.
 - `compaction`, `tool_output`, and `attachments.image` are merged field by field, so a nearer document overrides only
   the fields it sets.
 - `retention` is read only from the global config files, and is re-read on every retention sweep.
