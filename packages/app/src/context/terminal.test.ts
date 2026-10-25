@@ -12,6 +12,7 @@ let coalesceTerminalRequest: typeof import("./terminal").coalesceTerminalRequest
 let reconcileTerminalState: typeof import("./terminal").reconcileTerminalState
 let pruneTerminalStateEntries: typeof import("./terminal").pruneTerminalStateEntries
 let removeWorkspaceTerminalEntries: typeof import("./terminal").removeWorkspaceTerminalEntries
+let clearWorkspaceTerminals: typeof import("./terminal").clearWorkspaceTerminals
 let workspaceStorageKey: (dir: string) => string
 
 beforeAll(async () => {
@@ -37,11 +38,13 @@ beforeAll(async () => {
   reconcileTerminalState = mod.reconcileTerminalState
   pruneTerminalStateEntries = mod.pruneTerminalStateEntries
   removeWorkspaceTerminalEntries = mod.removeWorkspaceTerminalEntries
+  clearWorkspaceTerminals = mod.clearWorkspaceTerminals
 
   const persist = await import("@/utils/persist")
   workspaceStorageKey = (dir: string) => {
-    // Mirrors the provider: workspace terminal stores are keyed by the
-    // base64-encoded directory (see TerminalProvider) under "terminal".
+    // Mirrors the provider for a canonical (pathKey) directory: workspace
+    // terminal stores are keyed by the base64-encoded `sdk().directory` (see
+    // TerminalProvider) under "terminal".
     const target = persist.Persist.serverWorkspace(ServerScope.local, base64Encode(dir), "terminal")
     return `${target.storage}:${target.key}`
   }
@@ -385,6 +388,19 @@ describe("removeWorkspaceTerminalEntries", () => {
     expect(JSON.parse(localStorage.getItem(workspaceStorageKey(bystander))!)).toEqual(state(["dead"], "dead"))
   })
 
+  test("prunes the provider's canonical store for a differently spelled directory", async () => {
+    const canonical = "c:/users/me/repo/teardown"
+    localStorage.setItem(workspaceStorageKey(canonical), JSON.stringify(state(["dead", "live"], "dead")))
+
+    removeWorkspaceTerminalEntries({ directory: "C:\\Users\\Me\\Repo\\teardown", ptyIDs: ["dead"] })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(JSON.parse(localStorage.getItem(workspaceStorageKey(canonical))!)).toEqual({
+      active: "live",
+      all: [{ id: "live", title: "Terminal 2", titleNumber: 2 }],
+    })
+  })
+
   test("ignores empty pty id lists", async () => {
     const dir = "/repo/teardown-empty"
     const raw = JSON.stringify(state(["live"], "live"))
@@ -394,6 +410,38 @@ describe("removeWorkspaceTerminalEntries", () => {
     await new Promise((resolve) => setTimeout(resolve, 0))
 
     expect(localStorage.getItem(workspaceStorageKey(dir))).toBe(raw)
+  })
+})
+
+describe("clearWorkspaceTerminals", () => {
+  test("removes the reset workspace's persisted and legacy terminal stores given the raw directory", () => {
+    const dir = "/repo/.worktrees/feature"
+    const bystander = "/repo/.worktrees/other"
+    const raw = JSON.stringify({ active: "pty_1", all: [{ id: "pty_1", title: "Terminal 1", titleNumber: 1 }] })
+    const legacy = getLegacyTerminalStorageKeys(base64Encode(dir), "ses_1")
+    localStorage.setItem(workspaceStorageKey(dir), raw)
+    localStorage.setItem(workspaceStorageKey(bystander), raw)
+    legacy.forEach((key) => localStorage.setItem(key, raw))
+
+    clearWorkspaceTerminals(dir, ["ses_1"], undefined, ServerScope.local)
+
+    expect(localStorage.getItem(workspaceStorageKey(dir))).toBeNull()
+    expect(legacy.map((key) => localStorage.getItem(key))).toEqual([null, null])
+    expect(localStorage.getItem(workspaceStorageKey(bystander))).toBe(raw)
+  })
+
+  test("clears the provider's canonical store for a differently spelled directory", () => {
+    // The provider's sdk().directory is the pathKey of this worktree.
+    const canonical = "c:/users/me/repo/.worktrees/feature"
+    const raw = JSON.stringify({ active: "pty_1", all: [{ id: "pty_1", title: "Terminal 1", titleNumber: 1 }] })
+    const legacy = getLegacyTerminalStorageKeys(base64Encode(canonical))
+    localStorage.setItem(workspaceStorageKey(canonical), raw)
+    legacy.forEach((key) => localStorage.setItem(key, raw))
+
+    clearWorkspaceTerminals("C:\\Users\\me\\repo\\.worktrees\\feature\\", [], undefined, ServerScope.local)
+
+    expect(localStorage.getItem(workspaceStorageKey(canonical))).toBeNull()
+    expect(legacy.map((key) => localStorage.getItem(key))).toEqual([null])
   })
 })
 
