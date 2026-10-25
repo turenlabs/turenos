@@ -7,8 +7,8 @@ obfuscated command names, PowerShell parameter values, and the target rules it a
 
 `ShellSafety.kind(shell)` takes the shell path, uses its basename, strips a `.exe` suffix, and lowercases it.
 `powershell` and `pwsh` map to `"powershell"`, `cmd` maps to `"cmd"`, and **everything else maps to `"bash"`**. The V2
-bash tool passes the configured `shell`, falling back to `/bin/sh` on POSIX and `process.env.COMSPEC ?? "cmd.exe"` on
-Windows.
+bash tool passes the `shell` set in global config (`Config.shell`), falling back to `/bin/sh` on POSIX and
+`process.env.COMSPEC ?? "cmd.exe"` on Windows.
 
 ## Parsing
 
