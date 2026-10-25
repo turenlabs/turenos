@@ -324,6 +324,31 @@ describe("tool.apply_patch freeform", () => {
     }),
   )
 
+  // A lossy decode would turn every non-UTF-8 byte in the file into U+FFFD on write, far from the
+  // patched lines. Deleting rewrites nothing, so it still works.
+  it.instance("refuses to update a file that is not valid UTF-8 but still deletes one", () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      const { ctx, calls } = makeCtx()
+      const target = path.join(test.directory, "legacy.c")
+      const original = Buffer.concat([Buffer.from("/* caf"), Buffer.from([0xe9]), Buffer.from(" */\nint x = 1;\n")])
+      yield* Effect.promise(() => fs.writeFile(target, original))
+
+      yield* expectFailure(
+        execute(
+          { patchText: "*** Begin Patch\n*** Update File: legacy.c\n@@\n-int x = 1;\n+int x = 2;\n*** End Patch" },
+          ctx,
+        ),
+        `File is not valid UTF-8: ${target}. Only UTF-8 text files can be edited.`,
+      )
+      expect(calls).toHaveLength(0)
+      expect(yield* Effect.promise(() => fs.readFile(target))).toEqual(original)
+
+      yield* execute({ patchText: "*** Begin Patch\n*** Delete File: legacy.c\n*** End Patch" }, ctx)
+      yield* expectReadFailure(target)
+    }),
+  )
+
   it.instance("rejects delete when file is missing", () =>
     Effect.gen(function* () {
       const { ctx } = makeCtx()
