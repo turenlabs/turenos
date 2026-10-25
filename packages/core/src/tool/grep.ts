@@ -61,6 +61,9 @@ const layer = Layer.effectDiscard(
     const location = yield* Location.Service
     const mutation = yield* LocationMutation.Service
     const permission = yield* PermissionV2.Service
+    // Searches run on canonical targets, so results relativize against the canonical root: an
+    // aliased `location.directory` would turn every match into a `../` path.
+    const root = yield* fs.realPath(location.directory).pipe(Effect.orDie)
 
     yield* tools
       .register({
@@ -71,8 +74,8 @@ const layer = Layer.effectDiscard(
           output: Output,
           // Location-relative on purpose: `execute` already relativized every path, and
           // re-absolutizing prefixed each result line with the workspace root — kilobytes
-          // of repeated prefix per call, re-sent every turn. Relative paths resolve fine
-          // in every follow-up tool.
+          // of repeated prefix per call, re-sent every turn. Matches outside the Location
+          // stay absolute, because follow-up tools reject a relative path that leaves it.
           toModelOutput: ({ output }) => [{ type: "text", text: toModelOutput(output) }],
           execute: (input, context) =>
             Effect.gen(function* () {
@@ -129,20 +132,21 @@ const layer = Layer.effectDiscard(
                   ),
                   Effect.tap(() => Effect.sync(() => ShellToolRouting.reportSearch(context.sessionID, "grep", true))),
                   Effect.map((result) =>
-                    result.map((match) =>
-                      FileSystem.Match.make({
+                    result.map((match) => {
+                      const absolute = path.resolve(
+                        info.type === "Directory" ? target : path.dirname(target),
+                        match.entry.path,
+                      )
+                      return FileSystem.Match.make({
                         ...match,
                         entry: FileSystem.Entry.make({
                           ...match.entry,
                           path: RelativePath.make(
-                            path.relative(
-                              location.directory,
-                              path.resolve(info.type === "Directory" ? target : path.dirname(target), match.entry.path),
-                            ),
+                            FSUtil.contains(root, absolute) ? path.relative(root, absolute) : absolute,
                           ),
                         }),
-                      }),
-                    ),
+                      })
+                    }),
                   ),
                 )
             }).pipe(
