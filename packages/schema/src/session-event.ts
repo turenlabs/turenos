@@ -603,7 +603,8 @@ export namespace Compaction {
        * produced nothing.
        */
       ledger: Schema.Array(Schema.String).pipe(optional),
-      throughSeq: NonNegativeInt.pipe(optional),
+      /** Same boundary as `SessionMessage.Compaction.throughSeq`, negative for a copied row. */
+      throughSeq: Schema.Int.pipe(optional),
     },
   })
   export type Ended = typeof Ended.Type
