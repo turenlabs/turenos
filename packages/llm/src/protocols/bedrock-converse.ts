@@ -18,7 +18,7 @@ import {
 } from "../schema"
 import { BedrockEventStream } from "./bedrock-event-stream"
 import { isContextOverflow } from "../provider-error"
-import { JsonObject, optionalArray, ProviderShared } from "./shared"
+import { JsonObject, optionalArray, ProviderShared, isTransientProviderError } from "./shared"
 import { BedrockAuth } from "./utils/bedrock-auth"
 import { BedrockCache } from "./utils/bedrock-cache"
 import { BedrockMedia } from "./utils/bedrock-media"
@@ -155,7 +155,8 @@ type BedrockUsageSchema = Schema.Schema.Type<typeof BedrockUsageSchema>
 // `:event-type` header (e.g. `messageStart`, `contentBlockDelta`), or by its
 // `:exception-type` header for the `*Exception` members. `BedrockEventStream`
 // reconstructs that wrapping so the event schema can stay a plain
-// discriminated record.
+// discriminated record. `unmodeledError` is not an AWS member: the framing
+// builds it from the headers of an unmodeled `error` frame.
 const BedrockEvent = Schema.Struct({
   messageStart: Schema.optional(Schema.Struct({ role: Schema.String })),
   contentBlockStart: Schema.optional(
@@ -203,6 +204,9 @@ const BedrockEvent = Schema.Struct({
   validationException: Schema.optional(Schema.Struct({ message: Schema.String })),
   throttlingException: Schema.optional(Schema.Struct({ message: Schema.String })),
   serviceUnavailableException: Schema.optional(Schema.Struct({ message: Schema.String })),
+  unmodeledError: Schema.optional(
+    Schema.Struct({ code: Schema.optional(Schema.String), message: Schema.optional(Schema.String) }),
+  ),
 })
 type BedrockEvent = Schema.Schema.Type<typeof BedrockEvent>
 
@@ -621,6 +625,17 @@ const step = (state: ParserState, event: BedrockEvent) =>
             retryable: event.throttlingException !== undefined,
           }),
         ],
+      ] as const
+    }
+
+    if (event.unmodeledError) {
+      // AWS gives no modeled type here, so prefix the code to keep the failure
+      // mode visible and let the shared classifier decide whether it is transient.
+      const code = event.unmodeledError.code
+      const message = [code, event.unmodeledError.message].filter(Boolean).join(": ") || "Bedrock Converse stream error"
+      return [
+        state,
+        [LLMEvent.providerError({ message, ...(isTransientProviderError(code, message) ? { retryable: true } : {}) })],
       ] as const
     }
 

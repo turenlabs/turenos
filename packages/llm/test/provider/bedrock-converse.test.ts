@@ -48,6 +48,19 @@ const exceptionFrame = (type: string, payload: object) =>
     body: utf8Encoder.encode(JSON.stringify(payload)),
   })
 
+// Unmodeled stream errors have no member or payload: AWS sends them as
+// `:message-type=error` frames described only by `:error-code` and
+// `:error-message` headers.
+const errorFrame = (code: string, message: string) =>
+  codec.encode({
+    headers: {
+      ":message-type": { type: "string", value: "error" },
+      ":error-code": { type: "string", value: code },
+      ":error-message": { type: "string", value: message },
+    },
+    body: new Uint8Array(0),
+  })
+
 const concat = (frames: ReadonlyArray<Uint8Array>) => {
   const total = frames.reduce((sum, frame) => sum + frame.length, 0)
   const out = new Uint8Array(total)
@@ -586,6 +599,41 @@ describe("Bedrock Converse route", () => {
         message: "Input is too long for requested model",
         classification: "context-overflow",
         retryable: false,
+      })
+    }),
+  )
+
+  it.effect("emits retryable provider-error with the code and message of a mid-stream error frame", () =>
+    Effect.gen(function* () {
+      const body = concat([
+        eventFrame("messageStart", { role: "assistant" }),
+        eventFrame("contentBlockDelta", { contentBlockIndex: 0, delta: { text: "Hel" } }),
+        errorFrame("ServiceUnavailable", "Service unavailable, please try again later."),
+      ])
+      const response = yield* LLMClient.generate(baseRequest).pipe(Effect.provide(fixedBytes(body)))
+
+      expect(response.text).toBe("Hel")
+      expect(response.events.find((event) => event.type === "provider-error")).toEqual({
+        type: "provider-error",
+        message: "ServiceUnavailable: Service unavailable, please try again later.",
+        retryable: true,
+      })
+    }),
+  )
+
+  it.effect("does not mark a non-transient error frame retryable", () =>
+    Effect.gen(function* () {
+      const response = yield* LLMClient.generate(baseRequest).pipe(
+        Effect.provide(
+          fixedBytes(
+            errorFrame("AccessDeniedException", "You don't have access to the model with the specified model ID."),
+          ),
+        ),
+      )
+
+      expect(response.events.find((event) => event.type === "provider-error")).toEqual({
+        type: "provider-error",
+        message: "AccessDeniedException: You don't have access to the model with the specified model ID.",
       })
     }),
   )
