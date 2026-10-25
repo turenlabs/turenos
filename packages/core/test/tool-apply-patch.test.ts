@@ -405,6 +405,46 @@ describe("ApplyPatchTool", () => {
     ),
   )
 
+  // A lossy decode would turn every non-UTF-8 byte in the file into U+FFFD on write, far from the
+  // patched lines. Deleting rewrites nothing, so it still works.
+  it.live("refuses to update a file that is not valid UTF-8 but still deletes one", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) => {
+        reset()
+        const target = path.join(tmp.path, "legacy.c")
+        const original = Buffer.concat([Buffer.from("/* caf"), Buffer.from([0xe9]), Buffer.from(" */\nint x = 1;\n")])
+        return Effect.promise(() => fs.writeFile(target, original)).pipe(
+          Effect.andThen(
+            withTool(tmp.path, (registry) =>
+              Effect.gen(function* () {
+                expect(
+                  yield* executeTool(
+                    registry,
+                    call("*** Begin Patch\n*** Update File: legacy.c\n@@\n-int x = 1;\n+int x = 2;\n*** End Patch"),
+                  ),
+                ).toEqual({
+                  type: "error",
+                  value:
+                    "Unable to apply patch at legacy.c: file is not valid UTF-8, and apply_patch only rewrites UTF-8 text",
+                })
+                expect(yield* Effect.promise(() => fs.readFile(target))).toEqual(original)
+                expect(
+                  yield* executeTool(
+                    registry,
+                    call("*** Begin Patch\n*** Delete File: legacy.c\n*** End Patch", "call-apply-patch-delete"),
+                  ),
+                ).toEqual({ type: "text", value: "Applied patch sequentially:\nD legacy.c" })
+                expect(yield* exists(target)).toBe(false)
+              }),
+            ),
+          ),
+        )
+      },
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+    ),
+  )
+
   it.live("rejects an add target that appears during permission approval", () =>
     Effect.acquireUseRelease(
       Effect.promise(() => tmpdir()),

@@ -4,6 +4,7 @@ import { ToolFailure } from "@turenlabs/llm"
 import { FileDiff } from "@turenlabs/schema/file-diff"
 import { createTwoFilesPatch, diffLines } from "diff"
 import { Effect, Layer, Schema } from "effect"
+import { isUtf8 } from "node:buffer"
 import { makeLocationNode } from "../effect/app-node"
 import { FileMutation } from "../file-mutation"
 import { FSUtil } from "../fs-util"
@@ -152,6 +153,10 @@ export const run = Effect.fn("ApplyPatchTool.run")(function* (input: {
           prepared.push({ ...hunk, target, before, after: "" })
           return
         }
+        // The whole file is re-encoded on write, so a lossy decode would replace every invalid byte
+        // with U+FFFD, not just the patched lines.
+        if (!isUtf8(source))
+          return yield* Effect.fail("file is not valid UTF-8, and apply_patch only rewrites UTF-8 text")
         const update = Patch.derive(hunk.path, hunk.chunks, original)
         prepared.push({
           ...hunk,
