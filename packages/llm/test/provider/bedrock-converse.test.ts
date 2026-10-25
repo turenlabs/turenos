@@ -422,6 +422,52 @@ describe("Bedrock Converse route", () => {
     }),
   )
 
+  // Claude with adaptive thinking display "omitted" streams a reasoning block with no text, only
+  // its signature. The signed block must go back next turn.
+  it.effect("keeps the signature of a reasoning block that streams no text", () =>
+    Effect.gen(function* () {
+      const body = eventStreamBody(
+        ["messageStart", { role: "assistant" }],
+        ["contentBlockDelta", { contentBlockIndex: 0, delta: { reasoningContent: { signature: "sig_omitted" } } }],
+        ["contentBlockStop", { contentBlockIndex: 0 }],
+        ["contentBlockStart", { contentBlockIndex: 1, start: { toolUse: { toolUseId: "tool_1", name: "lookup" } } }],
+        ["contentBlockDelta", { contentBlockIndex: 1, delta: { toolUse: { input: '{"query":"x"}' } } }],
+        ["contentBlockStop", { contentBlockIndex: 1 }],
+        ["messageStop", { stopReason: "tool_use" }],
+      )
+      const response = yield* LLMClient.generate(
+        LLM.updateRequest(baseRequest, {
+          tools: [{ name: "lookup", description: "Lookup", inputSchema: { type: "object" } }],
+        }),
+      ).pipe(Effect.provide(fixedBytes(body)))
+
+      expect(response.message.content).toEqual([
+        { type: "reasoning", text: "", providerMetadata: { bedrock: { signature: "sig_omitted" } } },
+        { type: "tool-call", id: "tool_1", name: "lookup", input: { query: "x" } },
+      ])
+
+      const prepared = yield* LLMClient.prepare<BedrockConverse.BedrockConverseBody>(
+        LLM.request({
+          model,
+          messages: [
+            Message.user("Look it up."),
+            response.message,
+            Message.tool({ id: "tool_1", name: "lookup", result: { found: true } }),
+          ],
+          cache: "none",
+        }),
+      )
+
+      expect(prepared.body.messages[1]).toEqual({
+        role: "assistant",
+        content: [
+          { reasoningContent: { reasoningText: { text: "", signature: "sig_omitted" } } },
+          { toolUse: { toolUseId: "tool_1", name: "lookup", input: { query: "x" } } },
+        ],
+      })
+    }),
+  )
+
   // Core strips provider metadata from failed turns, so their reasoning comes back without a
   // signature, which Claude on Bedrock rejects.
   it.effect("drops unsigned reasoning and keeps signed reasoning", () =>
