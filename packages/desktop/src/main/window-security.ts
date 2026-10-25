@@ -53,6 +53,23 @@ export function mainWindowNavigation(value: string, devURL = process.env.ELECTRO
   return { action: "deny" as const }
 }
 
+const rendererPermissions = new Set(["clipboard-sanitized-write", "notifications"])
+
+// Every main window shares the default session, which holds a single permission handler, so
+// the decision must accept any owned main window rather than the webContents that installed it.
+// Checks may arrive without a webContents; the renderer URL check still applies to them.
+export function isRendererPermissionAllowed<Sender>(
+  permission: string,
+  sender: Sender | null,
+  urls: (string | undefined)[],
+  ownsWindow: (sender: Sender) => boolean,
+  devURL = process.env.ELECTRON_RENDERER_URL,
+) {
+  if (!rendererPermissions.has(permission)) return false
+  if (sender && !ownsWindow(sender)) return false
+  return urls.some((url) => isRendererUrl(url, { devURL }))
+}
+
 export function isTrustedRendererIpcEvent(
   event: RendererIpcEvent,
   ownsWindow: (sender: RendererIpcEvent["sender"]) => boolean,
