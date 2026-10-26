@@ -785,15 +785,18 @@ const onContentBlockDelta = Effect.fn("AnthropicMessages.onContentBlockDelta")(f
     ] satisfies StepResult
   }
 
+  // With display "omitted" a thinking block streams no text, only its signature, so the block may
+  // not be open yet. Start it here so the signed empty block reaches the message and replays.
   if (delta?.type === "signature_delta" && delta.signature) {
     const events: LLMEvent[] = []
+    const id = `reasoning-${event.index ?? 0}`
     return [
       {
         ...state,
         lifecycle: Lifecycle.reasoningEnd(
-          state.lifecycle,
+          Lifecycle.reasoningStart(state.lifecycle, events, id),
           events,
-          `reasoning-${event.index ?? 0}`,
+          id,
           anthropicMetadata({ signature: delta.signature }),
         ),
       },

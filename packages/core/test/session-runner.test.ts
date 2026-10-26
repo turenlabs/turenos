@@ -111,6 +111,7 @@ import { and, asc, eq } from "drizzle-orm"
 import { testEffect } from "./lib/effect"
 import { afterExecutorRetries, anthropicRateLimited, executorFailure } from "./lib/provider-failure"
 import { AgentPlugin } from "@turenlabs/core/plugin/agent"
+import { OpenAICodex } from "@turenlabs/core/plugin/provider/openai-codex"
 import { SessionCreation } from "@turenlabs/core/session/creation"
 import { location as locationFixture } from "./fixture/location"
 import { agentHost, host } from "./plugin/host"
@@ -311,6 +312,8 @@ const echo = Layer.effectDiscard(
 const echoNode = makeLocationNode({ name: "test/session-runner-tools", layer: echo, deps: [ToolRegistry.node] })
 let modelResolveHook = Effect.void
 let currentModel = model
+// The catalog id the resolved ref records. Unset, it equals the wire id, as for most catalog models.
+let catalogID: string | undefined
 // Stands in for a ChatGPT sign-in: models carry `access` until a resolve asks to refresh it, and
 // that refresh fails when there is no `refreshed` token to hand out.
 let signIn: { readonly access: string; readonly refreshed?: string } | undefined
@@ -329,7 +332,7 @@ const models = SessionRunnerModel.layerWith((session, _request, options) =>
             ? model
             : Model.update(model, { route: model.route.with({ auth: Auth.bearer(access) }) }),
         ref: ModelV2.Ref.make({
-          id: ModelV2.ID.make(model.id),
+          id: ModelV2.ID.make(catalogID ?? model.id),
           providerID: ProviderV2.ID.make(model.provider),
           ...(session.model?.variant === undefined ? {} : { variant: session.model.variant }),
         }),
@@ -594,6 +597,7 @@ const setup = Effect.gen(function* () {
   systemLoadHook = Effect.void
   modelResolveHook = Effect.void
   currentModel = model
+  catalogID = undefined
   signIn = undefined
   refreshResolves = 0
   skillBaselines.clear()
@@ -2280,6 +2284,106 @@ describe("SessionRunnerLLM", () => {
     }),
   )
 
+  it.effect("advances the context-window ordinal at every compaction", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      const events = yield* EventV2.Service
+      requests.length = 0
+      response = []
+      yield* Effect.forEach(["First", "Second", "Third"], (text, index) =>
+        Effect.gen(function* () {
+          if (index > 0) {
+            const compactionID = SessionMessage.ID.create()
+            yield* events.publish(SessionEvent.Compaction.Started, {
+              sessionID,
+              messageID: compactionID,
+              timestamp: DateTime.makeUnsafe(index),
+              reason: "manual",
+            })
+            yield* events.publish(SessionEvent.Compaction.Ended, {
+              sessionID,
+              messageID: compactionID,
+              timestamp: DateTime.makeUnsafe(index),
+              reason: "manual",
+              text: `summary ${index}`,
+              recent: "",
+            })
+          }
+          yield* session.prompt({ sessionID, prompt: Prompt.make({ text }), resume: false })
+          yield* session.resume(sessionID)
+        }),
+      )
+
+      // The window ID the ChatGPT backend uses for cache affinity changes with each compaction.
+      expect(requests.map((request) => request.metadata?.[OpenAICodex.CONTEXT_WINDOW_METADATA_KEY])).toEqual([0, 1, 2])
+    }),
+  )
+
+  it.effect("adds the context-budget note again in every context window", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      const events = yield* EventV2.Service
+      currentModel = Model.make({
+        id: "budget",
+        provider: "fake",
+        route: OpenAIChat.route.with({ limits: { context: 1_000_000, output: 1_000 } }),
+      })
+      requests.length = 0
+      // 31% of the window: past the soft note, short of background checkpointing and compaction.
+      responses = [0, 1, 2].flatMap((window) => [
+        [
+          LLMEvent.stepStart({ index: 0 }),
+          LLMEvent.textStart({ id: `budget-fill-${window}` }),
+          LLMEvent.textDelta({ id: `budget-fill-${window}`, text: "Working" }),
+          LLMEvent.textEnd({ id: `budget-fill-${window}` }),
+          LLMEvent.stepFinish({
+            index: 0,
+            reason: "stop",
+            usage: { inputTokens: 310_000, nonCachedInputTokens: 310_000, outputTokens: 1 },
+          }),
+          LLMEvent.finish({ reason: "stop" }),
+        ],
+        fragmentFixture("text", `budget-next-${window}`, ["Done"]).completeEvents,
+      ])
+      yield* Effect.forEach([0, 1, 2], (window) =>
+        Effect.gen(function* () {
+          if (window > 0) {
+            const compactionID = SessionMessage.ID.create()
+            yield* events.publish(SessionEvent.Compaction.Started, {
+              sessionID,
+              messageID: compactionID,
+              timestamp: yield* DateTime.now,
+              reason: "manual",
+            })
+            yield* events.publish(SessionEvent.Compaction.Ended, {
+              sessionID,
+              messageID: compactionID,
+              timestamp: yield* DateTime.now,
+              reason: "manual",
+              text: `summary ${window}`,
+              recent: "",
+            })
+            // Usage reported at or before the checkpoint's time does not measure the new window.
+            yield* TestClock.adjust(1)
+          }
+          yield* Effect.forEach([`Fill ${window}`, `Next ${window}`], (text) =>
+            Effect.gen(function* () {
+              yield* session.prompt({ sessionID, prompt: Prompt.make({ text }), resume: false })
+              yield* session.resume(sessionID)
+            }),
+          )
+        }),
+      )
+
+      // The soft note appears once per window, in the request after the turn that filled it.
+      expect(
+        requests.map((request) => userTexts(request).filter((text) => text.startsWith("Context budget:")).length),
+      ).toEqual([0, 1, 0, 1, 0, 1])
+    }),
+  )
+
   it.effect("automatically compacts into a completed summary and retained recent turn", () =>
     Effect.gen(function* () {
       yield* setup
@@ -3198,6 +3302,36 @@ describe("SessionRunnerLLM", () => {
           text: "Encrypted thought",
           providerMetadata: { openai: { itemId: "rs_1", reasoningEncryptedContent: "encrypted-state" } },
         },
+      ])
+    }),
+  )
+
+  it.effect("restores reasoning provider metadata when the catalog id differs from the wire id", () =>
+    Effect.gen(function* () {
+      yield* setup
+      // A models.dev mode such as `claude-opus-5-fast` sends its base model's id on the wire.
+      catalogID = "fake-model-fast"
+      const session = yield* SessionV2.Service
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Think first" }), resume: false })
+
+      requests.length = 0
+      response = [
+        LLMEvent.stepStart({ index: 0 }),
+        LLMEvent.reasoningStart({ id: "reasoning-fast" }),
+        LLMEvent.reasoningDelta({ id: "reasoning-fast", text: "Signed thought" }),
+        LLMEvent.reasoningEnd({ id: "reasoning-fast", providerMetadata: { anthropic: { signature: "sig_1" } } }),
+        LLMEvent.stepFinish({ index: 0, reason: "stop" }),
+        LLMEvent.finish({ reason: "stop" }),
+      ]
+      yield* session.resume(sessionID)
+
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Continue" }), resume: false })
+      response = []
+      yield* session.resume(sessionID)
+
+      expect(requests[1]?.model.id).toBe(model.id)
+      expect(requests[1]?.messages[1]?.content).toEqual([
+        { type: "reasoning", text: "Signed thought", providerMetadata: { anthropic: { signature: "sig_1" } } },
       ])
     }),
   )

@@ -426,6 +426,37 @@ describe("EditTool", () => {
     ),
   )
 
+  // A lossy decode would turn every non-UTF-8 byte in the file into U+FFFD on write, far from the
+  // replaced text.
+  it.live("refuses a file that is not valid UTF-8 and leaves its bytes unchanged", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) => {
+        reset()
+        const target = path.join(tmp.path, "legacy.c")
+        const original = Buffer.concat([Buffer.from("/* caf"), Buffer.from([0xe9]), Buffer.from(" */\nint x = 1;\n")])
+        return Effect.promise(() => fs.writeFile(target, original)).pipe(
+          Effect.andThen(
+            withTool(tmp.path, (registry) =>
+              executeTool(registry, call({ path: "legacy.c", oldString: "int x = 1;", newString: "int x = 2;" })),
+            ),
+          ),
+          Effect.andThen((result) =>
+            Effect.gen(function* () {
+              expect(result).toEqual({
+                type: "error",
+                value: "File is not valid UTF-8: legacy.c. edit only rewrites UTF-8 text.",
+              })
+              expect(yield* Effect.promise(() => fs.readFile(target))).toEqual(original)
+              expect(writes).toEqual([])
+            }),
+          ),
+        )
+      },
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+    ),
+  )
+
   // read shows every line break as LF, so each one in oldString must match LF or CRLF where it lands.
   it.live("matches oldString line by line in a file that mixes LF and CRLF", () =>
     Effect.acquireUseRelease(

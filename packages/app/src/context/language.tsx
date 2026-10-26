@@ -141,7 +141,12 @@ export function loadLocaleDict(locale: Locale) {
 
 const localeMatchers: Array<{ locale: Locale; match: (language: string) => boolean }> = [
   { locale: "en", match: (language) => language.startsWith("en") },
-  { locale: "zht", match: (language) => language.startsWith("zh") && language.includes("hant") },
+  // Taiwan, Hong Kong and Macau browsers report region tags such as zh-TW rather than a script tag.
+  {
+    locale: "zht",
+    match: (language) =>
+      language.startsWith("zh") && (language.includes("hant") || /^zh-(tw|hk|mo)\b/.test(language)),
+  },
   { locale: "zh", match: (language) => language.startsWith("zh") },
   { locale: "ko", match: (language) => language.startsWith("ko") },
   { locale: "de", match: (language) => language.startsWith("de") },
@@ -165,8 +170,10 @@ const localeMatchers: Array<{ locale: Locale; match: (language: string) => boole
 
 function detectLocale(): Locale {
   if (typeof navigator !== "object") return "en"
+  return localeFromLanguages(navigator.languages?.length ? navigator.languages : [navigator.language])
+}
 
-  const languages = navigator.languages?.length ? navigator.languages : [navigator.language]
+export function localeFromLanguages(languages: readonly string[]): Locale {
   for (const language of languages) {
     if (!language) continue
     const normalized = language.toLowerCase()

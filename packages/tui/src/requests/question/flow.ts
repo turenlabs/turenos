@@ -76,7 +76,8 @@ export function editCustom(flow: QuestionFlow, restore = false) {
   if (flow.input) return flow.input.focus()
   const input = flow.ctx.dialogs.input(flow.dialog, "Your answer", flow.draft.custom[flow.page], "Type your answer")
   flow.input = input
-  if (restore) input.cursorOffset = Math.min(flow.draft.cursor, input.plainText.length)
+  // The input opens with its caret at the end, and the saved caret counts the same display cells.
+  if (restore) input.cursorOffset = Math.min(flow.draft.cursor, input.cursorOffset)
   hints(flow, [], ["Enter save custom answer", "Ctrl+B back to choices", "Ctrl+K sessions", "Esc close"])
   flow.ctx.dialogs.resize()
   input.focus()

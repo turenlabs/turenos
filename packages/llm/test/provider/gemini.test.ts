@@ -36,6 +36,23 @@ describe("Gemini route", () => {
     }),
   )
 
+  it.effect("lowers thinking options into generationConfig", () =>
+    Effect.gen(function* () {
+      const generationConfig = (thinkingConfig: Record<string, unknown>) =>
+        LLMClient.prepare<Gemini.GeminiBody>(
+          LLM.request({ model, prompt: "Say hello.", providerOptions: { gemini: { thinkingConfig } } }),
+        ).pipe(Effect.map((prepared) => prepared.body.generationConfig))
+
+      // Gemini 3 models set reasoning depth with thinkingLevel; earlier models use a token budget.
+      expect(yield* generationConfig({ includeThoughts: true, thinkingLevel: "low" })).toEqual({
+        thinkingConfig: { includeThoughts: true, thinkingLevel: "low" },
+      })
+      expect(yield* generationConfig({ includeThoughts: true, thinkingBudget: 1024 })).toEqual({
+        thinkingConfig: { includeThoughts: true, thinkingBudget: 1024 },
+      })
+    }),
+  )
+
   it.effect("lowers chronological system updates to wrapped user text in order", () =>
     Effect.gen(function* () {
       const prepared = yield* LLMClient.prepare<Gemini.GeminiBody>(

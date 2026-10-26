@@ -124,9 +124,19 @@ const toolResult = (tool: SessionMessage.AssistantTool, providerMetadata: Provid
   }
 }
 
-const assistant = (message: SessionMessage.Assistant, model: Model) => {
-  const sameModel =
-    String(message.model.providerID) === String(model.provider) && String(message.model.id) === String(model.id)
+/** The catalog identity an assistant message records as its `model`. A `ModelV2.Ref` is one. */
+export type CatalogRef = { readonly providerID: string; readonly id: string }
+
+/**
+ * Whether a turn recorded under `recorded` came from the continuation model: from `ref` itself, or from the
+ * catalog model whose id is `model`'s wire id. The second covers a base model's turns after a switch to its
+ * `-fast` mode, which sends the same wire model, so its signatures and token counts still apply.
+ */
+export const matchesModel = (recorded: CatalogRef, model: Model, ref: CatalogRef) =>
+  recorded.providerID === ref.providerID && (recorded.id === ref.id || recorded.id === model.id)
+
+const assistant = (message: SessionMessage.Assistant, model: Model, ref: CatalogRef) => {
+  const sameModel = matchesModel(message.model, model, ref)
   const reuseProviderMetadata = sameModel && message.error === undefined
   const content: ContentPart[] = []
   const results: Message[] = []
@@ -208,7 +218,7 @@ const legacySystem = (message: SessionMessage.Message) => {
   return typeof system === "string" && system.length > 0 ? system : undefined
 }
 
-function toLLMMessage(message: SessionMessage.Message, model: Model): Message[] {
+function toLLMMessage(message: SessionMessage.Message, model: Model, ref: CatalogRef): Message[] {
   switch (message.type) {
     case "agent-switched":
     case "model-switched":
@@ -263,7 +273,7 @@ function toLLMMessage(message: SessionMessage.Message, model: Model): Message[] 
         }),
       ]
     case "assistant":
-      return assistant(message, model)
+      return assistant(message, model, ref)
     case "compaction":
       return [
         Message.make({
@@ -291,8 +301,19 @@ const RECALL_HINT =
 const CONTINUE_AFTER_CHECKPOINT = `The checkpoint above ends mid-task. Resume immediately: act on the most recent [User] instruction and the summary's next move without asking for confirmation. If the summary lists Durable Memories and the memory_write tool is available, persist the ones not already stored first — compaction has condensed the history they came from. ${RECALL_HINT} Ask the user only if you are genuinely blocked on input only they can provide.`
 const CONTINUE_AFTER_MANUAL_CHECKPOINT = `Act on the most recent user instruction. If the checkpoint lists Durable Memories and the memory_write tool is available, persist the ones not already stored first. Do not ask the user to repeat context that is already present in the checkpoint. ${RECALL_HINT}`
 
-/** Translate projected V2 Session history into canonical @turenlabs/llm context. */
-export const toLLMMessages = (messages: readonly SessionMessage.Message[], model: Model) => {
+/**
+ * Translate projected V2 Session history into canonical @turenlabs/llm context.
+ *
+ * An assistant turn keeps its reasoning and provider metadata only when `matchesModel` holds for `ref`, the
+ * turn's catalog model. `ref` defaults to `model`'s own ids, but `model.id` is the wire id
+ * (`ModelV2.Info["api"]["id"]`). That differs from the catalog id for models.dev modes such as
+ * `claude-opus-5-fast`, regional Bedrock ids and configured `api.id` overrides, so the runner passes its ref.
+ */
+export const toLLMMessages = (
+  messages: readonly SessionMessage.Message[],
+  model: Model,
+  ref: CatalogRef = { providerID: model.provider, id: model.id },
+) => {
   let checkpoint: SessionMessage.Compaction | undefined
   let continued = false
   const lowered = messages.flatMap((message) => {
@@ -302,7 +323,7 @@ export const toLLMMessages = (messages: readonly SessionMessage.Message[], model
     } else if (checkpoint && message.type === "assistant") {
       continued ||= DateTime.toEpochMillis(message.time.created) > DateTime.toEpochMillis(checkpoint.time.created)
     }
-    return toLLMMessage(message, model)
+    return toLLMMessage(message, model, ref)
   })
   if (!checkpoint || continued) return lowered
   return [

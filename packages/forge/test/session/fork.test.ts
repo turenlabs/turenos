@@ -4,6 +4,7 @@ import { LayerNode } from "@turenlabs/core/effect/layer-node"
 import { Database } from "@turenlabs/core/database/database"
 import { EventV2 } from "@turenlabs/core/event"
 import { SessionEvent } from "@turenlabs/core/session/event"
+import { SessionHistory } from "@turenlabs/core/session/history"
 import { SessionMessage } from "@turenlabs/core/session/message"
 import { SessionProjector } from "@turenlabs/core/session/projector"
 import { Prompt } from "@turenlabs/core/session/prompt"
@@ -278,6 +279,67 @@ describe("Session.fork", () => {
       const synthetic = copied.find((row) => row.type === "synthetic")
       expect(synthetic).toBeDefined()
       expect((synthetic!.data as { sessionID?: string }).sessionID).toBe(forked.id)
+    }),
+  )
+
+  it.instance("keeps a checkpoint's preserved tail and the fork's own prompts in model context", () =>
+    Effect.gen(function* () {
+      const { session, events, sessionID } = yield* seed({ title: "checkpoint" })
+      const { db } = yield* Database.Service
+      const primary = Database.primary(db)
+      // An automatic checkpoint that summarized the first turn and kept the second as its
+      // original rows: `throughSeq` names the first reply's row in the source Session.
+      yield* events.publish(SessionEvent.Compaction.Ended, {
+        sessionID,
+        messageID: SessionMessage.ID.create(),
+        timestamp: DateTime.makeUnsafe(1_100),
+        reason: "auto",
+        text: "summary of the first turn",
+        recent: "",
+        throughSeq: (yield* rowsOf(sessionID))[1]!.seq,
+      })
+      const source = yield* SessionHistory.load(primary, sessionID)
+      expect(source.map((message) => message.type)).toEqual(["compaction", "user", "assistant"])
+
+      const forked = yield* session.fork({ sessionID })
+      const copied = yield* SessionHistory.load(primary, forked.id)
+      expect(copied.map((message) => message.type)).toEqual(["compaction", "user", "assistant"])
+      expect(copied[1]).toMatchObject({ type: "user", text: "second" })
+
+      const messageID = SessionMessage.ID.create()
+      yield* events.publish(SessionEvent.Prompted, {
+        sessionID: forked.id,
+        messageID,
+        prompt: Prompt.make({ text: "after the fork" }),
+        delivery: "steer",
+        timestamp: DateTime.makeUnsafe(2_000),
+      })
+      expect((yield* SessionHistory.load(primary, forked.id)).map((message) => message.id)).toEqual([
+        ...copied.map((message) => message.id),
+        messageID,
+      ])
+    }),
+  )
+
+  it.instance("accepts a checkpoint taken in the fork that cuts among the copied rows", () =>
+    Effect.gen(function* () {
+      const { session, events, sessionID } = yield* seed({ title: "fork checkpoint" })
+      const { db } = yield* Database.Service
+      const forked = yield* session.fork({ sessionID })
+      // What an automatic compaction in the fork commits when it summarizes the first copied
+      // turn and preserves the second: the seq of the first reply's copy, which is negative.
+      yield* events.publish(SessionEvent.Compaction.Ended, {
+        sessionID: forked.id,
+        messageID: SessionMessage.ID.create(),
+        timestamp: DateTime.makeUnsafe(2_000),
+        reason: "auto",
+        text: "summary of the first turn",
+        recent: "",
+        throughSeq: (yield* rowsOf(forked.id))[1]!.seq,
+      })
+      const context = yield* SessionHistory.load(Database.primary(db), forked.id)
+      expect(context.map((message) => message.type)).toEqual(["compaction", "user", "assistant"])
+      expect(context[1]).toMatchObject({ type: "user", text: "second" })
     }),
   )
 

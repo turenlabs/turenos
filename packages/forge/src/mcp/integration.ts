@@ -103,6 +103,16 @@ export function requiresConfirmation(id: ID | string) {
 }
 
 const UNTRUSTED_SCHEMA_ANNOTATIONS = new Set(["$comment", "default", "description", "examples", "title"])
+// The keys of these keywords are argument or definition names, so a property named `title` must survive.
+const SCHEMA_NAME_MAPS = new Set([
+  "$defs",
+  "definitions",
+  "dependencies",
+  "dependentRequired",
+  "dependentSchemas",
+  "patternProperties",
+  "properties",
+])
 
 export function sanitizeToolDefinition(id: ID, tool: MCPToolDef): MCPToolDef {
   const extension = contribution(id)
@@ -114,13 +124,13 @@ export function sanitizeToolDefinition(id: ID, tool: MCPToolDef): MCPToolDef {
   }
 }
 
-function stripSchemaAnnotations(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(stripSchemaAnnotations)
+function stripSchemaAnnotations(value: unknown, nameMap = false): unknown {
+  if (Array.isArray(value)) return value.map((item) => stripSchemaAnnotations(item))
   if (!value || typeof value !== "object") return value
   return Object.fromEntries(
     Object.entries(value)
-      .filter(([key]) => !UNTRUSTED_SCHEMA_ANNOTATIONS.has(key))
-      .map(([key, item]) => [key, stripSchemaAnnotations(item)]),
+      .filter(([key]) => nameMap || !UNTRUSTED_SCHEMA_ANNOTATIONS.has(key))
+      .map(([key, item]) => [key, stripSchemaAnnotations(item, !nameMap && SCHEMA_NAME_MAPS.has(key))]),
   )
 }
 

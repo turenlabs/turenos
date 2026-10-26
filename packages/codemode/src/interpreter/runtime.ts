@@ -2775,9 +2775,11 @@ class Interpreter<R> {
         return Effect.succeed(target.concat(...args))
       case "flat":
         return Effect.succeed(target.flat(optNumber(args[0], "depth") ?? 1))
+      // sort and reverse reorder the receiver and return it, like JS; toSorted and toReversed copy.
       case "reverse":
-        return Effect.succeed([...target].reverse())
+        return Effect.succeed(target.reverse())
       case "sort":
+        return Effect.map(this.sortArray(target, args[0], node), (sorted) => Object.assign(target, sorted))
       case "toSorted":
         return this.sortArray(target, args[0], node)
       case "toReversed":

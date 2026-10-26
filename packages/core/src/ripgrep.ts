@@ -1,6 +1,6 @@
 export * as Ripgrep from "./ripgrep"
 
-import { Context, Effect, Fiber, Layer, Schema, Stream } from "effect"
+import { Context, Effect, Fiber, Layer, Schema, SchemaGetter, Stream } from "effect"
 import { ChildProcess } from "effect/unstable/process"
 import { Entry, Match } from "@turenlabs/schema/filesystem"
 import { makeGlobalNode } from "./effect/app-node"
@@ -21,16 +21,28 @@ const ERROR_BYTES = 8 * 1024
 const MAX_RECORD_BYTES = 64 * 1024
 const MAX_SUBMATCHES = 100
 
+// rg --json writes a path, line or match that is not valid UTF-8 as base64
+// `bytes` instead of `text`. Decode it lossily, as the WASM backend does.
+const ArbitraryData = Schema.Union([
+  Schema.Struct({ text: Schema.String }),
+  Schema.Struct({ bytes: Schema.String }).pipe(
+    Schema.decodeTo(Schema.Struct({ text: Schema.String }), {
+      decode: SchemaGetter.transform((data) => ({ text: Buffer.from(data.bytes, "base64").toString("utf8") })),
+      encode: SchemaGetter.transform((data) => ({ bytes: Buffer.from(data.text, "utf8").toString("base64") })),
+    }),
+  ),
+])
+
 const RawMatch = Schema.Struct({
   type: Schema.Literal("match"),
   data: Schema.Struct({
-    path: Schema.Struct({ text: Schema.String }),
-    lines: Schema.Struct({ text: Schema.String }),
+    path: ArbitraryData,
+    lines: ArbitraryData,
     line_number: PositiveInt,
     absolute_offset: NonNegativeInt,
     submatches: Schema.Array(
       Schema.Struct({
-        match: Schema.Struct({ text: Schema.String }),
+        match: ArbitraryData,
         start: NonNegativeInt,
         end: NonNegativeInt,
       }),

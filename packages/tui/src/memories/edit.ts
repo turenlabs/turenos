@@ -15,7 +15,8 @@ export function edit(ctx: MemoriesContext, place: Place, item: Memory | undefine
   if (!dialog) return
   // Fields write their text to the terminal as it is, so server text is stripped of control sequences first.
   const title = dialogs.input(dialog, "Title", display(item?.title ?? "", 4096))
-  const body = bodyField(ctx, dialog, display(item?.body ?? "", 48000))
+  // Saving sends the whole field as the body, so it is never shortened: a cut copy would replace the stored body.
+  const body = bodyField(ctx, dialog, display(item?.body ?? "", Infinity))
   const kind = kindField(ctx, dialog, item?.kind)
   dialog.key = (key: KeyEvent) => {
     if (!kind.focused || (!matchesKey(key, "up") && !matchesKey(key, "down"))) return false

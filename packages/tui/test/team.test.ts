@@ -112,26 +112,30 @@ test("a 400 keeps the draft editable with the server's message", async () => {
   expect(ids[1]).toBe(ids[0]!)
 })
 
-test("typing @ lists the room's teammates and Tab inserts the handle with a space", async () => {
-  const { routes } = server()
-  const sent: { text: string }[] = []
-  routes["POST /api/team/message"] = async (request) => {
-    sent.push(await request.json())
-    return Response.json({ _tag: "InvalidRequestError", message: "stop here" }, { status: 400 })
-  }
-  const { view, screen } = await open(routes)
-  await screen("Done")
-  view.mockInput.pressKey("f")
-  await screen("No mention:")
-  await view.mockInput.typeText("hi @mo")
-  const list = await screen("Morgan · Engineer")
-  expect(list).not.toContain("Rachel")
-  view.mockInput.pressKey("TAB")
-  await view.mockInput.typeText("go")
-  view.mockInput.pressEnter()
-  await until(() => sent.length === 1)
-  expect(sent[0]!.text).toBe("hi @moss go")
-})
+// The editor counts the caret in cells, two per CJK character, while the mention grammar indexes the text.
+test.each(["hi", "你好"])(
+  "after %j, typing @ lists the room's teammates and Tab inserts the handle with a space",
+  async (lead) => {
+    const { routes } = server()
+    const sent: { text: string }[] = []
+    routes["POST /api/team/message"] = async (request) => {
+      sent.push(await request.json())
+      return Response.json({ _tag: "InvalidRequestError", message: "stop here" }, { status: 400 })
+    }
+    const { view, screen } = await open(routes)
+    await screen("Done")
+    view.mockInput.pressKey("f")
+    await screen("No mention:")
+    await view.mockInput.typeText(`${lead} @mo`)
+    const list = await screen("Morgan · Engineer")
+    expect(list).not.toContain("Rachel")
+    view.mockInput.pressKey("TAB")
+    await view.mockInput.typeText("go")
+    view.mockInput.pressEnter()
+    await until(() => sent.length === 1)
+    expect(sent[0]!.text).toBe(`${lead} @moss go`)
+  },
+)
 
 test("a draft with no mention names the coordinator, and an unknown handle is flagged", async () => {
   const { routes } = server()

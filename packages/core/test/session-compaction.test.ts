@@ -2818,6 +2818,18 @@ describe("the pre-flight gate budgets against the model's real window", () => {
     expect(SessionCompaction.reportedOccupancy([{ ...baseline, message: failed }], model())).toBeGreaterThan(50_000)
   })
 
+  test("uses provider usage recorded under a catalog id that differs from the wire id", () => {
+    // A models.dev mode such as `model-fast` records its catalog id but sends `model` on the wire.
+    const fast = ModelV2.Ref.make({ id: ModelV2.ID.make("model-fast"), providerID: ProviderV2.ID.make("provider") })
+    const baseline = measuredTurn("fast_mode_baseline", { input: 50_000 })
+    if (baseline.message.type !== "assistant") throw new Error("expected assistant usage")
+    const entries = [{ ...baseline, message: SessionMessage.Assistant.make({ ...baseline.message, model: fast }) }]
+    expect(SessionCompaction.reportedOccupancy(entries, model(), fast)).toBe(50_000)
+    expect(SessionCompaction.reportedOccupancy(entries, model())).toBeUndefined()
+    // The base model's turns, recorded under the wire id, measured the same wire model.
+    expect(SessionCompaction.reportedOccupancy([baseline], model(), fast)).toBe(50_000)
+  })
+
   /** One-user-message request, by default against a 200k/10k model. */
   const requestCarrying = (
     content: ReadonlyArray<Record<string, unknown>>,

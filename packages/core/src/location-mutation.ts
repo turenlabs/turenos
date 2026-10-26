@@ -2,7 +2,7 @@ export * as LocationMutation from "./location-mutation"
 
 import { makeLocationNode } from "./effect/app-node"
 import path from "path"
-import { Context, Effect, Layer, Schema } from "effect"
+import { Context, Effect, Layer, PlatformError, Schema } from "effect"
 import { FSUtil } from "./fs-util"
 import { Location } from "./location"
 
@@ -87,7 +87,10 @@ const layer = Layer.effect(
       return effect.pipe(Effect.catchReason("PlatformError", "NotFound", () => Effect.succeed(undefined)))
     }
 
-    const resolvePath = Effect.fnUntraced(function* (absolute: string) {
+    const resolvePath = Effect.fnUntraced(function* (
+      absolute: string,
+      links = 0,
+    ): Effect.fn.Return<ResolvedPath, PathError | FSUtil.Error> {
       const existing = yield* notFound(fs.realPath(absolute))
       if (existing !== undefined) {
         const info = yield* fs.stat(existing)
@@ -99,12 +102,40 @@ const layer = Layer.effect(
       }
 
       let anchor = path.dirname(absolute)
+      let child = absolute
       while (true) {
         const canonical = yield* notFound(fs.realPath(anchor))
         if (canonical !== undefined) {
           const info = yield* fs.stat(canonical)
           if (info.type !== "Directory") {
             return yield* new PathError({ path: absolute, reason: "non_directory_ancestor" })
+          }
+          // realPath reports a dangling symlink as missing, but a write through it creates the link's target,
+          // so resolve that target instead of the link itself.
+          const link = yield* notFound(fs.readLink(path.join(canonical, path.basename(child))))
+          if (link !== undefined) {
+            // A target through a missing directory resolves lexically past it, which can cycle where the kernel
+            // would not; 32 matches macOS MAXSYMLINKS.
+            if (links === 32) {
+              return yield* PlatformError.systemError({
+                _tag: "BadResource",
+                module: "LocationMutation",
+                method: "resolve",
+                pathOrDescriptor: absolute,
+                description: "Too many symbolic links",
+              })
+            }
+            // realPath normalizes `..` lexically before it resolves anything, but the kernel follows a symlinked
+            // directory before the `..` that comes after it, so walk the target's directory one component at a time.
+            let directory = path.isAbsolute(link) ? path.parse(link).root : canonical
+            for (const part of path.dirname(link).slice(path.parse(link).root.length).split(path.sep)) {
+              const next = path.join(directory, part)
+              directory = part === ".." ? next : ((yield* notFound(fs.realPath(next))) ?? next)
+            }
+            return yield* resolvePath(
+              path.resolve(directory, path.basename(link), path.relative(child, absolute)),
+              links + 1,
+            )
           }
           return {
             canonical: path.resolve(canonical, path.relative(anchor, absolute)),
@@ -113,6 +144,7 @@ const layer = Layer.effect(
         }
         const parent = path.dirname(anchor)
         if (parent === anchor) return yield* new PathError({ path: absolute, reason: "non_directory_ancestor" })
+        child = anchor
         anchor = parent
       }
     })

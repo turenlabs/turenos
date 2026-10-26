@@ -19,7 +19,7 @@ import type { SecretOutput } from "../secret-output"
 import { SessionDisclosure } from "./disclosure"
 import { SessionSchema } from "./schema"
 import { Token } from "../util/token"
-import { toLLMMessages } from "./runner/to-llm-message"
+import { matchesModel, toLLMMessages, type CatalogRef } from "./runner/to-llm-message"
 import { ToolResultStore } from "../tool-result-store"
 
 const DEFAULT_BUFFER = 20_000
@@ -519,6 +519,8 @@ type Input = {
 
 type BudgetInput = Input & {
   readonly request: LLMRequest
+  /** The turn's catalog model, which `model.id` (the wire id) need not equal. See `reportedOccupancy`. */
+  readonly modelRef?: CatalogRef
   /**
    * The pruned view the wire request was actually built from. `entries` stays unpruned because
    * summarization must never be built from sentinels, but occupancy is a question about the
@@ -1348,16 +1350,21 @@ const wireTokens = (message: SessionMessage.Message) => {
  * The baseline must postdate the newest checkpoint: a preserved-tail turn measured its
  * occupancy against the pre-compaction window, so trusting it would report the freed context
  * as still occupied. It must also match the current model — another model's tokenizer priced
- * a different request. Either miss falls back to `estimateRequest`.
+ * a different request. Either miss falls back to `estimateRequest`. The match is `matchesModel`
+ * against `ref`, the turn's catalog model, as in `toLLMMessages`: a turn records its catalog id,
+ * not the wire id.
  */
-export const reportedOccupancy = (entries: readonly Entry[], model: Model) => {
+export const reportedOccupancy = (
+  entries: readonly Entry[],
+  model: Model,
+  ref: CatalogRef = { providerID: model.provider, id: model.id },
+) => {
   const checkpoint = entries.findLast((entry) => entry.message.type === "compaction")?.message
   const checkpointMillis = checkpoint === undefined ? undefined : DateTime.toEpochMillis(checkpoint.time.created)
   const index = entries.findLastIndex((entry) => {
     const message = entry.message
     if (message.type !== "assistant" || message.tokens === undefined) return false
-    if (String(message.model.providerID) !== String(model.provider)) return false
-    if (String(message.model.id) !== String(model.id)) return false
+    if (!matchesModel(message.model, model, ref)) return false
     if (checkpointMillis !== undefined && DateTime.toEpochMillis(message.time.created) <= checkpointMillis) return false
     return contextTotal(message.tokens) > 0
   })
@@ -1369,13 +1376,13 @@ export const reportedOccupancy = (entries: readonly Entry[], model: Model) => {
   // gate lags one step's tool output behind reality.
   // Lower the actual results, including failures and media, rather than the
   // summarizer's text view. Failed tools and attached source files cost tokens too.
-  const results = toLLMMessages([baseline], model).filter((message) => message.role === "tool")
+  const results = toLLMMessages([baseline], model, ref).filter((message) => message.role === "tool")
   const settledAfterBaseline = results.length === 0 ? 0 : estimateRequest(LLM.request({ model, messages: results }))
   return entries
     .slice(index + 1)
     .reduce(
       (total, entry) =>
-        total + estimateRequest(LLM.request({ model, messages: toLLMMessages([entry.message], model) })),
+        total + estimateRequest(LLM.request({ model, messages: toLLMMessages([entry.message], model, ref) })),
       contextTotal(baseline.tokens) + settledAfterBaseline,
     )
 }
@@ -1384,11 +1391,12 @@ export const reportedOccupancy = (entries: readonly Entry[], model: Model) => {
 export const needsPruning = (input: {
   readonly entries: readonly Entry[]
   readonly model: Model
+  readonly modelRef?: CatalogRef
   readonly request: LLMRequest
 }) => {
   const context = input.model.route.defaults.limits?.context
   if (context === undefined || !Number.isFinite(context) || context <= 0) return false
-  const occupancy = reportedOccupancy(input.entries, input.model) ?? estimateRequest(input.request)
+  const occupancy = reportedOccupancy(input.entries, input.model, input.modelRef) ?? estimateRequest(input.request)
   return occupancy >= contextTarget(context)
 }
 
@@ -1405,13 +1413,14 @@ export const needsPruning = (input: {
 export const clampOutput = (input: {
   readonly entries: readonly Entry[]
   readonly model: Model
+  readonly modelRef?: CatalogRef
   readonly request: LLMRequest
 }) => {
   const context = input.model.route.defaults.limits?.context
   if (context === undefined || context <= 0) return input.request
   const output = effectiveOutput(input.request)
   if (output <= 0) return input.request
-  const occupancy = reportedOccupancy(input.entries, input.model) ?? estimateRequest(input.request)
+  const occupancy = reportedOccupancy(input.entries, input.model, input.modelRef) ?? estimateRequest(input.request)
   const available = context - occupancy - REQUEST_MARGIN_TOKENS
   if (available >= output) return input.request
   // Nothing fits: an unclamped request draws the provider's real overflow error, which the
@@ -2057,7 +2066,8 @@ export const make = (dependencies: Dependencies) => {
     const buffer = Math.min(config.buffer, Math.floor(context / 2))
     // Provider-reported occupancy when a completed turn on this model exists past the newest
     // checkpoint; the media-aware character estimate only until then.
-    const occupancy = reportedOccupancy(input.measured ?? input.entries, input.model) ?? estimateRequest(input.request)
+    const occupancy =
+      reportedOccupancy(input.measured ?? input.entries, input.model, input.modelRef) ?? estimateRequest(input.request)
     if (
       occupancy < contextTarget(context) &&
       occupancy + REQUEST_MARGIN_TOKENS <=

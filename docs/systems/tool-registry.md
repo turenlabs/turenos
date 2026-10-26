@@ -150,6 +150,11 @@ The search uses the resolved canonical target, rather than resolving the origina
 a path authorization boundary, not an OS sandbox: canonicalization does not pin filesystem objects against concurrent
 replacement. Recursive searches do not enable symlink following.
 
+Results inside the Location are reported relative to its canonical root, so they stay inside the Location even when the
+Location directory is a symlink alias. Results outside it, which only an approved external search returns, are reported
+as canonical absolute paths. Both forms resolve in `read`, `edit`, and `write`, which reject a relative path that leaves
+the Location; an external result still needs `external_directory` approval there.
+
 ## Limits
 
 - The registry performs no execution authorization; each tool checks permission itself. A tool that never asks, such as

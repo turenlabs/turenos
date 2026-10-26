@@ -1,6 +1,7 @@
 import { TextRenderable } from "@opentui/core"
 import { attachmentSummary, withoutOpenMention } from "../mentions/outside"
 import type { MessageDraft, ModalState } from "../state"
+import { caretIndex } from "../suggest"
 import { color } from "../theme"
 import type { RequestContext } from "./context"
 import type { ReplyEditor } from "./reply"
@@ -22,7 +23,7 @@ export function showAttachments(ctx: RequestContext, dialog: ModalState, task: R
     if (!task.plainText.startsWith("!")) draft.literal = undefined
     const listed = (dialog.mentionRows ?? 0) > 0
     const summary = attachmentSummary(
-      listed ? withoutOpenMention(task.plainText, task.cursorOffset) : task.plainText,
+      listed ? withoutOpenMention(task.plainText, caretIndex(task)) : task.plainText,
       draft.recipient.location.directory,
       { missingFiles: ctx.connection.missingFiles, workspaceID: draft.recipient.location.workspaceID },
       draft.submitted !== undefined ? (draft.prompt?.files ?? []) : undefined,

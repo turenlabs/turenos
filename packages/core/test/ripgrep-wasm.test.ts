@@ -4,6 +4,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { pathToFileURL } from "node:url"
+import { Match } from "@turenlabs/schema/filesystem"
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
 import { Ripgrep } from "@turenlabs/core/ripgrep"
 import { RipgrepWasm } from "@turenlabs/core/ripgrep/wasm"
@@ -114,6 +115,27 @@ describe("ripgrep wasm", () => {
     const key = (m: any) =>
       `${m.entry.path}:${m.line}:${m.offset}:${m.text}:${m.submatches.map((s: any) => `${s.start},${s.end},${s.text}`).join(";")}`
     expect(got.map(key).sort()).toEqual(expected.map(key).sort())
+  })
+
+  // rg --json writes a line or match that is not valid UTF-8 as base64 `bytes`
+  // instead of `text`; one Latin-1 line must not fail the whole native search.
+  test("grep on a line that is not UTF-8 matches native", async () => {
+    const latin1 = fs.mkdtempSync(path.join(os.tmpdir(), "rgwasm-latin1-"))
+    fs.writeFileSync(path.join(latin1, "good.ts"), "const needle = 1\n")
+    fs.writeFileSync(path.join(latin1, "legacy.c"), Buffer.from("/* needle caf\xe9 */\n", "latin1"))
+    const key = (m: Match) =>
+      `${m.entry.path}:${m.line}:${m.offset}:${m.text}:${m.submatches.map((s) => `${s.start},${s.end},${s.text}`).join(";")}`
+    for (const pattern of ["needle", "caf(?-u:\\xE9)"]) {
+      const input = { cwd: latin1, pattern, limit: 100 }
+      const expected = await runNative((r) => r.grep(input))
+      const got = await runWasm((r) => r.grep(input))
+      expect(expected.map(key).sort()).toEqual(got.map(key).sort())
+    }
+    const native = await runNative((r) => r.grep({ cwd: latin1, pattern: "needle", limit: 100 }))
+    expect(native.map((m) => `${m.entry.path}:${m.text}`).sort()).toEqual([
+      "good.ts:const needle = 1\n",
+      "legacy.c:/* needle caf\uFFFD */\n",
+    ])
   })
 
   test("grep with include glob matches native", async () => {

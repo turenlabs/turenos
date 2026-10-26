@@ -93,6 +93,7 @@ const GeminiToolConfig = Schema.Struct({
 
 const GeminiThinkingConfig = Schema.Struct({
   thinkingBudget: Schema.optional(Schema.Number),
+  thinkingLevel: Schema.optional(Schema.String),
   includeThoughts: Schema.optional(Schema.Boolean),
 })
 
@@ -301,6 +302,7 @@ const thinkingConfig = (request: LLMRequest) => {
   if (!ProviderShared.isRecord(value)) return undefined
   const result = {
     thinkingBudget: typeof value.thinkingBudget === "number" ? value.thinkingBudget : undefined,
+    thinkingLevel: typeof value.thinkingLevel === "string" ? value.thinkingLevel : undefined,
     includeThoughts: typeof value.includeThoughts === "boolean" ? value.includeThoughts : undefined,
   }
   return Object.values(result).some((item) => item !== undefined) ? result : undefined

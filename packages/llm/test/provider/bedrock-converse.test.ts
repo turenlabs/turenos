@@ -35,6 +35,32 @@ const eventFrame = (type: string, payload: object) =>
     body: utf8Encoder.encode(JSON.stringify(payload)),
   })
 
+// Modeled stream errors (throttlingException, validationException, ...) are
+// not events on the wire: AWS sends them as `:message-type=exception` frames
+// named by `:exception-type`.
+const exceptionFrame = (type: string, payload: object) =>
+  codec.encode({
+    headers: {
+      ":message-type": { type: "string", value: "exception" },
+      ":exception-type": { type: "string", value: type },
+      ":content-type": { type: "string", value: "application/json" },
+    },
+    body: utf8Encoder.encode(JSON.stringify(payload)),
+  })
+
+// Unmodeled stream errors have no member or payload: AWS sends them as
+// `:message-type=error` frames described only by `:error-code` and
+// `:error-message` headers.
+const errorFrame = (code: string, message: string) =>
+  codec.encode({
+    headers: {
+      ":message-type": { type: "string", value: "error" },
+      ":error-code": { type: "string", value: code },
+      ":error-message": { type: "string", value: message },
+    },
+    body: new Uint8Array(0),
+  })
+
 const concat = (frames: ReadonlyArray<Uint8Array>) => {
   const total = frames.reduce((sum, frame) => sum + frame.length, 0)
   const out = new Uint8Array(total)
@@ -422,6 +448,52 @@ describe("Bedrock Converse route", () => {
     }),
   )
 
+  // Claude with adaptive thinking display "omitted" streams a reasoning block with no text, only
+  // its signature. The signed block must go back next turn.
+  it.effect("keeps the signature of a reasoning block that streams no text", () =>
+    Effect.gen(function* () {
+      const body = eventStreamBody(
+        ["messageStart", { role: "assistant" }],
+        ["contentBlockDelta", { contentBlockIndex: 0, delta: { reasoningContent: { signature: "sig_omitted" } } }],
+        ["contentBlockStop", { contentBlockIndex: 0 }],
+        ["contentBlockStart", { contentBlockIndex: 1, start: { toolUse: { toolUseId: "tool_1", name: "lookup" } } }],
+        ["contentBlockDelta", { contentBlockIndex: 1, delta: { toolUse: { input: '{"query":"x"}' } } }],
+        ["contentBlockStop", { contentBlockIndex: 1 }],
+        ["messageStop", { stopReason: "tool_use" }],
+      )
+      const response = yield* LLMClient.generate(
+        LLM.updateRequest(baseRequest, {
+          tools: [{ name: "lookup", description: "Lookup", inputSchema: { type: "object" } }],
+        }),
+      ).pipe(Effect.provide(fixedBytes(body)))
+
+      expect(response.message.content).toEqual([
+        { type: "reasoning", text: "", providerMetadata: { bedrock: { signature: "sig_omitted" } } },
+        { type: "tool-call", id: "tool_1", name: "lookup", input: { query: "x" } },
+      ])
+
+      const prepared = yield* LLMClient.prepare<BedrockConverse.BedrockConverseBody>(
+        LLM.request({
+          model,
+          messages: [
+            Message.user("Look it up."),
+            response.message,
+            Message.tool({ id: "tool_1", name: "lookup", result: { found: true } }),
+          ],
+          cache: "none",
+        }),
+      )
+
+      expect(prepared.body.messages[1]).toEqual({
+        role: "assistant",
+        content: [
+          { reasoningContent: { reasoningText: { text: "", signature: "sig_omitted" } } },
+          { toolUse: { toolUseId: "tool_1", name: "lookup", input: { query: "x" } } },
+        ],
+      })
+    }),
+  )
+
   // Core strips provider metadata from failed turns, so their reasoning comes back without a
   // signature, which Claude on Bedrock rejects.
   it.effect("drops unsigned reasoning and keeps signed reasoning", () =>
@@ -526,17 +598,35 @@ describe("Bedrock Converse route", () => {
     }),
   )
 
-  it.effect("emits provider-error for throttlingException", () =>
+  it.effect("emits provider-error for a mid-stream throttlingException frame", () =>
     Effect.gen(function* () {
-      const body = eventStreamBody(
-        ["messageStart", { role: "assistant" }],
-        ["throttlingException", { message: "Slow down" }],
-      )
+      const body = concat([
+        eventFrame("messageStart", { role: "assistant" }),
+        eventFrame("contentBlockDelta", { contentBlockIndex: 0, delta: { text: "Hel" } }),
+        exceptionFrame("throttlingException", { message: "Too many tokens, please wait before trying again." }),
+      ])
+      const response = yield* LLMClient.generate(baseRequest).pipe(Effect.provide(fixedBytes(body)))
+
+      expect(response.text).toBe("Hel")
+      expect(response.events.find((event) => event.type === "provider-error")).toEqual({
+        type: "provider-error",
+        message: "Too many tokens, please wait before trying again.",
+        retryable: true,
+      })
+    }),
+  )
+
+  it.effect("emits retryable provider-error for a modelStreamErrorException frame", () =>
+    Effect.gen(function* () {
+      const body = concat([
+        eventFrame("messageStart", { role: "assistant" }),
+        exceptionFrame("modelStreamErrorException", { message: "Model stream failed" }),
+      ])
       const response = yield* LLMClient.generate(baseRequest).pipe(Effect.provide(fixedBytes(body)))
 
       expect(response.events.find((event) => event.type === "provider-error")).toEqual({
         type: "provider-error",
-        message: "Slow down",
+        message: "Model stream failed",
         retryable: true,
       })
     }),
@@ -546,7 +636,7 @@ describe("Bedrock Converse route", () => {
     Effect.gen(function* () {
       const response = yield* LLMClient.generate(baseRequest).pipe(
         Effect.provide(
-          fixedBytes(eventStreamBody(["validationException", { message: "Input is too long for requested model" }])),
+          fixedBytes(exceptionFrame("validationException", { message: "Input is too long for requested model" })),
         ),
       )
 
@@ -555,6 +645,41 @@ describe("Bedrock Converse route", () => {
         message: "Input is too long for requested model",
         classification: "context-overflow",
         retryable: false,
+      })
+    }),
+  )
+
+  it.effect("emits retryable provider-error with the code and message of a mid-stream error frame", () =>
+    Effect.gen(function* () {
+      const body = concat([
+        eventFrame("messageStart", { role: "assistant" }),
+        eventFrame("contentBlockDelta", { contentBlockIndex: 0, delta: { text: "Hel" } }),
+        errorFrame("ServiceUnavailable", "Service unavailable, please try again later."),
+      ])
+      const response = yield* LLMClient.generate(baseRequest).pipe(Effect.provide(fixedBytes(body)))
+
+      expect(response.text).toBe("Hel")
+      expect(response.events.find((event) => event.type === "provider-error")).toEqual({
+        type: "provider-error",
+        message: "ServiceUnavailable: Service unavailable, please try again later.",
+        retryable: true,
+      })
+    }),
+  )
+
+  it.effect("does not mark a non-transient error frame retryable", () =>
+    Effect.gen(function* () {
+      const response = yield* LLMClient.generate(baseRequest).pipe(
+        Effect.provide(
+          fixedBytes(
+            errorFrame("AccessDeniedException", "You don't have access to the model with the specified model ID."),
+          ),
+        ),
+      )
+
+      expect(response.events.find((event) => event.type === "provider-error")).toEqual({
+        type: "provider-error",
+        message: "AccessDeniedException: You don't have access to the model with the specified model ID.",
       })
     }),
   )

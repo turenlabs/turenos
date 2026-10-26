@@ -5,6 +5,7 @@ import { createPopupState, type PopupOptions } from "./suggest/popup-state"
 import { refresh } from "./suggest/refresh"
 
 export type { Trigger } from "./suggest/popup-state"
+export { caretIndex, placeCaret } from "./suggest/caret"
 
 /**
  * The shared editor-completion popup: a bounded three-row list under a prompt

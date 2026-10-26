@@ -87,6 +87,90 @@ describe("LocationMutation", () => {
     }),
   )
 
+  it.live("rejects a dangling symlink target that points outside the Location", () =>
+    withTmp((directory) => {
+      const outside = `${directory}-outside`
+      return Effect.gen(function* () {
+        if (process.platform === "win32") return
+        yield* Effect.promise(async () => {
+          await fs.mkdir(outside)
+          await fs.symlink(path.join(outside, "new.txt"), path.join(directory, "dangling"))
+        })
+        const error = yield* Effect.flip((yield* LocationMutation.Service).resolve({ path: "dangling" }))
+        expect(error).toMatchObject({ _tag: "LocationMutation.PathError", reason: "location_escape" })
+        yield* Effect.promise(() => fs.rm(outside, { recursive: true, force: true }))
+      }).pipe(provide(directory))
+    }),
+  )
+
+  it.live("rejects a prospective target below a dangling symlink ancestor that points outside the Location", () =>
+    withTmp((directory) => {
+      const outside = `${directory}-outside`
+      return Effect.gen(function* () {
+        if (process.platform === "win32") return
+        yield* Effect.promise(async () => {
+          await fs.mkdir(outside)
+          await fs.symlink(path.join(outside, "missing"), path.join(directory, "escape"))
+        })
+        const error = yield* Effect.flip(
+          (yield* LocationMutation.Service).resolve({ path: path.join("escape", "new.txt") }),
+        )
+        expect(error).toMatchObject({ _tag: "LocationMutation.PathError", reason: "location_escape" })
+        yield* Effect.promise(() => fs.rm(outside, { recursive: true, force: true }))
+      }).pipe(provide(directory))
+    }),
+  )
+
+  it.live("rejects a dangling symlink whose target climbs out of the Location through a symlinked directory", () =>
+    withTmp((directory) => {
+      const outside = `${directory}-outside`
+      return Effect.gen(function* () {
+        if (process.platform === "win32") return
+        yield* Effect.promise(async () => {
+          await fs.mkdir(path.join(outside, "nested"), { recursive: true })
+          await fs.symlink(path.join(outside, "nested"), path.join(directory, "nested"))
+          // The kernel follows `nested` before `..`, so a write through this link creates <outside>/new.txt.
+          await fs.symlink("nested/../new.txt", path.join(directory, "climb"))
+        })
+        const error = yield* Effect.flip((yield* LocationMutation.Service).resolve({ path: "climb" }))
+        expect(error).toMatchObject({ _tag: "LocationMutation.PathError", reason: "location_escape" })
+        yield* Effect.promise(() => fs.rm(outside, { recursive: true, force: true }))
+      }).pipe(provide(directory))
+    }),
+  )
+
+  it.live("follows a dangling in-location symlink to its prospective target", () =>
+    withTmp((directory) =>
+      Effect.gen(function* () {
+        if (process.platform === "win32") return
+        yield* Effect.promise(async () => {
+          await fs.mkdir(path.join(directory, "actual"))
+          await fs.symlink(path.join("actual", "new.txt"), path.join(directory, "linked.txt"))
+        })
+
+        expect(yield* (yield* LocationMutation.Service).resolve({ path: "linked.txt" })).toMatchObject({
+          canonical: path.join(yield* Effect.promise(() => fs.realpath(directory)), "actual", "new.txt"),
+          resource: "actual/new.txt",
+        })
+      }).pipe(provide(directory)),
+    ),
+  )
+
+  it.live("fails instead of cycling on a dangling symlink whose target lexically resolves to itself", () =>
+    withTmp((directory) =>
+      Effect.gen(function* () {
+        if (process.platform === "win32") return
+        yield* Effect.promise(async () => {
+          await fs.symlink("missing", path.join(directory, "dangling"))
+          // A literal target: path.join would normalize it to a self-loop that realPath already rejects.
+          await fs.symlink("dangling/../cycle", path.join(directory, "cycle"))
+        })
+        const error = yield* Effect.flip((yield* LocationMutation.Service).resolve({ path: "cycle" }))
+        expect(error).toMatchObject({ _tag: "PlatformError", reason: { _tag: "BadResource" } })
+      }).pipe(provide(directory)),
+    ),
+  )
+
   it.live("follows an in-location symlink using ordinary filesystem semantics", () =>
     withTmp((directory) =>
       Effect.gen(function* () {

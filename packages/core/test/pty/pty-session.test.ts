@@ -386,7 +386,13 @@ const configuredIt = testEffect(
         entries: () =>
           Effect.succeed(
             configuredShell
-              ? [new Config.Document({ type: "document", info: new Config.Info({ shell: configuredShell }) })]
+              ? [
+                  new Config.Document({ type: "document", info: new Config.Info({ shell: configuredShell }) }),
+                  // Config.Service ends the global documents with the global directory entry; a repository
+                  // document after it must not choose the terminal program.
+                  new Config.Directory({ type: "directory", path: AbsolutePath.make("/global") }),
+                  new Config.Document({ type: "document", info: new Config.Info({ shell: "/bin/sh" }) }),
+                ]
               : [],
           ),
       }),
@@ -397,7 +403,7 @@ const configuredIt = testEffect(
 const configuredTest = process.platform === "win32" ? configuredIt.live.skip : configuredIt.live
 
 describe("pty create defaults", () => {
-  configuredTest("defaults command, login args, and cwd from config and location", () =>
+  configuredTest("defaults command, login args, and cwd from global config and location", () =>
     Effect.gen(function* () {
       if (!configuredShell) return
       const pty = yield* Pty.Service
