@@ -5,6 +5,7 @@ import { Effect, Layer, Schema } from "effect"
 import path from "path"
 import { makeLocationNode } from "../effect/app-node"
 import { FileSystem } from "../filesystem"
+import { FSUtil } from "../fs-util"
 import { Location } from "../location"
 import { LocationMutation } from "../location-mutation"
 import { Ripgrep } from "../ripgrep"
@@ -57,10 +58,14 @@ export const toModelOutput = (output: ModelOutput) => {
 const layer = Layer.effectDiscard(
   Effect.gen(function* () {
     const tools = yield* Tools.Service
+    const fs = yield* FSUtil.Service
     const ripgrep = yield* Ripgrep.Service
     const location = yield* Location.Service
     const mutation = yield* LocationMutation.Service
     const permission = yield* PermissionV2.Service
+    // Listings run on canonical targets, so results relativize against the canonical root: an
+    // aliased `location.directory` would turn every entry into a `../` path.
+    const root = yield* fs.realPath(location.directory).pipe(Effect.orDie)
 
     yield* tools
       .register({
@@ -70,8 +75,9 @@ const layer = Layer.effectDiscard(
           input: Input,
           output: Output,
           // Location-relative on purpose: re-absolutizing prefixed every entry with the
-          // workspace root, kilobytes of repeated prefix on large result sets. Relative
-          // paths resolve fine in every follow-up tool.
+          // workspace root, kilobytes of repeated prefix on large result sets. Entries
+          // outside the Location stay absolute, because follow-up tools reject a relative
+          // path that leaves it.
           toModelOutput: ({ output }) => [{ type: "text", text: toModelOutput(output) }],
           execute: (input, context) =>
             Effect.gen(function* () {
@@ -128,13 +134,14 @@ const layer = Layer.effectDiscard(
                   : yield* ripgrep
                       .lines({ cwd, files: files.map((entry) => entry.path) })
                       .pipe(Effect.orElseSucceed(() => undefined))
-              return files.map((entry) =>
-                Entry.make({
+              return files.map((entry) => {
+                const absolute = path.resolve(cwd, entry.path)
+                return Entry.make({
                   ...entry,
-                  path: RelativePath.make(path.relative(location.directory, path.resolve(cwd, entry.path))),
+                  path: RelativePath.make(FSUtil.contains(root, absolute) ? path.relative(root, absolute) : absolute),
                   lines: counts?.get(entry.path),
-                }),
-              )
+                })
+              })
             }).pipe(
               Effect.mapError(
                 (error) =>
@@ -159,5 +166,5 @@ const layer = Layer.effectDiscard(
 export const node = makeLocationNode({
   name: "tool/glob",
   layer,
-  deps: [ToolRegistry.node, Ripgrep.node, Location.node, LocationMutation.node, PermissionV2.node],
+  deps: [ToolRegistry.node, FSUtil.node, Ripgrep.node, Location.node, LocationMutation.node, PermissionV2.node],
 })
