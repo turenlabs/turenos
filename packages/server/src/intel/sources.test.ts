@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { EPSS_URL, NVD_URL, fetchEpss, fetchNvd, type FetchFn } from "./sources"
+import { EPSS_URL, NVD_URL, fetchEpss, fetchNvd, parseRss, type FetchFn } from "./sources"
 
 describe("fetchEpss", () => {
   test("parses FIRST numeric strings and preserves numeric scores", async () => {
@@ -73,6 +73,39 @@ describe("fetchNvd", () => {
         source: "source@example.com",
         cvss: 9.8,
         severity: "critical",
+      },
+    ])
+  })
+})
+
+describe("parseRss", () => {
+  test("turns entity-escaped and CDATA-wrapped feed HTML into plain text", () => {
+    const xml = `<rss><channel>
+<item>
+  <title>CISA&#039;s AT&amp;T &#x3f; &#x110000;</title>
+  <link>https://e.test/p?a=1&amp;b=2</link>
+  <pubDate>Fri, 23 Oct 2026 00:00:00 GMT</pubDate>
+  <description>&lt;p&gt;Use &amp;lt;b&amp;gt; &amp;amp; more&lt;/p&gt;</description>
+</item>
+<item>
+  <title><![CDATA[Microsoft &amp; Oracle&#x3f;]]></title>
+  <link><![CDATA[https://e.test/q?a=1&b=2]]></link>
+  <description><![CDATA[<p>Payload &lt;svg&gt; runs</p>&#xd;]]></description>
+</item>
+</channel></rss>`
+
+    expect(parseRss(xml)).toEqual([
+      {
+        title: "CISA's AT&T ? &#x110000;",
+        link: "https://e.test/p?a=1&b=2",
+        pubDate: "Fri, 23 Oct 2026 00:00:00 GMT",
+        description: "Use <b> & more",
+      },
+      {
+        title: "Microsoft & Oracle?",
+        link: "https://e.test/q?a=1&b=2",
+        pubDate: "",
+        description: "Payload <svg> runs",
       },
     ])
   })
