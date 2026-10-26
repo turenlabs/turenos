@@ -235,9 +235,10 @@ export const Compaction = Schema.Struct({
    * Aggregate sequence through which the summary is authoritative. Messages after this boundary
    * remain as their original structured records even when they were committed before the
    * compaction event itself. Older checkpoints omit this and retain the legacy event-sequence
-   * cutoff.
+   * cutoff. Negative when it names a row a fork or an adopted legacy transcript copied in, since
+   * those rows sit below the Session's own event log.
    */
-  throughSeq: NonNegativeInt.pipe(optional),
+  throughSeq: Schema.Int.pipe(optional),
   ...Base,
 }).annotate({ identifier: "Session.Message.Compaction" })
 
