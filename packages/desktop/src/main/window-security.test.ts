@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import {
+  isRendererPermissionAllowed,
   isRendererUrl,
   isTrustedRendererIpcEvent,
   mainWindowNavigation,
@@ -66,5 +67,25 @@ describe("main window security", () => {
     expect(
       isTrustedRendererIpcEvent({ ...event, sender: { ...sender, isDestroyed: () => true } }, () => true, devURL),
     ).toBe(false)
+  })
+
+  test("grants renderer permissions to every owned main window sharing the session", () => {
+    const first = { id: 1 }
+    const second = { id: 2 }
+    const securityBrowserShell = { id: 3 }
+    const owned = new Set([first, second])
+    const ownsWindow = (sender: { id: number }) => owned.has(sender)
+    const url = `${rendererOrigin}/index.html`
+
+    expect(isRendererPermissionAllowed("notifications", first, [url], ownsWindow, devURL)).toBe(true)
+    expect(isRendererPermissionAllowed("clipboard-sanitized-write", first, [url], ownsWindow, devURL)).toBe(true)
+    expect(isRendererPermissionAllowed("notifications", second, [url], ownsWindow, devURL)).toBe(true)
+    expect(isRendererPermissionAllowed("clipboard-sanitized-write", second, [url], ownsWindow, devURL)).toBe(true)
+    expect(isRendererPermissionAllowed("notifications", null, [undefined, url], ownsWindow, devURL)).toBe(true)
+    expect(isRendererPermissionAllowed("notifications", securityBrowserShell, [url], ownsWindow, devURL)).toBe(false)
+    expect(isRendererPermissionAllowed("notifications", first, ["https://attacker.example/"], ownsWindow, devURL)).toBe(
+      false,
+    )
+    expect(isRendererPermissionAllowed("media", first, [url], ownsWindow, devURL)).toBe(false)
   })
 })
