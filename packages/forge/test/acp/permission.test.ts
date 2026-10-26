@@ -17,6 +17,7 @@ import { ACPSession } from "@/acp/session"
 
 type PermissionEvent = Extract<Event, { type: "permission.asked" }>
 type PermissionReplyParams = Parameters<ForgeClient["permission"]["reply"]>[0]
+type SessionGetParams = Parameters<ForgeClient["session"]["get"]>[0]
 type SessionUpdateParams = Parameters<AgentSideConnection["sessionUpdate"]>[0]
 const cleanupDirs: string[] = []
 
@@ -49,6 +50,8 @@ function createHarness(
 ) {
   const replies: PermissionReplyParams[] = []
   const requests: RequestPermissionRequest[] = []
+  const lookups: SessionGetParams[] = []
+  const parents = new Map<string, string>()
   const updates: SessionUpdateParams[] = []
   const session = makeSessionService()
   const sdk = {
@@ -59,6 +62,10 @@ function createHarness(
       },
     },
     session: {
+      get: (params: SessionGetParams) => {
+        lookups.push(params)
+        return Promise.resolve({ data: { id: params.sessionID, parentID: parents.get(params.sessionID) } })
+      },
       message: () => Promise.resolve({ data: undefined }),
     },
   } as unknown as ForgeClient
@@ -74,7 +81,7 @@ function createHarness(
   } satisfies Pick<AgentSideConnection, "requestPermission" | "sessionUpdate">
   const subscription = new ACPEvent.Subscription({ sdk, connection, session })
 
-  return { connection, replies, requests, sdk, session, subscription, updates }
+  return { connection, lookups, parents, replies, requests, sdk, session, subscription, updates }
 }
 
 async function createSession(session: ACPSession.Interface, sessionId: string, cwd = "/workspace") {
@@ -349,6 +356,49 @@ describe("acp permissions", () => {
     await pollUntil(() => harness.replies.length === 1, "failed permission was never rejected")
 
     expect(harness.replies[0]).toMatchObject({ requestID: "perm_failed", reply: "reject" })
+  })
+
+  it("asks the owning ACP session for a subagent permission", async () => {
+    const harness = createHarness()
+    await createSession(harness.session, "ses_a")
+    harness.parents.set("ses_grandchild", "ses_child")
+    harness.parents.set("ses_child", "ses_a")
+
+    harness.subscription.handle(
+      permissionAsked("ses_grandchild", "perm_child", {
+        permission: "external_directory",
+        metadata: { description: "Read outside the project", directories: ["/tmp/outside"] },
+        tool: { messageID: "msg_child", callID: "call_child" },
+      }),
+      "/workspace",
+    )
+
+    await pollUntil(() => harness.replies.length === 1, "subagent permission was never replied")
+
+    expect(harness.lookups).toEqual([
+      { sessionID: "ses_grandchild", directory: "/workspace" },
+      { sessionID: "ses_child", directory: "/workspace" },
+    ])
+    expect(harness.requests).toHaveLength(1)
+    expect(harness.requests[0]).toMatchObject({
+      sessionId: "ses_a",
+      toolCall: { toolCallId: "call_child", title: "Read outside the project" },
+    })
+    expect(harness.replies).toEqual([{ requestID: "perm_child", reply: "once", directory: "/workspace" }])
+  })
+
+  it("ignores permissions from sessions without an ACP ancestor", async () => {
+    const harness = createHarness()
+    await createSession(harness.session, "ses_a")
+    harness.parents.set("ses_other_child", "ses_other")
+
+    harness.subscription.handle(permissionAsked("ses_other_child", "perm_other"), "/elsewhere")
+
+    await pollUntil(() => harness.lookups.length === 2, "unrelated session ancestry was never looked up")
+
+    expect(harness.lookups.map((lookup) => lookup.sessionID)).toEqual(["ses_other_child", "ses_other"])
+    expect(harness.requests).toHaveLength(0)
+    expect(harness.replies).toHaveLength(0)
   })
 
   it("does not let a blocked session A permission block session B message updates", async () => {
