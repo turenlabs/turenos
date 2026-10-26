@@ -1,5 +1,6 @@
 import type { KeyEvent } from "@opentui/core"
 import { matchesKey } from "../keys"
+import { placeCaret } from "./caret"
 import type { PopupState } from "./popup-state"
 
 // A superseded query is aborted, not merely ignored, so a fast typist cannot
@@ -81,5 +82,5 @@ export function move<T>(popup: PopupState<T>, event: KeyEvent) {
 export function replace<T>(popup: PopupState<T>, text: string, cursor: number) {
   const editor = popup.options.editor
   editor.setText(editor.plainText.slice(0, popup.trigger.start) + text + editor.plainText.slice(popup.trigger.end))
-  editor.cursorOffset = popup.trigger.start + cursor
+  placeCaret(editor, popup.trigger.start + cursor)
 }

@@ -2,7 +2,7 @@ import type { KeyEvent, TextareaRenderable } from "@opentui/core"
 import { insertMention, mentionMatches, mentionToken } from "@turenlabs/client/team"
 import { matchesKey } from "../keys"
 import { label, type ModalState } from "../state"
-import { createSuggestionPopup } from "../suggest"
+import { caretIndex, createSuggestionPopup, placeCaret } from "../suggest"
 import type { Teammate, TeamContext } from "./types"
 
 /**
@@ -20,11 +20,11 @@ export function createCompletion(
 
   function accept() {
     const chosen = popup.current
-    const token = mentionToken(editor.plainText, editor.cursorOffset)
+    const token = mentionToken(editor.plainText, caretIndex(editor))
     if (!chosen || !token) return false
     const next = insertMention(editor.plainText, token, chosen.handle)
     editor.setText(next.value)
-    editor.cursorOffset = next.caret
+    placeCaret(editor, next.caret)
     popup.dismiss()
     return true
   }
