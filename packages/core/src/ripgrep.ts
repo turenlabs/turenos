@@ -183,7 +183,9 @@ const native = Layer.effect(
           if (code !== 0 && code !== 1 && code !== 2) {
             return yield* failure(stderr.trim() || `ripgrep failed with code ${code}`)
           }
-          return { items: code === 1 ? [] : rows, truncated: false, partial: code === 2 }
+          // Exit 1 means nothing matched, which leaves other searches with no parsed
+          // rows, but `--count --include-zero` still lists each file it counted as zero.
+          return { items: rows, truncated: false, partial: code === 2 }
         }),
       )
       const abortable = input.signal ? program.pipe(Effect.raceFirst(waitForAbort(input.signal))) : program
@@ -242,7 +244,18 @@ const native = Layer.effect(
               // Explicit paths keep the cost proportional to the requested files rather
               // than the tree; ripgrep always searches a path it was handed, so binary
               // files report the lines found before NUL detection stopped the scan.
-              args: ["--no-config", "--count", "--include-zero", "--no-messages", "--", "^", ...files],
+              // rg omits the path when it searches a single path; --with-filename keeps
+              // a one-file batch keyed by its path.
+              args: [
+                "--no-config",
+                "--count",
+                "--include-zero",
+                "--no-messages",
+                "--with-filename",
+                "--",
+                "^",
+                ...files,
+              ],
               parse: (line) => {
                 const separator = line.lastIndexOf(":")
                 const count = separator < 0 ? Number.NaN : Number(line.slice(separator + 1))

@@ -29,6 +29,7 @@ w("sub/b.ts", "foo sub\nnested foo\n")
 w("sub/c.md", "foo doc\n")
 w("bin.dat", Buffer.concat([Buffer.from("foo before\n"), Buffer.from([0])]))
 w("nonewline.txt", "foo tail")
+w("empty.txt", "")
 // Windows denies symlink creation without developer mode/admin.
 let hasSymlinks = false
 if (process.platform !== "win32") {
@@ -106,6 +107,21 @@ describe("ripgrep wasm", () => {
     const expected = await runNative((r) => r.lines({ cwd: fixture, files }))
     const got = await runWasm((r) => r.lines({ cwd: fixture, files }))
     for (const f of files) expect(got.get(f)).toBe(expected.get(f))
+  })
+
+  // rg leaves the path off its output when it searches a single path, and exits 1
+  // when an empty file gives `^` nothing to match, so a lone file, even an empty
+  // one, must still come back keyed by its path.
+  test("lines counts a single file like native", async () => {
+    for (const [file, count] of [
+      ["sub/b.ts", 2],
+      ["empty.txt", 0],
+    ] as const) {
+      const expected = await runNative((r) => r.lines({ cwd: fixture, files: [file] }))
+      const got = await runWasm((r) => r.lines({ cwd: fixture, files: [file] }))
+      expect(expected.get(file)).toBe(count)
+      expect(got.get(file)).toBe(count)
+    }
   })
 
   test("grep matches native", async () => {
