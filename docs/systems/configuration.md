@@ -19,9 +19,13 @@ until the Location is reopened.
 
 How a key combines across documents depends on the key:
 
-- `model`, `shell`, `default_agent`, `snapshots`, `subagents`, `reflection`, and `semantic_memory` resolve to the value
-  in the highest-priority document that sets the key (`Config.latest`). The objects among them are not merged field by
-  field.
+- `model`, `default_agent`, `snapshots`, `subagents`, `reflection`, and `semantic_memory` resolve to the value in the
+  highest-priority document that sets the key (`Config.latest`). The objects among them are not merged field by field.
+- `shell` resolves the same way, but only over the global config files (`Config.shell`); repository documents can't set
+  it. The shell runs every `bash` tool call, user shell command, and terminal, so a repository value such as
+  `./.forge/sh` would run the repository's own program ahead of each approved command. The legacy `packages/forge`
+  loader also drops `shell` from walked `forge.json` files and repository `.forge/` documents. It still reads `shell`
+  from global config, `~/.forge/`, `FORGE_CONFIG`, `FORGE_CONFIG_DIR`, `FORGE_CONFIG_CONTENT`, and managed config.
 - `compaction`, `tool_output`, and `attachments.image` are merged field by field, so a nearer document overrides only
   the fields it sets.
 - `retention` is read only from the global config files, and is re-read on every retention sweep.
@@ -60,7 +64,7 @@ The descriptions are the schema annotations. "Legacy" marks keys read only by th
 | `$schema`         | string                     | none                               | JSON schema reference for editor validation (`https://github.com/turenlabs/forge/config.json`).                                                     |
 | `model`           | string                     | none                               | Default model when no session or agent model is selected, as `provider/model`.                                                                      |
 | `default_agent`   | string                     | built-in default                   | Default primary agent when no session agent is selected.                                                                                            |
-| `shell`           | string                     | see below                          | Shell for the terminal and shell tools. It also selects the `ShellSafety` grammar.                                                                  |
+| `shell`           | string                     | see below                          | Shell for the terminal and shell tools. It also selects the `ShellSafety` grammar. Read only from global config.                                    |
 | `permissions`     | rule array                 | none                               | Ordered `{ action, resource, effect }` rules; `effect` is `allow`, `deny`, or `ask`.                                                                |
 | `agents`          | record of agent objects    | none                               | Built-in agent overrides and custom agents. See [Agents](#agents).                                                                                  |
 | `subagents`       | object                     | see below                          | Durable subagent delegation limits.                                                                                                                 |
@@ -86,9 +90,9 @@ The descriptions are the schema annotations. "Legacy" marks keys read only by th
 | `subagent_depth`  | non-negative integer       | 1                                  | Legacy. Maximum nesting depth for the legacy `task` tool; 1 stops subagents from launching subagents.                                               |
 | `server`          | object                     | see below                          | Legacy. Defaults for `forge serve` and `forge acp` networking.                                                                                      |
 
-Without `shell`, the shell tool runs `/bin/sh`, or `COMSPEC` (falling back to `cmd.exe`) on Windows. The terminal
-instead uses `$SHELL`; without it, `/bin/zsh` on macOS, then `bash` on `PATH`, then `/bin/sh`. On Windows it takes the
-first of `pwsh`, `powershell`, Git Bash, and `COMSPEC` or `cmd.exe`.
+Without a global `shell`, the shell tool runs `/bin/sh`, or `COMSPEC` (falling back to `cmd.exe`) on Windows. The
+terminal instead uses `$SHELL`; without it, `/bin/zsh` on macOS, then `bash` on `PATH`, then `/bin/sh`. On Windows it
+takes the first of `pwsh`, `powershell`, Git Bash, and `COMSPEC` or `cmd.exe`.
 
 Session V2 subagents ignore `subagent_depth`. Their task graph has a fixed maximum depth of 2 (`MAX_DEPTH` in
 `packages/schema/src/session-task.ts`), and a child spawns workers only when it was granted `orchestrate`; see
