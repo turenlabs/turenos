@@ -14,6 +14,10 @@ When a Location opens, `Config.Service` collects documents from these places, lo
    from the opened directory is applied before a nearer one.
 3. `forge.json` and `forge.jsonc` inside each `.forge/` directory on the same walk, farther first.
 
+In a Git repository the project root is the worktree's real path; outside one it is the filesystem root. The walk
+compares real paths, so it stops at the project root even when the opened directory goes through a symlink or ends in a
+path separator.
+
 Within one directory `forge.json` is applied before `forge.jsonc`. The documents are read once per Location and reused
 until the Location is reopened.
 
