@@ -184,7 +184,8 @@ function rankRlmSearchLines(lines: readonly string[], terms: readonly string[], 
     const line = lines[index]!
     const normalized = line.toLowerCase()
     const termScore = terms.reduce((score, term) => score + (normalized.includes(term) ? 1 : 0), 0)
-    const score = termScore + (phrase.length > 0 && normalized.includes(phrase) ? terms.length : 0)
+    // A query made only of symbols has no terms, but its exact phrase should still match.
+    const score = termScore + (phrase.length > 0 && normalized.includes(phrase) ? Math.max(terms.length, 1) : 0)
     if (score === 0) continue
     const matches = resultsByScore.get(score)
     if (matches === undefined) {
@@ -211,5 +212,5 @@ function boundedOption(value: number | undefined, fallback: number, minimum: num
 }
 
 function tokenize(value: string) {
-  return [...new Set(value.toLowerCase().match(/[a-z0-9_./:-]+/g) ?? [])]
+  return [...new Set(value.toLowerCase().match(/[\p{L}\p{M}\p{N}_./:-]+/gu) ?? [])]
 }
