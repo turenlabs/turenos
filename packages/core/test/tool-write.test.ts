@@ -242,6 +242,31 @@ describe("WriteTool", () => {
     ),
   )
 
+  it.live("does not write through a dangling symlink that points outside the active Location", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => Promise.all([tmpdir(), tmpdir()])),
+      ([active, outside]) =>
+        Effect.gen(function* () {
+          if (process.platform === "win32") return
+          reset()
+          const planted = path.join(outside.path, "planted.txt")
+          yield* Effect.promise(() => fs.symlink(planted, path.join(active.path, "notes.txt")))
+          expect(
+            yield* withTool(active.path, (registry) =>
+              executeTool(registry, call({ path: "notes.txt", content: "pwned" })),
+            ),
+          ).toEqual({ type: "error", value: "Unable to write notes.txt" })
+          expect(assertions).toEqual([])
+          expect(writes).toEqual([])
+          expect(yield* Effect.promise(() => Bun.file(planted).exists())).toBe(false)
+        }),
+      ([active, outside]) =>
+        Effect.promise(() =>
+          Promise.all([active[Symbol.asyncDispose](), outside[Symbol.asyncDispose]()]).then(() => undefined),
+        ),
+    ),
+  )
+
   it.live("does not write when external_directory or edit approval is denied", () =>
     Effect.acquireUseRelease(
       Effect.promise(() => Promise.all([tmpdir(), tmpdir()])),
