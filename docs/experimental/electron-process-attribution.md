@@ -1,6 +1,6 @@
 # Electron Process Attribution Fixture
 
-Status: prototype, as of 2026-10-23. Full Electron execution remains unverified.
+Status: prototype, as of 2026-10-26. The synthetic fixture passes on macOS arm64 with Electron 42.11.16.
 
 This diagnostic runs Electron main, a sandboxed renderer, and a synthetic Bun child.
 It bundles the current production `createSidecarSupervisor` without changing runtime source.
@@ -102,7 +102,7 @@ Reported missing modules include `bun:test`, `ghostty-web`, `solid-js`, and work
 The package TypeScript configuration includes `src`, not this diagnostic's `script` directory.
 That attempted package check does not independently typecheck these new scripts.
 
-Full Electron execution remains unverified.
+The initial attempt did not verify full Electron execution.
 On 2026-10-23, static inspection confirmed the committed controller, Electron fixture, Bun fixture, and production supervisor source.
 Binary metadata inspection received an exact-command tool denial before execution. The executor stopped without a retry or Electron launch.
 This denial does not prove the installed Electron binary is missing or unusable.
@@ -115,3 +115,16 @@ Obtain Security clearance and explicit serial execution ownership when required 
 For a 4000-millisecond idle run, apply an external deadline of at most 30 seconds and retain the 2 MiB output bound.
 Record the exact process group, final process absence, and private scratch evidence in the qualification receipt.
 Do not infer cleanup success from the controller exit alone.
+
+## Runtime Verification
+
+On 2026-10-26, the unchanged diagnostic at `0f71e9ee94b96002c2c5abd06ccef12af0aa6464` passed with official Electron 42.11.16 on macOS arm64.
+An independent Quality repeat also passed. Each run produced 70 metric rows and exited zero.
+The lifecycle recorded one spawn, one exit, one queued replacement, zero post-shutdown spawns, and a destroyed renderer.
+Both runs used a four-second idle period, private scratch paths, a 30-second external deadline, and a 2 MiB output bound.
+Independent process checks confirmed that all six observed process IDs and their owned groups were absent after execution.
+The eight focused unit tests passed with 41 assertions. No source, installed dependency, signing setting, or application profile changed during these runs.
+
+These results qualify only the synthetic main, renderer, and Bun-child fixture on the tested platform.
+They do not qualify the actual backend, packaged application lifecycle, other platforms, or the reported 16 GB incident.
+The earlier exact-command denial remains part of the historical record. The new run used a different, independently verified binary.
