@@ -541,7 +541,7 @@ Each row identifies a resolved package and version, its declared license, and it
 | `ecdsa-sig-formatter` | `1.0.11` | Apache-2.0 | [source](git+ssh://git@github.com/Brightspace/node-ecdsa-sig-formatter.git) |
 | `ee-first` | `1.1.1` | MIT | [source](jonathanong/ee-first) |
 | `effect` | `4.0.0-beta.83` | MIT | [source](https://github.com/Effect-TS/effect-smol.git) |
-| `electron` | `42.11.1` | MIT | [source](https://github.com/electron/electron) |
+| `electron` | `42.11.16` | MIT | [source](https://github.com/electron/electron) |
 | `electron-context-menu` | `4.1.2` | MIT | [source](sindresorhus/electron-context-menu) |
 | `electron-dl` | `4.0.0` | MIT | [source](sindresorhus/electron-dl) |
 | `electron-is-dev` | `3.0.1` | MIT | [source](sindresorhus/electron-is-dev) |
