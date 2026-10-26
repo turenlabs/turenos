@@ -46,13 +46,16 @@ const LOCALES: readonly Locale[] = [
 
 function detectLocale(): Locale {
   if (typeof navigator !== "object") return "en"
+  return localeFromLanguages(navigator.languages?.length ? navigator.languages : [navigator.language])
+}
 
-  const languages = navigator.languages?.length ? navigator.languages : [navigator.language]
+export function localeFromLanguages(languages: readonly string[]): Locale {
   for (const language of languages) {
     if (!language) continue
     if (language.toLowerCase().startsWith("en")) return "en"
     if (language.toLowerCase().startsWith("zh")) {
-      if (language.toLowerCase().includes("hant")) return "zht"
+      // Taiwan, Hong Kong and Macau report region tags such as zh-TW rather than a script tag.
+      if (language.toLowerCase().includes("hant") || /^zh-(tw|hk|mo)\b/i.test(language)) return "zht"
       return "zh"
     }
     if (language.toLowerCase().startsWith("ko")) return "ko"
