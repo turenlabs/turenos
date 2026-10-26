@@ -35,6 +35,23 @@ const layer = Layer.effectDiscard(
           ),
         )
 
+    // An instruction path can name something other than a readable regular file, such as a directory or a file the
+    // user cannot read. Reading it would make the source unavailable and block every new session, so it is skipped.
+    // Check before resolving, since Bun's realpath fails on an unreadable file. A path that is gone passes, so a
+    // project file that vanished since discovery still reports the race.
+    const instructionFile = (path: string) =>
+      fs.access(path, { readable: true }).pipe(
+        Effect.andThen(fs.stat(path)),
+        Effect.map((info) => info.type === "File"),
+        Effect.catchReason("PlatformError", "PermissionDenied", () => Effect.succeed(false)),
+        Effect.catchReason("PlatformError", "NotFound", () => Effect.succeed(true)),
+      )
+
+    const readGlobal = (path: string) =>
+      instructionFile(path).pipe(
+        Effect.flatMap((file) => (file ? fs.resolve(path).pipe(Effect.flatMap(read)) : Effect.succeed(undefined))),
+      )
+
     const source = (value: ReadonlyArray<File> | SystemContext.Unavailable) =>
       SystemContext.make({
         key,
@@ -58,18 +75,18 @@ const layer = Layer.effectDiscard(
               start,
               stop,
             })
-      const candidates = yield* Effect.forEach(candidatePaths, (path) =>
+      // `up` matches any existing entry, so drop the ones that are not instruction files before choosing AGENTS.md
+      // over CLAUDE.md.
+      const readable = yield* Effect.filter(candidatePaths, instructionFile)
+      const candidates = yield* Effect.forEach(readable, (path) =>
         fs.resolve(path).pipe(Effect.map((resolved) => ({ name: basename(path), path: resolved }))),
       )
       const eligible = candidates.filter((candidate) => isWithin(stop, candidate.path))
       const agents = eligible.filter((candidate) => candidate.name === "AGENTS.md")
       const discovered = new Set((agents.length > 0 ? agents : eligible).map((candidate) => candidate.path))
-      const globalAgent = yield* fs.resolve(join(global.config, "AGENTS.md")).pipe(Effect.flatMap(read))
+      const globalAgent = yield* readGlobal(join(global.config, "AGENTS.md"))
       const globalFile =
-        globalAgent ??
-        (claudeInstructions
-          ? yield* fs.resolve(join(global.home, ".claude", "CLAUDE.md")).pipe(Effect.flatMap(read))
-          : undefined)
+        globalAgent ?? (claudeInstructions ? yield* readGlobal(join(global.home, ".claude", "CLAUDE.md")) : undefined)
       const paths = [...discovered].filter((path) => path !== globalFile?.path)
       const files = yield* Effect.forEach(paths, read, { concurrency: "unbounded" })
       if (files.some((file) => file === undefined)) return SystemContext.unavailable
