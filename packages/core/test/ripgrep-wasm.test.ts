@@ -140,6 +140,26 @@ describe("ripgrep wasm", () => {
     expect(native.find((m) => m.entry.path === "app.min.js")?.text).toBe(`${"x".repeat(2_000)}...`)
   })
 
+  test("native grep bounds long submatch previews without changing offsets", async () => {
+    const long = fs.mkdtempSync(path.join(os.tmpdir(), "rg-native-long-match-"))
+    try {
+      for (let index = 0; index < 4; index++) {
+        fs.writeFileSync(path.join(long, `${index}.txt`), `prefix\n${"x".repeat(131_072)}\n`)
+      }
+      const matches = await runNative((r) => r.grep({ cwd: long, pattern: "^x+$", limit: 4 }))
+      expect(matches).toHaveLength(4)
+      for (const match of matches) {
+        expect(match.line).toBe(2)
+        expect(match.offset).toBe(7)
+        expect(match.text).toBe(`${"x".repeat(2_000)}...`)
+        expect(match.submatches).toEqual([{ text: `${"x".repeat(2_000)}...`, start: 0, end: 131_072 }])
+      }
+      expect(Buffer.byteLength(JSON.stringify(matches))).toBeLessThan(20_000)
+    } finally {
+      fs.rmSync(long, { recursive: true, force: true })
+    }
+  })
+
   // The host hands file contents to the wasm side in bounded batches (8 MiB). A
   // candidate list larger than one batch used to trap or silently drop every file
   // after the first batch, so the needles sit at the start, middle and end.

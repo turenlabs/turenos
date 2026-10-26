@@ -291,7 +291,8 @@ const native = Layer.effect(
           ],
           // rg ignores --max-columns under --json, so a match record carries its whole line,
           // however long. Cap the line text while parsing so a collected row keeps at most 2,000
-          // characters of it. Submatch text stays uncapped, as in the WASM backend.
+          // characters of it. Bound each retained submatch preview too, but preserve
+          // its original byte offsets even when its text is truncated.
           parse: (line) =>
             Effect.try({
               try: () => JSON.parse(line) as unknown,
@@ -310,7 +311,15 @@ const native = Layer.effect(
                           ? match.data.lines.text.slice(0, 2_000) + "..."
                           : match.data.lines.text,
                     },
-                    submatches: match.data.submatches.slice(0, MAX_SUBMATCHES),
+                    submatches: match.data.submatches.slice(0, MAX_SUBMATCHES).map((submatch) => ({
+                      ...submatch,
+                      match: {
+                        text:
+                          submatch.match.text.length > 2_000
+                            ? submatch.match.text.slice(0, 2_000) + "..."
+                            : submatch.match.text,
+                      },
+                    })),
                   })),
                   Effect.mapError((cause) => failure("Invalid ripgrep match output", cause)),
                 )
