@@ -134,6 +134,8 @@ outputs, ownership, failure behavior, and implementation links. These systems ha
 
 ## Experimental
 
+- [Team output recovery benchmark](./experimental/team-output-recovery.md): bounded history decoding, synthetic memory measurements, and remaining qualification limits.
+
 Prototypes and benchmarks that explore or measure rather than document shipped behavior. Each page states its status.
 
 - [Retained result research](./experimental/context-results/README.md): adopted offline probe with separate historical and integration evidence.

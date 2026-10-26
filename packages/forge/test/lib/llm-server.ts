@@ -874,5 +874,8 @@ export class TestLLMServer extends Context.Service<TestLLMServer, TestLLMServer.
         aborts: Effect.sync(() => aborts),
       })
     }),
-  ).pipe(Layer.provide(HttpRouter.layer), Layer.provide(NodeHttpServer.layer(() => Http.createServer(), { port: 0 })))
+  ).pipe(
+    Layer.provide(HttpRouter.layer),
+    Layer.provide(NodeHttpServer.layer(() => Http.createServer(), { port: 0, host: "127.0.0.1" })),
+  )
 }

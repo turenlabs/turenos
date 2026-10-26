@@ -10,6 +10,7 @@ import { makeGlobalNode } from "../effect/app-node"
 import { Global } from "../global"
 import { Identifier } from "../id/id"
 import { LoopRunTable, LoopTable } from "../loop/sql"
+import { TeamOutputRecovery } from "./output-recovery"
 import {
   TeamAttachmentTable,
   TeamDutyRunTable,
@@ -107,6 +108,11 @@ export interface Interface {
     readonly offset?: number
     readonly limit?: number
   }) => Effect.Effect<ReadonlyArray<string>, unknown>
+  readonly sessionOutputCandidates: (input: {
+    readonly sessionID: string
+    readonly after?: number
+    readonly limit?: number
+  }) => Effect.Effect<ReadonlyArray<TeamOutputRecovery.Candidate>, unknown>
   readonly collaborate: (input: {
     readonly sessionID: string
     readonly assistantMessageID: string
@@ -2035,7 +2041,7 @@ const layer = Layer.effect(
             const id = sessionOutputMessageID(input.sessionID, input.assistantMessageID)
             const existing = yield* tx.select().from(TeamMessageTable).where(eq(TeamMessageTable.id, id)).get()
             if (existing) {
-              // Recovery republishes every finished reply on a timer. One already in the room keeps its stored text,
+              // Recovery can race a live publication. One already in the room keeps its stored text,
               // which an earlier version may have joined differently; a live publish must match it exactly.
               if (
                 existing.session_id !== input.sessionID ||
@@ -2103,6 +2109,21 @@ const layer = Layer.effect(
           }),
         { behavior: "immediate" },
       )
+
+    const sessionOutputCandidates: Interface["sessionOutputCandidates"] = (input) =>
+      Effect.gen(function* () {
+        const limit = input.limit ?? 100
+        if (
+          !Number.isSafeInteger(limit) ||
+          limit < 1 ||
+          limit > 100 ||
+          (input.after !== undefined && !Number.isSafeInteger(input.after))
+        )
+          return yield* new Team.InvalidRequestError({ message: "Invalid Team output page" })
+        return yield* db
+          .all<TeamOutputRecovery.Candidate>(TeamOutputRecovery.candidates({ ...input, limit, now: now() }))
+          .pipe(Effect.orDie)
+      })
 
     const taskSessions: Interface["taskSessions"] = (input = {}) =>
       Effect.gen(function* () {
@@ -2970,6 +2991,7 @@ const layer = Layer.effect(
       postMessage,
       postTeammateMessage,
       publishSessionOutput,
+      sessionOutputCandidates,
       taskSessions,
       collaborate,
       claimTasks,
