@@ -26,6 +26,8 @@ export function form(ctx: AutomationsContext, loop?: Loop, back?: () => void, pr
   // Input fields write their text to the terminal as it is, so server text is stripped of control sequences first.
   const name = dialogs.input(dialog, "Name", display(loop?.name ?? "", 512))
   const prompt = dialogs.input(dialog, "Prompt the agent runs each time", display(loop?.prompt ?? "", 4096))
+  // The single-line field drops a prompt's line breaks and cuts it at 4,096 characters.
+  const filled = prompt.value
   // The server reports an event-triggered automation with a placeholder interval; sending it would replace the trigger.
   const schedule = loop?.eventTrigger
     ? undefined
@@ -52,7 +54,11 @@ export function form(ctx: AutomationsContext, loop?: Loop, back?: () => void, pr
     if (!when) throw new Error(scheduleProblem(schedule!.value))
     const fields = { name: name.value.trim(), prompt: prompt.value.trim(), ...when }
     if (loop) {
-      await ctx.connection.client.loops.edit({ loopID: loop.id, ...fields })
+      // An untouched prompt is not sent again: the field's copy would replace the stored one.
+      await ctx.connection.client.loops.edit({
+        loopID: loop.id,
+        ...(prompt.value === filled ? { name: fields.name, ...when } : fields),
+      })
       return ctx.say("Automation saved.")
     }
     // A retry after an uncertain create must not add a second automation.
@@ -75,7 +81,7 @@ export function form(ctx: AutomationsContext, loop?: Loop, back?: () => void, pr
     identifier(result.id)
     ctx.say("Automation created.")
   }
-  dialog.error.content = `Tab next field · Ctrl+S save · Esc ${back ? "back" : "close"}`
+  dialog.error.content = `${loop && filled.trim() !== loop.prompt.trim() ? "The prompt field cannot show this whole prompt, such as its line breaks. It is saved only if you change it.\n" : ""}Tab next field · Ctrl+S save · Esc ${back ? "back" : "close"}`
   name.focus()
 }
 
