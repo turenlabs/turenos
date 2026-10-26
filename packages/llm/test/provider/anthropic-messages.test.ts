@@ -615,6 +615,53 @@ describe("Anthropic Messages route", () => {
     }),
   )
 
+  // Adaptive thinking with display "omitted" (the default on newer Claude models) streams a
+  // thinking block with no text, only its signature. The signed block must go back next turn.
+  it.effect("keeps the signature of a thinking block that streams no text", () =>
+    Effect.gen(function* () {
+      const body = sseEvents(
+        { type: "message_start", message: { usage: { input_tokens: 5 } } },
+        { type: "content_block_start", index: 0, content_block: { type: "thinking", thinking: "" } },
+        { type: "content_block_delta", index: 0, delta: { type: "signature_delta", signature: "sig_omitted" } },
+        { type: "content_block_stop", index: 0 },
+        { type: "content_block_start", index: 1, content_block: { type: "tool_use", id: "call_1", name: "lookup" } },
+        { type: "content_block_delta", index: 1, delta: { type: "input_json_delta", partial_json: '{"query":"x"}' } },
+        { type: "content_block_stop", index: 1 },
+        { type: "message_delta", delta: { stop_reason: "tool_use" }, usage: { output_tokens: 1 } },
+      )
+      const response = yield* LLMClient.generate(
+        LLM.updateRequest(request, {
+          tools: [{ name: "lookup", description: "Lookup data", inputSchema: { type: "object" } }],
+        }),
+      ).pipe(Effect.provide(fixedResponse(body)))
+
+      expect(response.message.content).toEqual([
+        { type: "reasoning", text: "", providerMetadata: { anthropic: { signature: "sig_omitted" } } },
+        { type: "tool-call", id: "call_1", name: "lookup", input: { query: "x" } },
+      ])
+
+      const prepared = yield* LLMClient.prepare<AnthropicMessages.AnthropicMessagesBody>(
+        LLM.request({
+          model,
+          messages: [
+            Message.user("Look it up."),
+            response.message,
+            Message.tool({ id: "call_1", name: "lookup", result: { found: true } }),
+          ],
+          cache: "none",
+        }),
+      )
+
+      expect(prepared.body.messages[1]).toEqual({
+        role: "assistant",
+        content: [
+          { type: "thinking", thinking: "", signature: "sig_omitted" },
+          { type: "tool_use", id: "call_1", name: "lookup", input: { query: "x" } },
+        ],
+      })
+    }),
+  )
+
   it.effect("assembles streamed tool call input", () =>
     Effect.gen(function* () {
       const body = sseEvents(

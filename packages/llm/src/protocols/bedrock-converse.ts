@@ -529,12 +529,16 @@ const step = (state: ParserState, event: BedrockEvent) =>
       const index = event.contentBlockDelta.contentBlockIndex
       const reasoning = event.contentBlockDelta.delta.reasoningContent
       const events: LLMEvent[] = []
+      // With display "omitted" Claude streams a reasoning block with no text, only its signature.
+      // Start the block on the signature so contentBlockStop can end it with the signature attached.
       return [
         {
           ...state,
           lifecycle: reasoning.text
             ? Lifecycle.reasoningDelta(state.lifecycle, events, `reasoning-${index}`, reasoning.text)
-            : state.lifecycle,
+            : reasoning.signature
+              ? Lifecycle.reasoningStart(state.lifecycle, events, `reasoning-${index}`)
+              : state.lifecycle,
           reasoningSignatures: reasoning.signature
             ? { ...state.reasoningSignatures, [index]: reasoning.signature }
             : state.reasoningSignatures,
