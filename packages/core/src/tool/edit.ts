@@ -10,6 +10,7 @@ import { ToolFailure } from "@turenlabs/llm"
 import { FileDiff } from "@turenlabs/schema/file-diff"
 import { createTwoFilesPatch, diffLines } from "diff"
 import { Effect, Layer, Schema } from "effect"
+import { isUtf8 } from "node:buffer"
 import { makeLocationNode } from "../effect/app-node"
 import { FileMutation } from "../file-mutation"
 import { FSUtil } from "../fs-util"
@@ -162,7 +163,15 @@ const layer = Layer.effectDiscard(
                     source: permissionSource,
                   }),
                 )
-                const source = decodeUtf8(yield* unableToEdit(fs.readFile(target.canonical)))
+                const content = yield* unableToEdit(fs.readFile(target.canonical))
+                // The whole file is re-encoded on write, so a lossy decode would replace every invalid
+                // byte with U+FFFD, not just the text being edited.
+                if (!isUtf8(content)) {
+                  return yield* new ToolFailure({
+                    message: `File is not valid UTF-8: ${input.path}. edit only rewrites UTF-8 text.`,
+                  })
+                }
+                const source = decodeUtf8(content)
                 const ending = detectLineEnding(source.text)
                 const oldString = convertToLineEnding(input.oldString, ending)
                 const newString = convertToLineEnding(input.newString, ending)
