@@ -13,6 +13,7 @@ import { ProjectV2 } from "@turenlabs/core/project"
 import { SessionRunnerModel } from "@turenlabs/core/session/runner/model"
 import { SessionV2 } from "@turenlabs/core/session"
 import { AbsolutePath } from "@turenlabs/core/schema"
+import { ConfigProviderOptionsV1 } from "@turenlabs/core/v1/config/provider-options"
 import { it } from "./lib/effect"
 
 type Api =
@@ -923,6 +924,30 @@ describe("SessionRunnerModel", () => {
       })
       expect(headers["x-goog-api-key"]).toBe("secret")
       expect(JSON.stringify((yield* LLMClient.prepare(request)).body)).not.toContain("secret")
+    }),
+  )
+
+  it.effect("prepares native Gemini requests for V1 Google thinking options", () =>
+    Effect.gen(function* () {
+      const base = model({ type: "aisdk", package: "@ai-sdk/google", url: "https://google.example/v1" })
+      const thinkingConfig = { thinkingBudget: 1024, includeThoughts: true }
+      const resolved = yield* SessionRunnerModel.fromCatalogModel(
+        ModelV2.Info.make({
+          ...base,
+          request: {
+            ...base.request,
+            body: {
+              ...base.request.body,
+              ...ConfigProviderOptionsV1.get("@ai-sdk/google").request({ thinkingConfig }),
+            },
+          },
+        }),
+      )
+
+      // The Gemini protocol owns `generationConfig`, so an `http.body` overlay of it fails the request.
+      yield* LLMClient.prepare(LLM.request({ model: resolved, prompt: "Hello" }))
+      expect(resolved.route.defaults.http?.body).toEqual({ custom_extension: { enabled: true } })
+      expect(resolved.route.defaults.providerOptions).toMatchObject({ google: { thinkingConfig } })
     }),
   )
 
