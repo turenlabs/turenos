@@ -31,7 +31,8 @@ export async function compose(ctx: DialogContext) {
     const edited = await composeInEditor(editor.plainText)
     if (ctx.state.closed || ctx.state.modal !== current || editor.isDestroyed) return
     editor.setText(edited)
-    editor.cursorOffset = edited.length
+    // The caret counts display cells, not string length, so a wide character would leave it mid-text.
+    editor.gotoBufferEnd()
     ctx.hooks.say(edited ? "Draft updated from your editor. Nothing was sent." : "The editor returned an empty draft.")
   } catch (error) {
     if (ctx.state.closed || ctx.state.modal !== current) return

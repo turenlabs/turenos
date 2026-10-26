@@ -189,6 +189,19 @@ test("question navigation preserves rejection mode and uncommitted custom text",
   expect(f.posts).toEqual([])
 })
 
+test("question navigation restores a wide-character custom answer's cursor, which counts display cells", async () => {
+  const f = await fixture([{ ...single, custom: true }])
+  await f.arrow("down")
+  await f.arrow("down")
+  await f.enter()
+  await f.view.mockInput.typeText("修复")
+  expect(f.dialogs.navigate()).toBe(true)
+  f.requests.offerInput()
+  await f.settle()
+  await f.view.mockInput.typeText("X")
+  expect(f.input().value).toBe("修复X")
+})
+
 test("changed question content does not reuse an old review or choices", async () => {
   const f = await fixture([single])
   expect(await f.enter()).toContain("Review answers")

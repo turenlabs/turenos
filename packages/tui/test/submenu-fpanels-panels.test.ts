@@ -124,6 +124,25 @@ test("in Files, @ mentions a file only: a folder keeps the panel open and its hi
   expect(view.captureCharFrame()).not.toContain("╭─ Files")
 })
 
+test("a file mentioned into a wide-character reply draft leaves the caret at the end of the draft", async () => {
+  const { view, screen } = await sized(120, 36, {
+    "GET /file": () => [{ name: "a.ts", path: "a.ts", absolute: "/srv/main/a.ts", type: "file", ignored: false }],
+    "GET /file/content": () => ({ type: "text", content: "export {}" }),
+  })
+  await screen("main task")
+  view.mockInput.pressEnter()
+  await screen("Typing")
+  await view.mockInput.typeText("请修复")
+  view.mockInput.pressEscape()
+  await until(() => !view.captureCharFrame().includes("Typing"))
+  view.mockInput.pressKey("e")
+  await screen("@ mention in reply")
+  view.mockInput.pressKey("@")
+  await until(() => view.renderer.currentFocusedEditor?.plainText.includes("a.ts") === true)
+  await view.mockInput.typeText("X")
+  expect(view.renderer.currentFocusedEditor?.plainText).toBe("请修复 @a.ts X")
+})
+
 test("Changes names the modes its m key cycles through", async () => {
   const { view, screen } = await sized(120, 36, { "GET /vcs/diff": () => [] })
   view.mockInput.pressKey("d")
