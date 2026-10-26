@@ -625,6 +625,42 @@ describe("SessionRunnerModel", () => {
     }),
   )
 
+  it.effect("overlays selected Gemini Session variant bodies", () =>
+    Effect.gen(function* () {
+      const catalog = model({ type: "aisdk", package: "@ai-sdk/google", url: "https://google.example/v1" }, [
+        {
+          id: ModelV2.VariantID.make("low"),
+          headers: {},
+          body: { thinkingConfig: { includeThoughts: true, thinkingLevel: "low" } },
+        },
+      ])
+      const session = SessionV2.Info.make({
+        id: SessionV2.ID.make("ses_gemini_variant"),
+        projectID: ProjectV2.ID.global,
+        title: "test",
+        model: { id: catalog.id, providerID: catalog.providerID, variant: ModelV2.VariantID.make("low") },
+        cost: 0,
+        tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+        time: { created: DateTime.makeUnsafe(0), updated: DateTime.makeUnsafe(0) },
+        location: { directory: AbsolutePath.make("/project") },
+      })
+
+      const resolved = yield* SessionRunnerModel.resolve(session, catalog)
+      const prepared = yield* LLMClient.prepare<Record<string, unknown>>(
+        LLM.request({ model: resolved, prompt: "Hello" }),
+      )
+
+      // `gemini` is what the native route reads; `google` stays for the AI SDK bridge.
+      expect(resolved.route.defaults.providerOptions).toEqual({
+        google: { thinkingConfig: { includeThoughts: true, thinkingLevel: "low" } },
+        gemini: { thinkingConfig: { includeThoughts: true, thinkingLevel: "low" } },
+      })
+      expect(prepared.body).toMatchObject({
+        generationConfig: { thinkingConfig: { includeThoughts: true, thinkingLevel: "low" } },
+      })
+    }),
+  )
+
   // Compaction and titles cap output far below a budget-based variant; that used to send an
   // invalid budget_tokens >= max_tokens request that Anthropic rejects.
   it.effect("drops a selected thinking budget on calls whose output cap cannot hold it", () =>
