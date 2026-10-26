@@ -2,6 +2,27 @@ import type { ReleaseNote } from "../release-notes"
 
 export const notes: readonly ReleaseNote[] = [
   {
+    version: "1.0.48",
+    summary:
+      "A hardening release: file edits handle mixed line endings and encodings, provider thinking and tool results are forwarded correctly, and permission prompts reach the right session.",
+    changes: {
+      new: [
+        "Tool results are retained for scoped context access.",
+      ],
+      improved: [
+        "Gemini thinking configuration and level forward on the native route, and parallel tool results send in one turn for Gemini and Bedrock.",
+        "Claude thinking blocks keep their signature when streamed text is empty, and unsigned thinking replayed from failed turns is dropped.",
+      ],
+      fixed: [
+        "Editing files that mix LF and CRLF line endings matches the old text line by line, and non-UTF-8 files are refused instead of corrupted.",
+        "Native ripgrep keeps working on very long or non-UTF-8 matching lines, and grep and glob return paths that read and edit can open.",
+        "Permission requests from subagent sessions route to the parent in `forge run` and ACP sessions.",
+        "The terminal client restores draft carets correctly and never saves a memory body the edit form cut short.",
+        "The desktop app grants renderer permissions to every window and stops sidecar respawns after shutdown.",
+      ],
+    },
+  },
+  {
     version: "1.0.47",
     summary:
       "More resilient providers and a steadier terminal client: refusal handling, credential redaction, Team waits, and TUI polish.",
