@@ -319,6 +319,41 @@ describe("array methods: splice, fill, copyWithin, keys/values/entries", () => {
   })
 })
 
+describe("array methods: sort and reverse mutate the receiver", () => {
+  test("sort in statement form reorders the array itself", async () => {
+    expect(await value(`const a = ["b","c","a"]; a.sort(); return a`)).toEqual(["a", "b", "c"])
+    expect(await value(`const a = [{n:3},{n:1},{n:2}]; a.sort((x, y) => x.n - y.n); return a.map((i) => i.n)`)).toEqual(
+      [1, 2, 3],
+    )
+    expect(await value(`const a = [2, undefined, 1]; a.sort((x, y) => x - y); return a`)).toEqual([1, 2, null])
+  })
+
+  test("sort and reverse return the receiver", async () => {
+    expect(await value(`const a = [3,1,2]; return a.sort() === a`)).toBe(true)
+    expect(await value(`const a = [3,1,2]; return a.sort((x, y) => x - y) === a`)).toBe(true)
+    expect(await value(`const a = [1,2,3]; return a.reverse() === a`)).toBe(true)
+  })
+
+  test("reverse in statement form reverses the array itself", async () => {
+    expect(await value(`const a = [1,2,3]; a.reverse(); return a`)).toEqual([3, 2, 1])
+  })
+
+  test("toSorted and toReversed leave the original unchanged", async () => {
+    expect(await value(`const a = [3,1,2]; const b = a.toSorted(); return { a, b }`)).toEqual({
+      a: [3, 1, 2],
+      b: [1, 2, 3],
+    })
+    expect(await value(`const a = [3,1,2]; const b = a.toSorted((x, y) => y - x); return { a, b }`)).toEqual({
+      a: [3, 1, 2],
+      b: [3, 2, 1],
+    })
+    expect(await value(`const a = [1,2,3]; const b = a.toReversed(); return { a, b }`)).toEqual({
+      a: [1, 2, 3],
+      b: [3, 2, 1],
+    })
+  })
+})
+
 describe("string methods: localeCompare, normalize, trim aliases", () => {
   test("localeCompare orders strings for sorting", async () => {
     expect(await value(`return ["b","a","c"].sort((x, y) => x.localeCompare(y))`)).toEqual(["a", "b", "c"])
