@@ -479,7 +479,8 @@ const transport = (input: { executable: string; modelID: string }): TransportDef
               return deadline(request(), timeout).finally(() => pending.delete(id))
             }
             const output = frames(
-              Readable.toWeb(child.proc.stdout) as ReadableStream<Uint8Array>,
+              // Node and DOM stream reader overloads differ across package typecheck configurations.
+              Readable.toWeb(child.proc.stdout) as unknown as ReadableStream<Uint8Array>,
               {
                 zSessionNotification,
                 zRequestPermissionRequest,
