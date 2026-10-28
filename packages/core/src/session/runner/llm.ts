@@ -80,6 +80,7 @@ import { isWithReplicas } from "@turenlabs/effect-drizzle-sqlite"
 import { and, eq } from "drizzle-orm"
 import { ClaudeCodeCLI } from "../../provider/claude-code"
 import { MuseCodeCLI } from "../../provider/muse-code"
+import { DevinCLI } from "../../provider/devin-cli"
 
 /**
  * Runs one durable coding-agent Session until it settles.
@@ -915,7 +916,9 @@ const layer = Layer.effect(
       )
       const providerTurnID = SessionMessage.ID.create()
       const claudeTools =
-        modelRef.providerID === ClaudeCodeCLI.ID || modelRef.providerID === MuseCodeCLI.ID
+        modelRef.providerID === ClaudeCodeCLI.ID ||
+        modelRef.providerID === MuseCodeCLI.ID ||
+        modelRef.providerID === DevinCLI.ID
           ? (toolMaterialization?.definitions ?? [])
           : []
       type ClaudeToolCall = { readonly id: string; readonly name: string; readonly input: unknown }
@@ -1097,7 +1100,9 @@ const layer = Layer.effect(
           // `tool_search_output`, so loading a tool no longer changes the request's tools.
           openai: { promptCacheKey, ...(nativeToolSearch ? { toolSearch: "client" } : {}) },
           openrouter: { promptCacheKey },
-          ...(model.compatibility?.promptCacheKey === true ? { [String(modelRef.providerID)]: { promptCacheKey } } : {}),
+          ...(model.compatibility?.promptCacheKey === true
+            ? { [String(modelRef.providerID)]: { promptCacheKey } }
+            : {}),
         },
         // Providers that pin a conversation to one server or replica with a header.
         http: {
@@ -1938,8 +1943,7 @@ const layer = Layer.effect(
               }),
             )
           }
-          if (publisher.hasProviderError())
-            yield* withPublication(publisher.failUnsettledTools(TurnInterruption.TOOL))
+          if (publisher.hasProviderError()) yield* withPublication(publisher.failUnsettledTools(TurnInterruption.TOOL))
           if (stream._tag === "Success" && !publisher.hasProviderError())
             yield* withPublication(publisher.failUnsettledTools("Provider did not return a tool result", true))
           yield* resetReflectionContext(session.id)

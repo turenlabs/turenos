@@ -1,4 +1,4 @@
-import type { ProviderAuthAuthorization, ProviderAuthMethod } from "@turenlabs/sdk/v2/client"
+import type { ForgeClient, ProviderAuthAuthorization, ProviderAuthMethod } from "@turenlabs/sdk/v2/client"
 import { Button } from "@turenlabs/ui/button"
 import { useDialog } from "@turenlabs/ui/context/dialog"
 import { Dialog } from "@turenlabs/ui/dialog"
@@ -26,7 +26,7 @@ import {
 import { createStore, produce } from "solid-js/store"
 import { ServerSDKProvider, useServerSDK } from "@/context/server-sdk"
 import { ServerSyncProvider, useServerSync } from "@/context/server-sync"
-import { useLanguage } from "@/context/language"
+import { type TranslationKey, useLanguage } from "@/context/language"
 import { popularProviders, useProviders } from "@/hooks/use-providers"
 import { isLocalProviderEndpoint, localProviders } from "@/hooks/provider-visibility"
 import { useProviderConnection } from "@/hooks/use-provider-connection"
@@ -189,7 +189,8 @@ function ProviderConnection(props: {
   onBack: () => void
   setBack: (handler: () => void) => void
 }) {
-  if (props.provider === "claude-code" || props.provider === "muse-code") return <LocalCliConnection {...props} />
+  const cli = localCliConnections.get(props.provider)
+  if (cli) return <LocalCliConnection {...props} setup={cli} />
   if (localProviders.some((item) => item.id === props.provider && item.kind === "server"))
     return <LocalServerConnection {...props} />
 
@@ -834,30 +835,84 @@ function ProviderConnection(props: {
   )
 }
 
-function LocalCliConnection(props: { provider: string; onBack: () => void; setBack: (handler: () => void) => void }) {
+type LocalCliSetup = {
+  name: string
+  command: string
+  descriptionKey: TranslationKey
+  notReadyKey: TranslationKey
+}
+
+export const localCliConnections = new Map<string, LocalCliSetup>([
+  [
+    "claude-code",
+    {
+      name: "Claude Code (local)",
+      command: "claude auth login",
+      descriptionKey: "provider.connect.claudeCode.description",
+      notReadyKey: "provider.connect.claudeCode.notReady",
+    },
+  ],
+  [
+    "muse-code",
+    {
+      name: "Muse Code (local)",
+      command: "muse login",
+      descriptionKey: "provider.connect.museCode.description",
+      notReadyKey: "provider.connect.museCode.notReady",
+    },
+  ],
+  [
+    "devin-cli",
+    {
+      name: "Devin CLI (local)",
+      command: "devin auth login",
+      descriptionKey: "provider.connect.devinCli.description",
+      notReadyKey: "provider.connect.devinCli.notReady",
+    },
+  ],
+])
+
+export async function refreshLocalCliProvider(input: {
+  providerID: string
+  client: Pick<ForgeClient, "global">
+  enable: (providerID: string) => Promise<unknown>
+  refresh: () => Promise<unknown>
+  connected: () => readonly string[]
+}) {
+  await input.enable(input.providerID)
+  await input.client.global.dispose()
+  await input.refresh()
+  return input.connected().includes(input.providerID)
+}
+
+function LocalCliConnection(props: {
+  provider: string
+  setup: LocalCliSetup
+  onBack: () => void
+  setBack: (handler: () => void) => void
+}) {
   const dialog = useDialog()
   const serverSDK = useServerSDK()
   const serverSync = useServerSync()
   const language = useLanguage()
   const connection = useProviderConnection()
   const [state, setState] = createStore({ pending: false, error: undefined as string | undefined })
-  const muse = props.provider === "muse-code"
-  const provider = muse ? "Muse Code (local)" : "Claude Code (local)"
-  const notReady = () =>
-    muse
-      ? "Muse Code is not available. Install it, run muse login, then refresh."
-      : language.t("provider.connect.claudeCode.notReady")
+  const provider = props.setup.name
 
   props.setBack(props.onBack)
 
   const refresh = async () => {
     setState({ pending: true, error: undefined })
     try {
-      await connection.enable(props.provider)
-      await serverSDK().client.global.dispose()
-      await serverSync().refreshProviders()
-      if (!serverSync().data.provider.connected.includes(props.provider)) {
-        setState({ pending: false, error: notReady() })
+      const connected = await refreshLocalCliProvider({
+        providerID: props.provider,
+        client: serverSDK().client,
+        enable: connection.enable,
+        refresh: () => serverSync().refreshProviders(),
+        connected: () => serverSync().data.provider.connected,
+      })
+      if (!connected) {
+        setState({ pending: false, error: language.t(props.setup.notReadyKey) })
         return
       }
       dialog.close()
@@ -882,15 +937,11 @@ function LocalCliConnection(props: { provider: string; onBack: () => void; setBa
         <div class="text-16-medium text-text-strong">{language.t("provider.connect.title", { provider })}</div>
       </div>
       <div class="px-2.5 pb-10 flex flex-col items-start gap-4">
-        <div class="text-14-regular text-text-base">
-          {muse
-            ? "Muse Code uses its own local login. Sign in with the command below, then refresh. No Meta API key is stored in TurenOS."
-            : language.t("provider.connect.claudeCode.description")}
-        </div>
+        <div class="text-14-regular text-text-base">{language.t(props.setup.descriptionKey)}</div>
         <TextField
           class="font-mono"
-          label={language.t("provider.connect.claudeCode.command")}
-          value={muse ? "muse login" : "claude auth login"}
+          label={language.t("provider.connect.localCli.command")}
+          value={props.setup.command}
           readOnly
           copyable
         />
@@ -990,7 +1041,13 @@ function LocalServerConnection(props: {
       </div>
       <div class="px-2.5 pb-10 flex flex-col items-start gap-4">
         <div class="text-14-regular text-text-base">{language.t(descriptionKey())}</div>
-        <TextField class="font-mono" label={language.t("provider.connect.localServer.command")} value={command()} readOnly copyable />
+        <TextField
+          class="font-mono"
+          label={language.t("provider.connect.localServer.command")}
+          value={command()}
+          readOnly
+          copyable
+        />
         <form
           onSubmit={(e) => {
             e.preventDefault()
