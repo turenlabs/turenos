@@ -292,20 +292,27 @@ export const errorText = (error: unknown) => {
 }
 
 /**
- * `framing` step for Server-Sent Events. Decodes UTF-8, runs the SSE channel
- * decoder, and drops empty / `[DONE]` keep-alive events so the downstream
- * `decodeChunk` sees one JSON string per element. The SSE channel emits a
- * `Retry` control event on its error channel; we drop it here (we don't
- * implement client-driven retries) so the public error channel stays
- * `LLMError`.
+ * `framing` step for Server-Sent Events. Decodes UTF-8, runs the SSE parser,
+ * and drops empty / `[DONE]` keep-alive events so the downstream
+ * `decodeChunk` sees one JSON string per element. Ignore retry directives
+ * without interrupting the stream; they only apply to EventSource reconnects.
  */
 export const sseFraming = (bytes: Stream.Stream<Uint8Array, LLMError>): Stream.Stream<string, LLMError> =>
   bytes.pipe(
     Stream.decodeText(),
-    Stream.pipeThroughChannel(Sse.decode()),
-    Stream.catchTag("Retry", () => Stream.empty),
-    Stream.filter((event) => event.data.length > 0 && event.data !== "[DONE]"),
-    Stream.map((event) => event.data),
+    Stream.mapAccumArray(
+      () => {
+        const events: string[] = []
+        const parser = Sse.makeParser((event) => {
+          if (event._tag === "Event" && event.data.length > 0 && event.data !== "[DONE]") events.push(event.data)
+        })
+        return { parser, events }
+      },
+      (state, chunks) => {
+        chunks.forEach((chunk) => state.parser.feed(chunk))
+        return [state, state.events.splice(0)]
+      },
+    ),
   )
 
 /**
