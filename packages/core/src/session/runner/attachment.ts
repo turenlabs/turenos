@@ -131,10 +131,6 @@ const materializeOne = Effect.fn("SessionRunnerAttachment.materializeOne")(funct
 ) {
   const isMedia = isImageMime(file.mime) || isAudioVideoMime(file.mime)
 
-  // The composer's "attach file" flow already captured the selected text client-side
-  // (`Prompt.FileAttachment.source.text`); nothing to read, and the renderer prefers it anyway.
-  if (!isMedia && file.source?.text !== undefined) return file
-
   if (file.uri.startsWith("data:")) {
     if (!isMedia) return file // renderer decodes the data: URI directly; no resize applies
     const payload = dataUrlPayload(file.uri)
