@@ -735,6 +735,27 @@ describe("OpenAI Chat route", () => {
     }),
   )
 
+  it.effect("continues parsing after an SSE retry field", () =>
+    Effect.gen(function* () {
+      const encoder = new TextEncoder()
+      const chunks = ["retry: 1000\n\n", sseEvents(deltaChunk({ content: "Hello" }), deltaChunk({}, "stop"))]
+      let index = 0
+      const body = new ReadableStream(
+        {
+          pull(controller) {
+            const chunk = chunks[index++]
+            if (chunk === undefined) return controller.close()
+            controller.enqueue(encoder.encode(chunk))
+          },
+        },
+        { highWaterMark: 0 },
+      )
+      const response = yield* LLMClient.generate(request).pipe(Effect.provide(fixedResponse(body)))
+      expect(response.text).toBe("Hello")
+      expect(response.events.some((event) => event.type === "finish" && event.reason === "stop")).toBe(true)
+    }),
+  )
+
   it.effect("parses OpenAI-compatible reasoning content deltas", () =>
     Effect.gen(function* () {
       const body = sseEvents(

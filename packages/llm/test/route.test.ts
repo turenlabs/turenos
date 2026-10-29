@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test"
+import { Effect, Stream } from "effect"
 import * as OpenAIChat from "../src/protocols/openai-chat"
-import { Auth } from "../src/route"
+import { Auth, Framing } from "../src/route"
+import { LLMError, TransportReason } from "../src/schema"
+import { it } from "./lib/effect"
 
 describe("Route.with", () => {
   test("merges endpoint query and header defaults while replacing auth and id", () => {
@@ -40,4 +43,58 @@ describe("Route.with", () => {
       "x-patch": "patch",
     })
   })
+})
+
+describe("SSE framing", () => {
+  it.effect("preserves data before and after a retry directive", () =>
+    Effect.gen(function* () {
+      const encoder = new TextEncoder()
+      const stream = Framing.sse.frame(
+        Stream.fromIterable(
+          ["data: before\n\n", "retry: 1000\n\n", "data: after\n\n"].map((chunk) => encoder.encode(chunk)),
+        ),
+      )
+      expect(yield* Stream.runCollect(stream)).toEqual(["before", "after"])
+      expect(yield* Stream.runCollect(stream)).toEqual(["before", "after"])
+    }),
+  )
+
+  it.effect("propagates upstream LLM errors after a retry directive", () =>
+    Effect.gen(function* () {
+      const error = new LLMError({ module: "test", method: "stream", reason: new TransportReason({ message: "lost" }) })
+      const stream = Framing.sse.frame(
+        Stream.concat(Stream.make(new TextEncoder().encode("retry: 1000\n\n")), Stream.fail(error)),
+      )
+      expect(yield* Stream.runCollect(stream).pipe(Effect.flip)).toBe(error)
+    }),
+  )
+
+  it.effect("finalizes upstream on downstream cancellation", () =>
+    Effect.gen(function* () {
+      let finalized = false
+      const bytes = Stream.concat(
+        Stream.make(new TextEncoder().encode("retry: 1000\n\ndata: first\n\n")),
+        Stream.never,
+      ).pipe(
+        Stream.ensuring(
+          Effect.sync(() => {
+            finalized = true
+          }),
+        ),
+      )
+      expect(yield* Framing.sse.frame(bytes).pipe(Stream.take(1), Stream.runCollect)).toEqual(["first"])
+      expect(finalized).toBe(true)
+    }),
+  )
+
+  it.effect("preserves split UTF-8 and multiline data around retry directives", () =>
+    Effect.gen(function* () {
+      const bytes = new TextEncoder().encode(
+        ": comment\nretry: 1000\n\ndata: café\ndata: next\n\nretry: 250\n\ndata: [DONE]\n\ndata: last\n\n",
+      )
+      const stream = Framing.sse.frame(Stream.fromIterable(Array.from(bytes, (byte) => new Uint8Array([byte]))))
+      expect(yield* Stream.runCollect(stream)).toEqual(["café\nnext", "last"])
+      expect(yield* Stream.runCollect(stream)).toEqual(["café\nnext", "last"])
+    }),
+  )
 })
