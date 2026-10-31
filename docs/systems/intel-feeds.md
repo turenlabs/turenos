@@ -44,6 +44,10 @@ The snapshot is `intel-cache.json` and the feed list is `intel-feeds.json`, both
 (`Global.Path.state`: `~/.local/state/forge` by default, or `<userData>/forge` for the Desktop's local server, which
 sets `XDG_STATE_HOME` to its user data folder). The cache file is replaced atomically.
 
+An unreadable or invalid feed list falls back to the built-in defaults, including their enabled settings. This can
+resume outbound polling even if the saved list had disabled feeds. An unreadable or invalid snapshot is treated as
+empty; a later poll can replace it. Reading either file does not itself overwrite it.
+
 The Protocol `intel` group serves `/api/intel/advisories`, `kev`, `news`, `trends`, `status`, `feeds` (list, add,
 update, reset), and `poll`.
 
