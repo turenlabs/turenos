@@ -227,6 +227,22 @@ describe("ToolResultStore", () => {
     )
   })
 
+  test("retains a valid structured capture near the envelope limit", async () => {
+    await using tmp = await tmpdir()
+    const store = await storeAt(tmp.path)
+    const structured = {
+      flags: Array.from({ length: 30_000 }, () => true),
+      padding: "x".repeat(ToolResultStore.MAX_BYTES - 170_000),
+    }
+    const result = await Effect.runPromise(store.put({ ...input, structured }).pipe(Effect.exit))
+    expect(result._tag).toBe("Success")
+    if (result._tag === "Failure") return
+    expect((await fs.stat(path.join(directoryAt(tmp.path), result.value.id))).size).toBeLessThanOrEqual(
+      ToolResultStore.MAX_BYTES,
+    )
+    expect((await Effect.runPromise(store.get({ sessionID, id: result.value.id }))).structured).toEqual(structured)
+  })
+
   test("rejects deeply nested and exponentially shared direct put inputs before expansion", async () => {
     await using tmp = await tmpdir()
     const store = await storeAt(tmp.path)

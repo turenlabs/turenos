@@ -140,6 +140,31 @@ describe("retained result tool flow", () => {
       ),
   )
 
+  it.live("retains a near-limit structured tool result without reporting a partial capture", () =>
+    withSystem(({ registry, store }) =>
+      Effect.gen(function* () {
+        const structured = {
+          flags: Array.from({ length: 30_000 }, () => true),
+          padding: "x".repeat(ToolResultStore.MAX_BYTES - 170_000),
+        }
+        yield* registry.register({
+          near_limit: Tool.make({
+            description: "Near-limit structured result",
+            input: Schema.Struct({}),
+            output: Schema.Unknown,
+            execute: () => Effect.succeed(structured),
+            toModelOutput: () => [{ type: "text", text: "Result ready" }],
+          }),
+        })
+        const result = yield* invoke(registry, "near_limit", {}, "near-limit")
+        const reference = ToolResultStore.referenceOf(result.output?.structured)
+        expect(reference?.captureTruncated).toBe(false)
+        if (!reference) throw new Error("capture reference missing")
+        expect((yield* store.get({ sessionID, id: reference.id })).structured).toEqual(structured)
+      }),
+    ),
+  )
+
   it.live("reads exact UTF-8 byte fragments without replacement and bounds literal search with coverage", () =>
     withSystem(({ registry, store }) =>
       Effect.gen(function* () {
