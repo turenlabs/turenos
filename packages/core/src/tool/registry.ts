@@ -90,6 +90,11 @@ export interface Materialization {
     readonly selected: boolean
   }>
   readonly settle: (input: ExecuteInput) => Effect.Effect<Settlement, ToolOutputStore.Error>
+  /**
+   * Opens a provider turn before its calls are forked, so a call that settles first waits for `completeTurn`
+   * before its `after` hooks run. A call whose turn is not open does not wait.
+   */
+  readonly openTurn: (input: ToolInterceptor.TurnEvent) => Effect.Effect<void>
   readonly completeTurn: (input: ToolInterceptor.TurnEvent) => Effect.Effect<void>
 }
 
@@ -410,6 +415,7 @@ const registryLayer = Layer.effect(
         return {
           definitions,
           deferred,
+          openTurn: interceptors.openTurn,
           completeTurn: interceptors.runTurnComplete,
           settle: (input) => {
             const registration = registrations.get(input.call.name)
