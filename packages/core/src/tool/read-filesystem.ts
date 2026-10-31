@@ -140,16 +140,9 @@ const imageMime = (bytes: Uint8Array) => {
   if (startsWith(bytes, [0x52, 0x49, 0x46, 0x46]) && startsWith(bytes.subarray(8), [0x57, 0x45, 0x42, 0x50]))
     return "image/webp"
 }
-const binary = (resource: string, bytes: Uint8Array) => {
-  if (extensions.has(path.extname(resource).toLowerCase())) return true
-  if (bytes.length === 0) return false
-  let nonPrintable = 0
-  for (const byte of bytes) {
-    if (byte === 0) return true
-    if (byte < 9 || (byte > 13 && byte < 32)) nonPrintable++
-  }
-  return nonPrintable / bytes.length > 0.3
-}
+const controlHeavy = (bytes: Uint8Array) =>
+  bytes.length > 0 &&
+  bytes.reduce((count, byte) => count + (byte < 9 || (byte > 13 && byte < 32) ? 1 : 0), 0) / bytes.length > 0.3
 const decodeUtf8 = (resource: string, decoder: TextDecoder, bytes?: Uint8Array) =>
   Effect.try({
     try: () => decoder.decode(bytes, { stream: bytes !== undefined }),
@@ -211,11 +204,14 @@ export const read = Effect.fn("ReadTool.read")(function* (
       }
       if (startsWith(first, [0x25, 0x50, 0x44, 0x46]) || extensions.has(path.extname(resource).toLowerCase()))
         return yield* Effect.fail(new BinaryFileError({ resource }))
+      // The control-byte ratio is judged on the first chunk alone, paged or not, because one short line such as
+      // "\x1b\n" says nothing about the file. NUL is checked chunk by chunk as text is decoded, so a paged read
+      // fails only on a NUL in the lines it reads.
+      if (controlHeavy(first)) return yield* Effect.fail(new BinaryFileError({ resource }))
       const paged = info.size > MAX_READ_BYTES || page.offset !== undefined || page.limit !== undefined
       if (!paged) {
-        if (binary(resource, first)) return yield* Effect.fail(new BinaryFileError({ resource }))
         const decoder = new TextDecoder("utf-8", { fatal: true })
-        const text = [yield* decodeUtf8(resource, decoder, first)]
+        const text = [yield* decodeChunk(resource, decoder, first)]
         while (true) {
           const chunk = yield* file.readAlloc(64 * 1024)
           if (Option.isNone(chunk)) break
@@ -291,8 +287,7 @@ export const read = Effect.fn("ReadTool.read")(function* (
           const newline = chunk.indexOf(10, start)
           const end = newline === -1 ? chunk.length : newline + 1
           const segment = chunk.subarray(start, end)
-          if (binary(resource, segment)) return yield* Effect.fail(new BinaryFileError({ resource }))
-          if (!consume(yield* decodeUtf8(resource, decoder, segment))) return false
+          if (!consume(yield* decodeChunk(resource, decoder, segment))) return false
           start = end
         }
         return true
