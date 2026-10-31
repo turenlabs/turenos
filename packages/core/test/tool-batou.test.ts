@@ -3,6 +3,7 @@ import { AppNodeBuilder } from "@turenlabs/core/effect/app-node-builder"
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
 import { ExtensionRuntime } from "@turenlabs/core/extension"
 import { SessionV2 } from "@turenlabs/core/session"
+import { SessionMessage } from "@turenlabs/core/session/message"
 import { Storage } from "@turenlabs/core/storage"
 import { BatouTool } from "@turenlabs/core/tool/batou"
 import { BatouScanner } from "@turenlabs/core/tool/batou-scanner"
@@ -95,6 +96,28 @@ describe("BatouTool", () => {
           { type: "text", text: "Batou found an advisory issue" },
         ],
       })
+      expect(executions).toEqual([{ path: "src/index.ts", content: "safe" }])
+    }),
+  )
+
+  it.effect("forgets a scanned write the registry refuses before it runs", () =>
+    Effect.gen(function* () {
+      executions.length = 0
+      const registry = yield* ToolRegistry.Service
+      const extensions = yield* ExtensionRuntime.Service
+      yield* registry.register({ write })
+      yield* extensions.update("turenlabs/batou", { enabled: true })
+
+      const masked = yield* settleTool(registry, call(`[SECRET:v1:github:${"a".repeat(32)}]`, "reused"))
+      expect(masked.result.type).toBe("error")
+
+      // A later call with the same call ID, in another message, must not inherit the refused call's scan.
+      yield* extensions.update("turenlabs/batou", { enabled: false })
+      const later = yield* settleTool(registry, {
+        ...call("safe", "reused"),
+        assistantMessageID: SessionMessage.ID.make("msg_batou_later"),
+      })
+      expect(later.result).toEqual({ type: "text", value: "written" })
       expect(executions).toEqual([{ path: "src/index.ts", content: "safe" }])
     }),
   )
