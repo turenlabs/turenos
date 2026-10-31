@@ -69,6 +69,42 @@ describe("ReadToolFileSystem", () => {
     }),
   )
 
+  it.effect("reads short control-character lines when paging, as it does without paging", () =>
+    Effect.gen(function* () {
+      const { fs, files, directory } = yield* fixture
+      const short = path.join(directory, "escape.txt")
+      const large = path.join(directory, "large.txt")
+      yield* files.writeFileString(short, "hello\n\x1b\nworld\n")
+      yield* files.writeFileString(large, "\x01\x01\x01\n" + `${"x".repeat(99)}\n`.repeat(600))
+
+      const whole = yield* ReadToolFileSystem.read(fs, short, "escape.txt")
+      const page = yield* ReadToolFileSystem.read(fs, short, "escape.txt", { offset: 1 })
+      const sized = yield* ReadToolFileSystem.read(fs, large, "large.txt")
+
+      expect(whole).toMatchObject({ content: "hello\n\x1b\nworld\n" })
+      expect(page).toMatchObject({ type: "text-page", content: "hello\n\x1b\nworld" })
+      expect(sized).toMatchObject({ type: "text-page", truncated: true })
+      expect(sized.content.startsWith("\x01\x01\x01\nxxx")).toBe(true)
+    }),
+  )
+
+  it.effect("still rejects binary content when paging", () =>
+    Effect.gen(function* () {
+      const { fs, files, directory } = yield* fixture
+      const control = path.join(directory, "control.txt")
+      const nul = path.join(directory, "late-nul.txt")
+      yield* files.writeFileString(control, "\x01\x02\x03\x04\n".repeat(100))
+      // The NUL sits past the first 64 KiB chunk, inside the requested page.
+      yield* files.writeFileString(nul, `${"a".repeat(100)}\n`.repeat(700) + "\0\ntail\n")
+
+      const controlError = yield* ReadToolFileSystem.read(fs, control, "control.txt", { offset: 1 }).pipe(Effect.flip)
+      const nulError = yield* ReadToolFileSystem.read(fs, nul, "late-nul.txt", { offset: 700 }).pipe(Effect.flip)
+
+      expect(controlError).toBeInstanceOf(ReadToolFileSystem.BinaryFileError)
+      expect(nulError).toBeInstanceOf(ReadToolFileSystem.BinaryFileError)
+    }),
+  )
+
   it.effect("reports out-of-range pagination as a typed error", () =>
     Effect.gen(function* () {
       const { fs, files, directory } = yield* fixture
