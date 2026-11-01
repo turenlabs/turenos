@@ -165,7 +165,7 @@ export function createSecurityProxyController(deps: {
   const allowed = (_binding: Binding, url: string) => {
     const parsed = URL.parse(url)
     if (!parsed || !["http:", "https:"].includes(parsed.protocol)) return "blocked"
-    if (deps.protectedOrigins().includes(parsed.origin)) return "blocked"
+    if (ProxyPolicy.isProtected(parsed, deps.protectedOrigins())) return "blocked"
     return "target"
   }
   const report = (generation: Generation, error: unknown) => {
