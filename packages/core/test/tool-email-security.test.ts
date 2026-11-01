@@ -109,6 +109,19 @@ describe("EmailSecurityTools", () => {
           expect(attachment.value).toContain('"mime_filename_mismatch": true')
           expect(attachment.value).toContain("use email_extract_attachment")
 
+          const single = yield* executeTool(registry, {
+            sessionID: SessionV2.ID.make("ses_email_attachment_test"),
+            ...toolIdentity,
+            call: {
+              type: "tool-call",
+              id: "call-email-single-attachment",
+              name: "email_attachment_inspect",
+              input: { path: "message.eml" },
+            },
+          })
+          expect(single.type).toBe("text")
+          if (single.type === "text") expect(single.value).toContain('"index": 0')
+
           yield* Effect.promise(() =>
             fs.writeFile(
               `${tmp.path}/duplicate.eml`,
@@ -130,6 +143,18 @@ describe("EmailSecurityTools", () => {
               ].join("\r\n"),
             ),
           )
+          const unselected = yield* executeTool(registry, {
+            sessionID: SessionV2.ID.make("ses_email_attachment_test"),
+            ...toolIdentity,
+            call: {
+              type: "tool-call",
+              id: "call-email-unselected-attachments",
+              name: "email_attachment_inspect",
+              input: { path: "duplicate.eml" },
+            },
+          })
+          expect(unselected.type).toBe("error")
+          if (unselected.type === "error") expect(unselected.value).toContain("2 attachments")
           const ambiguous = yield* executeTool(registry, {
             sessionID: SessionV2.ID.make("ses_email_attachment_test"),
             ...toolIdentity,

@@ -576,6 +576,11 @@ function selectAttachment(
     }
   if (byIndex ?? byName[0]) return { type: "one", attachment: byIndex ?? byName[0] }
   if (attachments.length === 0) return { type: "error", message: "email has no attachments" }
+  if (attachments.length > 1)
+    return {
+      type: "error",
+      message: `Message has ${attachments.length} attachments; specify attachmentIndex or attachmentName, or set allAttachments to list them`,
+    }
   return { type: "one", attachment: attachments[0] }
 }
 
