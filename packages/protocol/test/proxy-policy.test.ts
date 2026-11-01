@@ -61,4 +61,17 @@ describe("proxy policy", () => {
     expect(message.headers[0].value).toBe("Bearer secret")
     expect(message.url).toContain("token=secret")
   })
+
+  test("masks JSON secrets across preview and capture boundaries", () => {
+    const value = `{"message":"${"x".repeat(65500)}","token":"leak-boundary-secret-value"}`
+    const preview = ProxyPolicy.publicBody({ data: value, encoding: "utf8", state: "complete", size: value.length })
+    expect(preview.data.includes("leak")).toBe(false)
+    expect(preview.data.endsWith('"token":"[REDACTED]"')).toBe(true)
+    expect(preview.state).toBe("truncated")
+
+    const partial = '{"password":"captured-secret\\'
+    const truncated = ProxyPolicy.publicBody({ data: partial, encoding: "utf8", state: "truncated", size: 100 })
+    expect(truncated.data.includes("captured-secret")).toBe(false)
+    expect(truncated.state).toBe("truncated")
+  })
 })
