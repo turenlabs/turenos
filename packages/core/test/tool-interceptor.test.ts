@@ -39,7 +39,7 @@ import { ToolInterceptor } from "@turenlabs/core/tool/interceptor"
 import { ToolRegistry } from "@turenlabs/core/tool/registry"
 import { Tool } from "@turenlabs/core/tool/tool"
 import { ToolOutputStore } from "@turenlabs/core/tool-output-store"
-import { Deferred, Duration, Effect, Fiber, Layer, Schema, Scope, Stream } from "effect"
+import { Cause, Deferred, Duration, Effect, Exit, Fiber, Layer, Schema, Scope, Stream } from "effect"
 import { TestClock } from "effect/testing"
 import { testEffect } from "./lib/effect"
 import { settleTool, toolIdentity } from "./lib/tool"
@@ -329,6 +329,43 @@ describe("ToolInterceptor at the settlement boundary", () => {
         type: "text",
         value: "hello",
       })
+    }),
+  )
+
+  registryOnly.effect("runs turnComplete hooks once per inline call, however the call ends", () =>
+    Effect.gen(function* () {
+      const registry = yield* registerTools
+      const interceptors = yield* ToolInterceptor.Service
+      yield* registry.register({
+        stop: Tool.make({
+          description: "Interrupt",
+          input: Schema.Struct({}),
+          output: Schema.Struct({}),
+          execute: () => Effect.interrupt,
+        }),
+      })
+      const completed: string[] = []
+      yield* interceptors.hook.before((event) => {
+        if (event.callID === "inline-denied") event.decision = { type: "deny", reason: "blocked" }
+      })
+      yield* interceptors.hook.turnComplete((event) => {
+        completed.push(event.assistantMessageID)
+      })
+
+      const settled = yield* settleTool(registry, { ...call({ text: "hello" }, "echo", "inline-ok"), inline: true })
+      const denied = yield* settleTool(registry, { ...call({ text: "hello" }, "echo", "inline-denied"), inline: true })
+      const stopped = yield* settleTool(registry, { ...call({}, "stop", "inline-stop"), inline: true }).pipe(
+        Effect.exit,
+      )
+
+      expect(settled.result).toEqual({ type: "text", value: "hello" })
+      expect(denied.result).toEqual({ type: "error", value: "blocked" })
+      expect(Exit.isFailure(stopped) && Cause.hasInterrupts(stopped.cause)).toBe(true)
+      expect(completed).toEqual([
+        toolIdentity.assistantMessageID,
+        toolIdentity.assistantMessageID,
+        toolIdentity.assistantMessageID,
+      ])
     }),
   )
 })
