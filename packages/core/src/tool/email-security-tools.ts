@@ -561,15 +561,26 @@ function selectAttachment(
   if (hasIndex && !byIndex) return { type: "error", message: `Attachment index ${input.attachmentIndex} was not found` }
 
   const byName = hasName
-    ? attachments.find(
+    ? attachments.filter(
         (attachment) => attachment.filename === input.attachmentName || attachment.name === input.attachmentName,
       )
-    : undefined
-  if (hasName && !byName) return { type: "error", message: `Attachment ${input.attachmentName} was not found` }
-  if (byIndex && byName && byIndex.index !== byName.index)
+    : []
+  if (hasName && byName.length === 0)
+    return { type: "error", message: `Attachment ${input.attachmentName} was not found` }
+  if (byIndex && hasName && !byName.includes(byIndex))
     return { type: "error", message: "attachmentIndex and attachmentName identify different attachments" }
-  if (byIndex ?? byName) return { type: "one", attachment: byIndex ?? byName! }
+  if (!byIndex && byName.length > 1)
+    return {
+      type: "error",
+      message: `Attachment ${input.attachmentName} matches attachments ${byName.map((attachment) => attachment.index).join(", ")}; specify attachmentIndex`,
+    }
+  if (byIndex ?? byName[0]) return { type: "one", attachment: byIndex ?? byName[0] }
   if (attachments.length === 0) return { type: "error", message: "email has no attachments" }
+  if (attachments.length > 1)
+    return {
+      type: "error",
+      message: `Message has ${attachments.length} attachments; specify attachmentIndex or attachmentName, or set allAttachments to list them`,
+    }
   return { type: "one", attachment: attachments[0] }
 }
 
