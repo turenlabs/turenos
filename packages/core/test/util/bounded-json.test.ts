@@ -45,3 +45,11 @@ test("handles JSON byte expansion and rejects executable serialization hooks", (
   expect(BoundedJson.encode(hook, 1024)).toBeUndefined()
   expect(accessed).toEqual([])
 })
+
+test("accepts JSON that exactly fits its byte budget", () => {
+  for (const value of [true, [], [true], {}, { a: true }, [null, false, "🙂"]]) {
+    const json = JSON.stringify(value)
+    expect(BoundedJson.encode(value, Buffer.byteLength(json))).toBe(json)
+    expect(BoundedJson.encode(value, Buffer.byteLength(json) - 1)).toBeUndefined()
+  }
+})
