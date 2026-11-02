@@ -18,7 +18,6 @@ import { Protected } from "./filesystem/protected"
  */
 
 const ERROR_BYTES = 8 * 1024
-const MAX_RECORD_BYTES = 64 * 1024
 const MAX_SUBMATCHES = 100
 
 // rg --json writes a path, line or match that is not valid UTF-8 as base64
@@ -315,14 +314,15 @@ const native = Layer.effect(
             input.pattern,
             input.file ?? ".",
           ],
+          // rg ignores --max-columns under --json, so a match record carries its whole line,
+          // however long. Cap the line text while parsing so a collected row keeps at most 2,000
+          // characters of it. Bound each retained submatch preview too, but preserve
+          // its original byte offsets even when its text is truncated.
           parse: (line) =>
-            (Buffer.byteLength(line, "utf8") > MAX_RECORD_BYTES
-              ? Effect.fail(failure(`Ripgrep JSON record exceeded ${MAX_RECORD_BYTES} bytes`))
-              : Effect.try({
-                  try: () => JSON.parse(line) as unknown,
-                  catch: (cause) => failure("Invalid ripgrep JSON output", cause),
-                })
-            ).pipe(
+            Effect.try({
+              try: () => JSON.parse(line) as unknown,
+              catch: (cause) => failure("Invalid ripgrep JSON output", cause),
+            }).pipe(
               Effect.flatMap((json) => {
                 if (!json || typeof json !== "object" || !("type" in json) || json.type !== "match")
                   return Effect.succeed(undefined)
@@ -330,7 +330,21 @@ const native = Layer.effect(
                   Effect.map((match) => ({
                     ...match.data,
                     path: { text: match.data.path.text.replace(/^\.[\\/]/, "") },
-                    submatches: match.data.submatches.slice(0, MAX_SUBMATCHES),
+                    lines: {
+                      text:
+                        match.data.lines.text.length > 2_000
+                          ? match.data.lines.text.slice(0, 2_000) + "..."
+                          : match.data.lines.text,
+                    },
+                    submatches: match.data.submatches.slice(0, MAX_SUBMATCHES).map((submatch) => ({
+                      ...submatch,
+                      match: {
+                        text:
+                          submatch.match.text.length > 2_000
+                            ? submatch.match.text.slice(0, 2_000) + "..."
+                            : submatch.match.text,
+                      },
+                    })),
                   })),
                   Effect.mapError((cause) => failure("Invalid ripgrep match output", cause)),
                 )
@@ -350,7 +364,7 @@ const native = Layer.effect(
                 }),
                 line: match.line_number,
                 offset: match.absolute_offset,
-                text: match.lines.text.length > 2_000 ? match.lines.text.slice(0, 2_000) + "..." : match.lines.text,
+                text: match.lines.text,
                 submatches: match.submatches.map((submatch) => ({
                   text: submatch.match.text,
                   start: submatch.start,
