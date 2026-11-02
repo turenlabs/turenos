@@ -1,3 +1,4 @@
+import { caretIndex } from "./caret"
 import { cancelPending, hide, paint, show, usable } from "./popup-ops"
 import type { PopupState } from "./popup-state"
 
@@ -8,7 +9,7 @@ export function refresh<T>(popup: PopupState<T>) {
     if (popup.dismissed === options.editor.plainText) return show(popup, 0)
     popup.dismissed = undefined
   }
-  const next = options.match(options.editor.plainText, options.editor.cursorOffset)
+  const next = options.match(options.editor.plainText, caretIndex(options.editor))
   if (!next) {
     show(popup, 0)
     if (popup.status !== "ready") {

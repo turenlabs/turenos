@@ -34,11 +34,11 @@ export class Handler {
     },
   ) {}
 
-  handle(event: PermissionEvent) {
+  handle(event: PermissionEvent, directory?: string) {
     const permission = event.properties
     const previous = this.queues.get(permission.sessionID) ?? Promise.resolve()
     const next = previous
-      .then(() => this.process(event))
+      .then(() => this.process(event, directory))
       .catch(() => {})
       .finally(() => {
         if (this.queues.get(permission.sessionID) === next) {
@@ -48,9 +48,9 @@ export class Handler {
     this.queues.set(permission.sessionID, next)
   }
 
-  private async process(event: PermissionEvent) {
+  private async process(event: PermissionEvent, directory: string | undefined) {
     const permission = event.properties
-    const session = await Effect.runPromise(this.input.session.tryGet(permission.sessionID))
+    const session = await this.owningSession(permission.sessionID, directory)
     if (!session) return
 
     if (!this.input.connection.requestPermission) {
@@ -60,7 +60,7 @@ export class Handler {
 
     const result = await this.input.connection
       .requestPermission({
-        sessionId: permission.sessionID,
+        sessionId: session.id,
         toolCall: await permissionToolCall({
           toolCallId: permission.tool?.callID ?? permission.id,
           toolName: permission.permission,
@@ -86,6 +86,18 @@ export class Handler {
     }
 
     await this.reply(permission.id, reply, session.cwd)
+  }
+
+  // Subagents ask from child sessions the editor never created, so walk up to the ACP session that owns them.
+  // The lookup keeps the event's directory: without one the server opens an instance in its own cwd.
+  private async owningSession(sessionID: string, directory: string | undefined): Promise<ACPSession.Info | undefined> {
+    const session = await Effect.runPromise(this.input.session.tryGet(sessionID))
+    if (session) return session
+    const parentID = await this.input.sdk.session
+      .get({ sessionID, directory })
+      .then((response) => response.data?.parentID)
+    if (!parentID) return
+    return this.owningSession(parentID, directory)
   }
 
   private async reply(requestID: string, reply: Reply, directory: string) {

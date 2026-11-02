@@ -40,7 +40,13 @@ async function linuxStart(pid: number) {
 }
 
 async function darwinStart(pid: number) {
-  const child = Bun.spawn(["ps", "-o", "lstart=", "-p", String(pid)], { stdout: "pipe", stderr: "ignore" })
+  // ps prints lstart in the caller's locale ("Di. 20 Okt." under de_DE), which Date.parse cannot read; the C locale
+  // prints the English form it can.
+  const child = Bun.spawn(["ps", "-o", "lstart=", "-p", String(pid)], {
+    env: { ...process.env, LC_ALL: "C" },
+    stdout: "pipe",
+    stderr: "ignore",
+  })
   const time = Date.parse((await new Response(child.stdout).text()).trim())
   return Number.isFinite(time) ? time : undefined
 }

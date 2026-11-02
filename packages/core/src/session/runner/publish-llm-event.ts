@@ -5,6 +5,7 @@ import { ModelV2 } from "../../model"
 import { SessionEvent } from "../event"
 import { SessionMessage } from "../message"
 import { SessionSchema } from "../schema"
+import { ToolResultStore } from "../../tool-result-store"
 import { SessionDisclosure } from "../disclosure"
 import type { SecretOutput } from "../../secret-output"
 
@@ -178,6 +179,8 @@ const settledOutput = (value: ToolOutput | undefined, result: ToolResultValue): 
 
 function boundedToolOutput(value: SettledOutput): SettledOutput {
   if ("error" in value) return value
+  const reference = ToolResultStore.referenceOf(value.structured)
+  const cleared = reference ? ToolResultStore.withReference({ truncated: true }, reference) : { truncated: true }
   // Provider-executed results are stored both as display content and as a compatibility result.
   // Bound the shared display half before the caller derives the second representation. Items are
   // sized once each against the remaining budget — re-walking the whole candidate per item made
@@ -185,14 +188,14 @@ function boundedToolOutput(value: SettledOutput): SettledOutput {
   let structured = value.structured
   let size = estimatedJsonBytes({ structured, content: [] }, MAX_DURABLE_TOOL_OUTPUT_BYTES)
   if (size > MAX_DURABLE_TOOL_OUTPUT_BYTES) {
-    structured = { truncated: true }
+    structured = cleared
     size = estimatedJsonBytes({ structured, content: [] }, MAX_DURABLE_TOOL_OUTPUT_BYTES)
   }
   const content: Array<ToolOutput["content"][number]> = []
   const marker = { type: "text" as const, text: DURABLE_TOOL_OUTPUT_TRUNCATION.trimStart() }
   const remaining = () => MAX_DURABLE_TOOL_OUTPUT_BYTES - size
   const reset = () => {
-    structured = { truncated: true }
+    structured = cleared
     content.length = 0
     content.push(marker)
   }

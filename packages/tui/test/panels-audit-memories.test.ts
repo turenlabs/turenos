@@ -163,3 +163,16 @@ test("a memory's title, body and source cannot carry terminal control sequences"
   expect(frame).not.toContain("\x1b")
   expect(frame).toContain("Title]0;x")
 })
+
+test("saving an edit of a long memory sends its whole body, not the shortened display copy", async () => {
+  const long = { ...memory, body: `Global bun is too old. ${"y".repeat(50000)}` }
+  const app = await memoriesRoom({
+    "GET /api/memory": () => [long],
+    "PATCH /api/memory/drw_1": () => long,
+  })
+  app.view.mockInput.pressKey("E")
+  await app.screen("Edit memory")
+  app.view.mockInput.pressKey("s", { ctrl: true })
+  await until(() => app.server.sent("/api/memory/drw_1").length === 1)
+  expect(app.server.sent("/api/memory/drw_1")[0]?.body).toMatchObject({ body: long.body })
+})

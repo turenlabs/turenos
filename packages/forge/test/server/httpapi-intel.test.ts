@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { Effect } from "effect"
+import { rm } from "node:fs/promises"
 import { createTestHttpApi } from "../fixture/httpapi"
-import { pollOnce, readCache } from "@turenlabs/server/intel/ingest"
+import { cachePath, pollOnce, readCache } from "@turenlabs/server/intel/ingest"
 import { isStale, ensureFreshOnBoot, pollNow } from "@turenlabs/server/intel/scheduler"
 import { DEFAULT_FEEDS, FETCH_TIMEOUT_MS, fetchRss, parseRss, POLL_INTERVAL_MS } from "@turenlabs/server/intel/sources"
 import {
@@ -137,6 +138,28 @@ describe("intel HttpApi", () => {
       ].sort(),
     )
     expect(feeds.every((feed) => feed.enabled)).toBe(true)
+  })
+
+  test("serves defaults for corrupt intel state without overwriting it", async () => {
+    await using directory = await isolatedTmpDir()
+    await using api = actualServerAPI(directory.path)
+    try {
+      await Bun.write(feedsConfigPath(), "{")
+      await Bun.write(cachePath(), "{")
+
+      const feeds = await api.request("/api/intel/feeds")
+      expect(feeds.status).toBe(200)
+      expect(await feeds.json()).toEqual([...DEFAULT_FEEDS])
+
+      const advisories = await api.request("/api/intel/advisories")
+      expect(advisories.status).toBe(200)
+      expect(await advisories.json()).toMatchObject({ total: 0 })
+      expect(await Bun.file(feedsConfigPath()).text()).toBe("{")
+      expect(await Bun.file(cachePath()).text()).toBe("{")
+    } finally {
+      await Effect.runPromise(resetFeeds())
+      await rm(cachePath(), { force: true })
+    }
   })
 
   test("polls stub feeds and serves paged advisories, kev, news, trends, status", async () => {

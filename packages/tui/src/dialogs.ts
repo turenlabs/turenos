@@ -20,7 +20,7 @@ export function createDialogs(renderer: CliRenderer, state: DashboardState, ui: 
     navigate: () => navigate(ctx),
     input: (dialog: ModalState, label: string, value = "", placeholder = "") =>
       input(ctx, dialog, label, value, placeholder),
-    prompt: (dialog: ModalState, label: string, value = "", cursor = value.length, bare = false) =>
+    prompt: (dialog: ModalState, label: string, value = "", cursor?: number, bare = false) =>
       prompt(ctx, dialog, label, value, cursor, bare),
     track: (dialog: ModalState, field: Field) => track(ctx, dialog, field),
     reveal,

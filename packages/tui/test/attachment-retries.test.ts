@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 import { ClientError, type SessionsPromptInput } from "@turenlabs/client"
-import { BoxRenderable, TextRenderable } from "@opentui/core"
+import { BoxRenderable, TextareaRenderable, TextRenderable, type CliRenderer } from "@opentui/core"
 import { createTestRenderer } from "@opentui/core/testing"
 import { createDialogs } from "../src/dialogs"
 import { createLayout } from "../src/layout"
@@ -13,7 +13,7 @@ import type { ReplyEditor } from "../src/requests/reply"
 import { showAttachments } from "../src/requests/attachments"
 import { connect } from "../src/server"
 import { createSlashCommands } from "../src/slash"
-import { createDashboardState, type ModalState } from "../src/state"
+import { createDashboardState, type MessageDraft, type ModalState } from "../src/state"
 import { cleanup, session } from "./support"
 
 test("missing file searches belong to their connection, directory and workspace", () => {
@@ -134,6 +134,25 @@ for (const kind of ["launch", "reply"] as const) {
   }
 }
 
+/** The line `showAttachments` adds under `task`, with the @ list open when `mentionRows` is above zero. */
+function attachmentLine(
+  renderer: CliRenderer,
+  connection: unknown,
+  task: ReplyEditor,
+  recipient: MessageDraft["recipient"],
+  mentionRows = 0,
+) {
+  const error = new TextRenderable(renderer, { content: "" })
+  const frame = new BoxRenderable(renderer, {})
+  frame.add(error)
+  renderer.root.add(frame)
+  // dialog.recipient is deliberately unset: the line must follow the draft, which names the workspace.
+  const dialog = { frame, error, mentionRows } as unknown as ModalState
+  const ctx = { renderer, connection, dialogs: { resize() {} } } as unknown as RequestContext
+  showAttachments(ctx, dialog, task, { text: "", id: "msg_a", recipient, delivery: "steer" })
+  return frame.getChildren().find((child) => child !== error) as TextRenderable
+}
+
 test("the attachment line reads missing files for the reply recipient's own workspace", async () => {
   const view = await createTestRenderer({ width: 90, height: 20 })
   cleanup.push(() => view.renderer.destroy())
@@ -141,20 +160,23 @@ test("the attachment line reads missing files for the reply recipient's own work
   cleanup.push(connection.close)
   const recipient = { ...session(), location: { directory: "/srv/main", workspaceID: "wrk_a" } }
   recordSearch(connection.missingFiles, recipient.location, "a.ts", false)
-  const error = new TextRenderable(view.renderer, { content: "" })
-  const frame = new BoxRenderable(view.renderer, {})
-  frame.add(error)
-  view.renderer.root.add(frame)
-  // dialog.recipient is deliberately unset: the line must follow the draft, which names the workspace.
-  const dialog = { frame, error, mentionRows: 0 } as unknown as ModalState
   const task = { plainText: "read @a.ts", cursorOffset: 0 } as unknown as ReplyEditor
-  const ctx = { renderer: view.renderer, connection, dialogs: { resize() {} } } as unknown as RequestContext
-  showAttachments(ctx, dialog, task, { text: "", id: "msg_a", recipient, delivery: "steer" })
-  const line = frame.getChildren().find((child) => child !== error) as TextRenderable
+  const line = attachmentLine(view.renderer, connection, task, recipient)
   const expected = attachmentSummary("read @a.ts", recipient.location.directory, {
     missingFiles: connection.missingFiles,
     workspaceID: "wrk_a",
   })
   expect(expected).not.toBe(attachmentSummary("read @a.ts", recipient.location.directory))
   expect(line.plainText).toBe(expected!)
+})
+
+test("while the @ list is open, the attachment line leaves out the search at a caret after wide text", async () => {
+  const view = await createTestRenderer({ width: 90, height: 20 })
+  cleanup.push(() => view.renderer.destroy())
+  const task = new TextareaRenderable(view.renderer, { initialValue: "请看 @au 然后 @b.ts" })
+  view.renderer.root.add(task)
+  // Right after `@au`: the editor counts two cells for each CJK character.
+  task.cursorOffset = 8
+  const line = attachmentLine(view.renderer, { missingFiles: new Set() }, task, session(), 1)
+  expect(line.plainText).toBe("Attaches b.ts")
 })

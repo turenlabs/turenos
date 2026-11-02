@@ -7,6 +7,8 @@ import { PermissionV2 } from "../permission"
 import { SessionMessage } from "../session/message"
 import { SessionSchema } from "../session/schema"
 import { ToolOutputStore } from "../tool-output-store"
+import { ToolResultStore } from "../tool-result-store"
+import { BoundedJson } from "../util/bounded-json"
 import { Wildcard } from "../util/wildcard"
 import { ApplicationTools } from "./application-tools"
 import { ToolInterceptor } from "./interceptor"
@@ -88,6 +90,11 @@ export interface Materialization {
     readonly selected: boolean
   }>
   readonly settle: (input: ExecuteInput) => Effect.Effect<Settlement, ToolOutputStore.Error>
+  /**
+   * Opens a provider turn before its calls are forked, so a call that settles first waits for `completeTurn`
+   * before its `after` hooks run. A call whose turn is not open does not wait.
+   */
+  readonly openTurn: (input: ToolInterceptor.TurnEvent) => Effect.Effect<void>
   readonly completeTurn: (input: ToolInterceptor.TurnEvent) => Effect.Effect<void>
 }
 
@@ -168,17 +175,45 @@ const registryLayer = Layer.effect(
         ),
       )
       if ("result" in pending) return pending
+      // Discard unsupported structured source shapes before strict recursive protection. The
+      // surviving view still passes through the operation's protection before any storage.
+      const candidate = yield* Effect.try({
+        try: () =>
+          pending.output.structured !== undefined &&
+          BoundedJson.encode(pending.output.structured, ToolResultStore.MAX_BYTES) === undefined
+            ? {
+                ...pending.output,
+                structured: {
+                  retentionUnavailable: "Structured capture exceeded JSON limits or used an unsupported value.",
+                  truncated: true,
+                },
+              }
+            : pending.output,
+        catch: () => true,
+      }).pipe(
+        Effect.catch(() =>
+          Effect.succeed({
+            ...pending.output,
+            structured: {
+              retentionUnavailable: "Structured capture exceeded JSON limits or used an unsupported value.",
+              truncated: true,
+            },
+          }),
+        ),
+      )
       // Redact before bounding: the overflow writer otherwise retains the original.
       const safe = yield* Effect.try({
-        try: () => redactOutput(pending.output, protection),
+        try: () => redactOutput(candidate, protection),
         catch: () => "Tool output withheld because secret redaction failed",
       }).pipe(Effect.result)
       if (safe._tag === "Failure") return { result: { type: "error" as const, value: safe.failure } }
-      const output = safe.success
       const bounded = yield* resources.bound({
         sessionID: input.sessionID,
         toolCallID: input.call.id,
-        output,
+        assistantMessageID: input.assistantMessageID,
+        tool: input.call.name,
+        retain: !["result_list", "result_read", "result_search", "result_compute"].includes(input.call.name),
+        output: safe.success,
         protection,
       })
       const result = ToolOutput.toResultValue(bounded.output)
@@ -221,6 +256,14 @@ const registryLayer = Layer.effect(
         callID: input.call.id,
         tool: input.call.name,
       }
+      // An inline call ends its own provider turn, once. The main path does it before waiting on the turn; the
+      // `ensuring` below covers a call that never gets that far (interrupted, or refused for masked input).
+      let turnCompleted = false
+      const completeInlineTurn = Effect.suspend(() => {
+        if (!input.inline || turnCompleted) return Effect.void
+        turnCompleted = true
+        return interceptors.runTurnComplete(identity)
+      })
       return yield* executions
         .execute(
           {
@@ -235,7 +278,7 @@ const registryLayer = Layer.effect(
             const decision = yield* interceptors.runBefore({ ...identity, input: input.call.input })
             if (decision.type === "deny") {
               const result = { type: "error" as const, value: decision.reason }
-              if (input.inline) yield* interceptors.runTurnComplete(identity)
+              yield* completeInlineTurn
               yield* interceptors.awaitTurnComplete(identity)
               // Observers still see the denial rather than a call that silently vanished, but notes on
               // a call that never ran have nothing to annotate.
@@ -265,7 +308,7 @@ const registryLayer = Layer.effect(
               }
             const execution = executeRegistration(input, registration, call, protection.success, subagentContext)
             const settlement = yield* input.executeWithPermit ? input.executeWithPermit(execution) : execution
-            if (input.inline) yield* interceptors.runTurnComplete(identity)
+            yield* completeInlineTurn
             yield* interceptors.awaitTurnComplete(identity)
             const notes = yield* interceptors.runAfter({
               ...identity,
@@ -278,7 +321,7 @@ const registryLayer = Layer.effect(
             Effect.flatMap((settlement) => redactSettlement(settlement, protection.success)),
             Effect.ensuring(
               Effect.gen(function* () {
-                if (input.inline) yield* interceptors.runTurnComplete(identity)
+                yield* completeInlineTurn
                 yield* interceptors.runFinally(identity)
               }),
             ),
@@ -380,6 +423,7 @@ const registryLayer = Layer.effect(
         return {
           definitions,
           deferred,
+          openTurn: interceptors.openTurn,
           completeTurn: interceptors.runTurnComplete,
           settle: (input) => {
             const registration = registrations.get(input.call.name)

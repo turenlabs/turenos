@@ -88,15 +88,18 @@ const layer = Layer.effect(
       const value = input.trim()
       if (!value) return undefined
 
-      try {
-        const parsed = new URL(value)
-        if (parsed.protocol === "file:") return undefined
-        return parts(parsed.hostname, parsed.pathname)
-      } catch {
-        const scp = value.match(/^([^@/:]+@)?([^/:]+):(.+)$/)
-        if (scp) return parts(scp[2], scp[3])
-        return undefined
-      }
+      const parsed = URL.parse(value)
+      if (parsed?.protocol === "file:") return undefined
+      // A scp remote without a user, such as `github.com:owner/repo`, also
+      // parses as a URL whose scheme is `github.com:` and whose host is empty,
+      // so only a URL with a host skips the scp form.
+      if (parsed?.hostname) return parts(parsed.hostname, parsed.pathname)
+      // Like git on Windows, read a leading letter and colon, such as
+      // `C:/repos/app`, as a local drive path rather than a scp host.
+      if (/^[a-z]:/i.test(value)) return undefined
+      const scp = value.match(/^([^@/:]+@)?([^/:]+):(.+)$/)
+      if (scp) return parts(scp[2], scp[3])
+      return undefined
     }
 
     function parts(host: string, name: string) {

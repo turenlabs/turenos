@@ -47,6 +47,7 @@ export function mention(ctx: RequestContext, session: Session, text: string) {
   const next = `${draft.text}${draft.text && !/\s$/.test(draft.text) ? " " : ""}${text}`
   if (next.length > maxMessageLength) return false
   draft.text = next
-  draft.cursor = next.length
+  // The caret counts display cells, not string length; left unset, the editor reopens at the end.
+  draft.cursor = undefined
   return true
 }

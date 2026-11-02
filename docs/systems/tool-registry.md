@@ -80,9 +80,11 @@ described above.
 
 ## Output
 
-Tools return complete domain output. Settlement bounds the model-visible copy (2,000 lines or 50 KiB by default) and
-writes oversized output to a managed file, as described in the
-[architecture constraints](../architecture/README.md#operational-constraints).
+Tools return complete domain output. Settlement protects output, then bounds its model-visible copy (2,000 lines or
+50 KiB by default). Oversized protected text or structured captures can also receive a session-scoped `retainedResult`
+reference independently of the initial view's size. [Retained tool results](./retained-results.md) describes exact
+readback, literal discovery, confined computation, expiry and capture-loss limits. Retrieval does not re-execute the
+source invocation, and result-tool outputs are excluded from automatic recapture.
 
 ## Built-in tools
 
@@ -101,6 +103,7 @@ session tools supplied by `SessionToolSnapshot`. The legacy runtime builds its l
 | `todowrite`, `question`, `skill`                                                               | Todo list, user questions, skill loading                                                                         | V2 and legacy | no                          | `packages/core/src/tool/todowrite.ts`, `question.ts`, `skill.ts`; `packages/forge/src/tool/todo.ts`, `question.ts`, `skill.ts`  |
 | `get_goal`, `create_goal`, `update_goal`                                                       | Session goal state                                                                                               | V2            | no                          | `packages/core/src/tool/goal.ts`                                                                                                |
 | `session_context`, `session_checkpoint`                                                        | Read context fill, cache state and cost; replace earlier history with an agent-written checkpoint                | V2            | no                          | `packages/core/src/tool/context.ts`                                                                                             |
+| `result_list`, `result_read`, `result_search`, `result_compute`                                | [Retained tool results](./retained-results.md)                                                                   | V2            | search and compute only     | `packages/core/src/tool/results.ts`                                                                                             |
 | `session_recall`                                                                               | Search this session's own earlier history, even after compaction, and read events around a match                 | V2            | no                          | `packages/core/src/tool/recall.ts`                                                                                              |
 | `reflection_state`, `reflection_read`, `reflection_complete`                                   | Durable predictions and hypotheses                                                                               | V2            | no                          | `packages/core/src/tool/reflection.ts`                                                                                          |
 | `memory_search`, `memory_read`, `memory_write`, `memory_forget`                                | Project [memory](./memory.md)                                                                                    | V2            | `memory_forget` only        | `packages/core/src/tool/memory.ts`                                                                                              |
@@ -146,6 +149,11 @@ directory (`<directory>/*`), followed by the tool's own `grep` or `glob` permiss
 The search uses the resolved canonical target, rather than resolving the original alias again after approval. This is
 a path authorization boundary, not an OS sandbox: canonicalization does not pin filesystem objects against concurrent
 replacement. Recursive searches do not enable symlink following.
+
+Results inside the Location are reported relative to its canonical root, so they stay inside the Location even when the
+Location directory is a symlink alias. Results outside it, which only an approved external search returns, are reported
+as canonical absolute paths. Both forms resolve in `read`, `edit`, and `write`, which reject a relative path that leaves
+the Location; an external result still needs `external_directory` approval there.
 
 ## Limits
 

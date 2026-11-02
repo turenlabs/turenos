@@ -1,0 +1,73 @@
+{
+  "phase": "Pre-implementation research baseline; implementation validation is recorded in docs/experimental/context-results/plan.json",
+  "sourceCommit": "0f6cdb405d787c5f5b8ba94dfd8e817e469773b1",
+  "upstreamCommit": "b31c7ee853cb9ea76121e24d368599390972a997",
+  "recommendation": "Retain captured results independently of their model views. Prefer useful initial views and exact readback, use bounded code for exhaustive computations, and use ranked retrieval for discovery. Preserve existing context-frame stability and durable operation state.",
+  "sources": [
+    {
+      "url": "https://arxiv.org/html/2508.21433v3",
+      "title": "The Complexity Trap",
+      "finding": "Observation masking was competitive with summarization in SWE-agent software engineering evaluations. The paper also evaluates a hybrid and reports summarization overhead and longer trajectories.",
+      "qualification": "Results depend on scaffold-specific window tuning; they do not establish one policy for every domain or provider."
+    },
+    {
+      "url": "https://arxiv.org/html/2512.24601v3",
+      "title": "Recursive Language Models",
+      "finding": "External programmatic access to long inputs can improve long-context tasks, including inputs beyond the root model's context window.",
+      "qualification": "Recursive model calls add cost and latency variability; the authors identify guardrails and natural-task evaluations as open work. The local probe evaluates deterministic code only."
+    },
+    {
+      "url": "https://claude.dev/blog/lessons-from-building-claude-code-prompt-caching-is-everything/",
+      "title": "Lessons from building Claude Code: Prompt caching is everything",
+      "finding": "Prompt caching depends on stable prefixes. Tool changes and history rewrites affect suffix reuse; cache-safe compaction reuses the parent request prefix.",
+      "qualification": "The local cache tests use an emulator, not provider billing measurements."
+    },
+    {
+      "url": "https://www.anthropic.com/engineering/writing-tools-for-agents",
+      "title": "Writing effective tools for AI agents",
+      "finding": "Tools should return relevant information and may expose concise/detailed views. Response formats and tool design require task-based evaluation.",
+      "qualification": "A compact result still needs identifiers, errors and evidence required for the next action."
+    },
+    {
+      "url": "https://blog.cloudflare.com/code-mode-mcp/",
+      "title": "Code Mode: give agents an entire API in 1,000 tokens",
+      "finding": "Cloudflare combines progressive API discovery with code execution inside isolated workers and explicit outbound capabilities.",
+      "qualification": "TurenOS's current in-process interpreter is not equivalent to a V8 worker isolation boundary."
+    },
+    {
+      "url": "https://github.com/mksglu/context-mode/blob/b31c7ee853cb9ea76121e24d368599390972a997/BENCHMARK.md",
+      "title": "Context Mode benchmark",
+      "finding": "Documents strong byte reductions on fixed tool-output fixtures and exact chunk retrieval examples.",
+      "qualification": "These fixture byte ratios do not establish TurenOS task completion, billed token costs or generated-program accuracy."
+    }
+  ],
+  "localVerification": {
+    "focusedCore": {
+      "passed": 42,
+      "failed": 0,
+      "files": ["test/tool-output-store.test.ts", "test/memory.test.ts", "test/session-context-request.test.ts"]
+    },
+    "focusedCodeMode": { "passed": 60, "failed": 0, "files": ["test/codemode.test.ts", "test/enumeration.test.ts"] },
+    "contextBenchmark": {
+      "passed": 20,
+      "failed": 0,
+      "file": "test/simulator/context-bench.test.ts",
+      "qualification": "Every variant produced identical metrics within each scenario in this run, so this run does not demonstrate comparative savings."
+    },
+    "cachePressure": {
+      "passed": 2,
+      "failed": 0,
+      "command": "bun test --timeout 60000 test/simulator/cache-bench.test.ts -t pressure",
+      "qualification": "Both emulated providers recorded one cold start and one prune-associated prefix break over 28 requests; this is not an A/B comparison or actual provider billing."
+    },
+    "probe": "bun run test/benchmark/context-results.ts test/benchmark/context-results.results.json",
+    "typecheck": "bun typecheck (packages/core) passed"
+  },
+  "implementationOrder": [
+    "Retain structured results and captured text independently from the size of the initial model view; include provenance, capture-loss and expiration metadata.",
+    "Add scoped exact readback and useful deterministic views, preserving permissions and durable execution settlement.",
+    "Add bounded CodeMode access for exhaustive filtering and aggregation with explicit host capabilities.",
+    "Add ranked result search for discovery, with clear coverage and a path to exhaustive inspection.",
+    "Evaluate live model-generated programs and query selection on representative tasks before changing default compaction or routing policies."
+  ]
+}

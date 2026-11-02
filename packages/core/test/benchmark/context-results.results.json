@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "scope": "Deterministic offline probes; byte sizes, not token costs or model accuracy",
+  "runtime": {
+    "bun": "1.4.2",
+    "platform": "darwin",
+    "architecture": "arm64"
+  },
+  "limitations": [
+    "Programs and queries are hand-written; model tool selection and generated code are not evaluated.",
+    "Retrieval uses Memory lexical search only; its semantic layer is not loaded.",
+    "Byte sizes exclude provider tokenization, inference, retries, caching and storage/index overhead.",
+    "CodeMode calls a fixture host tool; V2 retention and CodeMode adapters are not implemented by this probe."
+  ],
+  "retention": {
+    "rawBytes": 448237,
+    "previewBytes": 51200,
+    "middleEvidenceInPreview": false,
+    "exactReadbackMatches": true,
+    "projectedModelBytes": 49,
+    "projectedStructuredBytes": 386796,
+    "projectedManagedFiles": 0
+  },
+  "retrieval": [
+    {
+      "exactQuery": "semaphore permits",
+      "paraphraseQuery": "concurrency limiter starvation",
+      "exactFoundTarget": true,
+      "paraphraseFoundTarget": false
+    },
+    {
+      "exactQuery": "HTTP 429",
+      "paraphraseQuery": "rate limiting request throttle",
+      "exactFoundTarget": true,
+      "paraphraseFoundTarget": false
+    },
+    {
+      "exactQuery": "EACCES chmod",
+      "paraphraseQuery": "filesystem access denied",
+      "exactFoundTarget": true,
+      "paraphraseFoundTarget": false
+    }
+  ],
+  "enumeration": {
+    "matchingRows": 32,
+    "rankedSearchRows": 3,
+    "searchIsExhaustive": false
+  },
+  "isolation": {
+    "foreignWingHits": 0,
+    "owningWingHits": 1
+  },
+  "codeMode": {
+    "value": {
+      "count": 32,
+      "sum": 31776,
+      "ids": ["row-0", "row-64", "row-128"]
+    },
+    "programBytes": 230,
+    "resultEnvelopeBytes": 114,
+    "catalogBytes": 2397,
+    "processingMs": 18.99,
+    "toolCalls": 1,
+    "truncated": false,
+    "unfilteredResultTruncated": true
+  }
+}

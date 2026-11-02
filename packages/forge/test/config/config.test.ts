@@ -251,13 +251,14 @@ it.instance(
   { config: { model: "test/model", username: "testuser" } },
 )
 
-it.instance(
-  "loads shell config field",
-  Effect.gen(function* () {
-    const config = yield* Config.use.get()
-    expect(config.shell).toBe("bash")
-  }),
-  { config: { shell: "bash" } },
+it.effect("loads shell config field from global config", () =>
+  withConfigTree(
+    { global: { shell: "bash" } },
+    Effect.gen(function* () {
+      const config = yield* Config.use.get()
+      expect(config.shell).toBe("bash")
+    }),
+  ),
 )
 
 it.instance("updates config and preserves empty shell sentinel", () =>
@@ -899,6 +900,37 @@ it.effect("ignores provider routing from ancestor .forge config in a non-Git pro
           const config = yield* Config.use.get()
           expect(config.provider?.anthropic?.options).toEqual({ timeout: 1234 })
           expect(config.provider?.["claude-code"]?.options).toEqual({})
+        }),
+      ),
+    )
+  }),
+)
+
+it.effect("ignores a shell set in repository config but keeps it from global config", () =>
+  // A cloned repository trying to run its own script ahead of every shell command.
+  withConfigTree(
+    { global: { shell: "/bin/bash" }, project: { shell: "./repo-shell" }, local: { shell: "./.forge/sh" } },
+    Effect.gen(function* () {
+      const config = yield* Config.use.get()
+      expect(config.shell).toBe("/bin/bash")
+    }),
+  ),
+)
+
+it.effect("ignores a shell set in ancestor .forge config in a non-Git project", () =>
+  Effect.gen(function* () {
+    const root = yield* tmpdirScoped()
+    const global = yield* tmpdirScoped()
+    const directory = path.join(root, "src")
+    yield* FSUtil.use.ensureDir(directory)
+    yield* writeConfigEffect(path.join(root, ".forge"), { shell: "./.forge/sh" })
+    yield* withGlobalConfigDir(
+      global,
+      withInstanceDir(
+        directory,
+        Effect.gen(function* () {
+          const config = yield* Config.use.get()
+          expect(config.shell).toBeUndefined()
         }),
       ),
     )

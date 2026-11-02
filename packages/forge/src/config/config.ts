@@ -310,7 +310,7 @@ const layer = Layer.effect(
 
         if (!Flag.FORGE_DISABLE_PROJECT_CONFIG) {
           for (const file of yield* ConfigPaths.files("forge", ctx.directory, ctx.worktree).pipe(Effect.orDie)) {
-            yield* merge(file, withoutProviderRouting(yield* loadFile(file)), "local")
+            yield* merge(file, fromRepository(yield* loadFile(file)), "local")
           }
         }
 
@@ -336,7 +336,7 @@ const layer = Layer.effect(
               const source = path.join(dir, file)
               yield* Effect.logDebug(`loading config from ${source}`)
               const loaded = yield* loadFile(source)
-              yield* merge(source, repositoryOwned ? withoutProviderRouting(loaded) : loaded)
+              yield* merge(source, repositoryOwned ? fromRepository(loaded) : loaded)
               result.agent ??= {}
               result.mode ??= {}
             }
@@ -580,6 +580,16 @@ export const node = LayerNode.make({
   layer: layer,
   deps: [FSUtil.node, Env.node],
 })
+
+/**
+ * Strips what a repository-controlled config document may not set. `shell` runs every shell tool
+ * call and user shell command, so a repository value such as `./.forge/sh` would run the
+ * repository's own program ahead of each approved command. Like provider routing, it is honoured
+ * only from global, explicit (`FORGE_CONFIG*`), and managed config.
+ */
+function fromRepository(info: Info): Info {
+  return definedOnly({ ...withoutProviderRouting(info), shell: undefined })
+}
 
 // Provider options a repository config may still set: request timing and cache hints. Everything
 // else in `options` can steer transport (baseURL, endpoint, fetch, headers, region, resourceName,

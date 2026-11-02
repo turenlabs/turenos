@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, ne, or, sql } from "drizzle-orm"
+import { and, asc, count, desc, eq, gt, ne, or, sql } from "drizzle-orm"
 import { Effect, Schema } from "effect"
 import { Database } from "../database/database"
 import { MessageDecodeError } from "./error"
@@ -30,6 +30,17 @@ export const latestCompaction = Effect.fnUntraced(function* (db: DatabaseService
     throughSeq: typeof throughSeq === "number" && Number.isSafeInteger(throughSeq) ? throughSeq : undefined,
     reason: reason === "auto" || reason === "manual" ? reason : undefined,
   }
+})
+
+// Every compaction the Session has had. History keeps only the latest checkpoint, so it cannot count them.
+export const compactionCount = Effect.fnUntraced(function* (db: DatabaseService, sessionID: SessionSchema.ID) {
+  const row = yield* db
+    .select({ count: count() })
+    .from(SessionMessageTable)
+    .where(and(eq(SessionMessageTable.session_id, sessionID), eq(SessionMessageTable.type, "compaction")))
+    .get()
+    .pipe(Effect.orDie)
+  return row?.count ?? 0
 })
 
 export const needsContinuation = Effect.fnUntraced(function* (db: DatabaseService, sessionID: SessionSchema.ID) {

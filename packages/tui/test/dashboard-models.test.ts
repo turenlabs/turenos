@@ -90,6 +90,22 @@ test("header Models targets an open draft, and Escape restores its mid-text curs
   expect(server.posts).toHaveLength(0)
 })
 
+test("Escape from header Models restores a wide-character draft's cursor, which counts display cells", async () => {
+  const server = fixture()
+  const view = await createTestRenderer({ width: 100, height: 36 })
+  cleanup.push(() => view.renderer.destroy())
+  await mountDashboard(view.renderer, server.connection, server.server.url.href).ready
+  view.mockInput.pressKey("n")
+  await view.mockInput.typeText("修复测试")
+  view.mockInput.pressArrow("left")
+  await clickText(view, "Models")
+  await waitForFrame(view, (frame) => frame.includes("For this launch draft"))
+  view.mockInput.pressEscape()
+  await waitForFrame(view, (frame) => frame.includes("What would you like to do?"))
+  await view.mockInput.typeText("X")
+  expect(view.renderer.currentFocusedEditor?.plainText).toBe("修复测X试")
+})
+
 test("navigating away from the draft model picker does not reopen the draft over another session", async () => {
   const server = fixture()
   server.sessions.push({ ...server.sessions[0]!, id: "ses_next", title: "Next session" })

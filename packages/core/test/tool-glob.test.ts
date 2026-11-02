@@ -7,6 +7,7 @@ import { LayerNode } from "@turenlabs/core/effect/layer-node"
 import { FSUtil } from "@turenlabs/core/fs-util"
 import { GlobTool } from "@turenlabs/core/tool/glob"
 import { Location } from "@turenlabs/core/location"
+import { LocationMutation } from "@turenlabs/core/location-mutation"
 import { PermissionV2 } from "@turenlabs/core/permission"
 import { Ripgrep } from "@turenlabs/core/ripgrep"
 import { AbsolutePath, RelativePath } from "@turenlabs/core/schema"
@@ -53,7 +54,14 @@ const withTool = <A, E, R>(
   }).pipe(
     Effect.provide(
       AppNodeBuilder.build(
-        LayerNode.group([ToolRegistry.node, ToolRegistry.toolsNode, FSUtil.node, Ripgrep.node, GlobTool.node]),
+        LayerNode.group([
+          ToolRegistry.node,
+          ToolRegistry.toolsNode,
+          FSUtil.node,
+          Ripgrep.node,
+          LocationMutation.node,
+          GlobTool.node,
+        ]),
         [
           [
             Location.node,
@@ -313,6 +321,44 @@ describe("GlobTool", () => {
         ),
       ([active, outside]) =>
         Effect.promise(() => Promise.all([active[Symbol.asyncDispose](), outside[Symbol.asyncDispose]()])),
+    ),
+  )
+
+  // Follow-up tools reject a relative path that leaves the Location, so a `../` result is a dead end.
+  it.live("reports paths that read and edit can follow from an aliased Location or an external search", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => Promise.all([tmpdir(), tmpdir()])),
+      ([base, outside]) =>
+        Effect.gen(function* () {
+          const alias = path.join(base.path, "alias")
+          yield* Effect.promise(async () => {
+            await fs.mkdir(path.join(base.path, "real", "src"), { recursive: true })
+            await fs.writeFile(path.join(base.path, "real", "src", "three.ts"), "a\nb\nc\n")
+            await fs.writeFile(path.join(outside.path, "lib.ts"), "a\n")
+            await fs.symlink(path.join(base.path, "real"), alias)
+          })
+          guard.allowExternal = true
+          yield* withTool(alias, (registry) =>
+            Effect.gen(function* () {
+              const mutation = yield* LocationMutation.Service
+              const internal = yield* settleTool(registry, call({ pattern: "**/*.ts" }, "call-alias"))
+              expect(internal.result).toEqual({ type: "text", value: "src/three.ts (3 lines)" })
+              expect(
+                (yield* mutation.resolve({ path: "src/three.ts", kind: "file" })).externalDirectory,
+              ).toBeUndefined()
+
+              const external = yield* settleTool(
+                registry,
+                call({ pattern: "*.ts", path: RelativePath.make(outside.path) }, "call-external"),
+              )
+              const file = path.join(outside.path, "lib.ts")
+              expect(external.result).toEqual({ type: "text", value: `${file} (1 lines)` })
+              expect((yield* mutation.resolve({ path: file, kind: "file" })).canonical).toBe(file)
+            }),
+          )
+        }),
+      ([base, outside]) =>
+        Effect.promise(() => Promise.all([base[Symbol.asyncDispose](), outside[Symbol.asyncDispose]()])),
     ),
   )
 })

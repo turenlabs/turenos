@@ -1,4 +1,4 @@
-import { marked, type MarkedExtension, type Tokens } from "marked"
+import { marked, Renderer, type MarkedExtension, type Tokens } from "marked"
 import markedShiki from "marked-shiki"
 import katex from "katex"
 import { bundledLanguages, type BundledLanguage } from "shiki"
@@ -518,6 +518,17 @@ async function highlightCodeBlocks(html: string): Promise<string> {
   return result
 }
 
+export const markedExternalLink = {
+  renderer: {
+    // marked's own link renderer parses the label's inline Markdown and escapes the href and title.
+    link(token) {
+      return Renderer.prototype.link
+        .call(this, token)
+        .replace(/^(<a [^>]*)>/, '$1 class="external-link" target="_blank" rel="noopener noreferrer">')
+    },
+  },
+} satisfies MarkedExtension
+
 export type NativeMarkdownParser = (markdown: string) => Promise<string>
 
 export const { use: useMarked, provider: MarkedProvider } = createSimpleContext({
@@ -525,14 +536,7 @@ export const { use: useMarked, provider: MarkedProvider } = createSimpleContext(
   init: (props: { nativeParser?: NativeMarkdownParser }) => {
     const jsParser = marked.use(
       markedCodeSpanBoundary,
-      {
-        renderer: {
-          link({ href, title, text }) {
-            const titleAttr = title ? ` title="${title}"` : ""
-            return `<a href="${href}"${titleAttr} class="external-link" target="_blank" rel="noopener noreferrer">${text}</a>`
-          },
-        },
-      },
+      markedExternalLink,
       katexExtension,
       markedShiki({
         async highlight(code, lang) {

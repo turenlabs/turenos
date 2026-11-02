@@ -192,10 +192,7 @@ const layer = Layer.effect(
               callID: context.toolCallID,
             }
             const target = yield* mutation.resolve({ path: input.workdir ?? ".", kind: "directory" })
-            const entries = yield* config.entries()
-            const shell =
-              Object.assign({}, ...entries.flatMap((entry) => (entry.type === "document" ? [entry.info] : []))).shell ??
-              defaultShell()
+            const shell = Config.shell(yield* config.entries()) ?? defaultShell()
             const violation = yield* ShellSafety.inspect({
               command: input.command,
               cwd: target.canonical,

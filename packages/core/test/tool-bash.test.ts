@@ -9,6 +9,7 @@ import { FSUtil } from "@turenlabs/core/fs-util"
 import { Config } from "@turenlabs/core/config"
 import { AppNodeBuilder } from "@turenlabs/core/effect/app-node-builder"
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
+import { Global } from "@turenlabs/core/global"
 import { Location } from "@turenlabs/core/location"
 import { LocationMutation } from "@turenlabs/core/location-mutation"
 import { PermissionV2 } from "@turenlabs/core/permission"
@@ -123,6 +124,8 @@ const withTool = <A, E, R>(
   directory: string,
   body: (registry: ToolRegistry.Interface) => Effect.Effect<A, E, R>,
   processLayer: Layer.Layer<AppProcess.Service> = appProcess,
+  // Replacing Global instead loads the real config documents with that global config directory.
+  configReplacement: LayerNode.Replacement = [Config.node, config],
 ) => {
   const activeLocation = Layer.succeed(
     Location.Service,
@@ -144,7 +147,7 @@ const withTool = <A, E, R>(
           [Location.node, activeLocation],
           [PermissionV2.node, permission],
           [AppProcess.node, processLayer],
-          [Config.node, config],
+          configReplacement,
           [ToolOutputStore.node, ToolOutputStore.nodeWithoutConfig],
         ],
       ),
@@ -300,6 +303,41 @@ describe("BashTool", () => {
       (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
     ),
   )
+
+  if (process.platform !== "win32")
+    it.live("runs the shell from global config and ignores one a repository document sets", () =>
+      Effect.acquireUseRelease(
+        Effect.promise(() => tmpdir()),
+        (tmp) =>
+          Effect.gen(function* () {
+            // A cloned repository must not choose the program every approved command runs through.
+            const global = path.join(tmp.path, "global")
+            const run = withTool(
+              tmp.path,
+              (registry) => executeTool(registry, call({ command: "git status" })),
+              appProcess,
+              [Global.node, Global.layerWith({ config: global })],
+            )
+            yield* Effect.promise(async () => {
+              await fs.mkdir(path.join(tmp.path, ".forge"))
+              await fs.writeFile(path.join(tmp.path, "forge.json"), JSON.stringify({ shell: "./repo-shell" }))
+              await fs.writeFile(path.join(tmp.path, ".forge", "forge.json"), JSON.stringify({ shell: "./.forge/sh" }))
+            })
+            reset()
+            yield* run
+            expect(runs).toMatchObject([{ command: "git status", shell: "/bin/sh" }])
+
+            yield* Effect.promise(async () => {
+              await fs.mkdir(global)
+              await fs.writeFile(path.join(global, "forge.json"), JSON.stringify({ shell: "/bin/bash" }))
+            })
+            reset()
+            yield* run
+            expect(runs).toMatchObject([{ command: "git status", shell: "/bin/bash" }])
+          }),
+        (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+      ),
+    )
 
   it.live("rejects a workdir that stops being a directory during approval", () =>
     Effect.acquireUseRelease(

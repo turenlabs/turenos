@@ -5,6 +5,7 @@ import { Effect, Layer } from "effect"
 import { AppNodeBuilder } from "@turenlabs/core/effect/app-node-builder"
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
 import { Location } from "@turenlabs/core/location"
+import { LocationMutation } from "@turenlabs/core/location-mutation"
 import { PermissionV2 } from "@turenlabs/core/permission"
 import { Ripgrep } from "@turenlabs/core/ripgrep"
 import { AbsolutePath } from "@turenlabs/core/schema"
@@ -52,15 +53,18 @@ const withTool = <A, E, R>(
     return yield* body(registry)
   }).pipe(
     Effect.provide(
-      AppNodeBuilder.build(LayerNode.group([ToolRegistry.node, ToolRegistry.toolsNode, GrepTool.node]), [
+      AppNodeBuilder.build(
+        LayerNode.group([ToolRegistry.node, ToolRegistry.toolsNode, LocationMutation.node, GrepTool.node]),
         [
-          Location.node,
-          Layer.succeed(Location.Service, Location.Service.of(location({ directory: AbsolutePath.make(directory) }))),
+          [
+            Location.node,
+            Layer.succeed(Location.Service, Location.Service.of(location({ directory: AbsolutePath.make(directory) }))),
+          ],
+          [PermissionV2.node, authorization],
+          ...(backend ? [[Ripgrep.node, backend] as const] : []),
+          [ToolOutputStore.node, ToolOutputStore.nodeWithoutConfig],
         ],
-        [PermissionV2.node, authorization],
-        ...(backend ? [[Ripgrep.node, backend] as const] : []),
-        [ToolOutputStore.node, ToolOutputStore.nodeWithoutConfig],
-      ]),
+      ),
     ),
   )
 const call = (id: string, input: typeof GrepTool.Input.Encoded) => ({
@@ -382,6 +386,42 @@ describe("GrepTool", () => {
         ),
       ([active, outside]) =>
         Effect.promise(() => Promise.all([active[Symbol.asyncDispose](), outside[Symbol.asyncDispose]()])),
+    ),
+  )
+
+  // Follow-up tools reject a relative path that leaves the Location, so a `../` result is a dead end.
+  it.live("reports paths that read and edit can follow from an aliased Location or an external search", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => Promise.all([tmpdir(), tmpdir()])),
+      ([base, outside]) =>
+        Effect.gen(function* () {
+          const alias = path.join(base.path, "alias")
+          yield* Effect.promise(async () => {
+            await fs.mkdir(path.join(base.path, "real", "src"), { recursive: true })
+            await fs.writeFile(path.join(base.path, "real", "src", "a.ts"), "needle\n")
+            await fs.writeFile(path.join(outside.path, "lib.ts"), "needle\n")
+            await fs.symlink(path.join(base.path, "real"), alias)
+          })
+          guard.allowExternal = true
+          yield* withTool(alias, (registry) =>
+            Effect.gen(function* () {
+              const mutation = yield* LocationMutation.Service
+              const internal = yield* executeTool(registry, call("call-alias", { pattern: "needle" }))
+              expect(internal).toEqual({ type: "text", value: "Found 1 matches\nsrc/a.ts:\n  Line 1: needle\n" })
+              expect((yield* mutation.resolve({ path: "src/a.ts", kind: "file" })).externalDirectory).toBeUndefined()
+
+              const external = yield* executeTool(
+                registry,
+                call("call-external", { pattern: "needle", path: outside.path }),
+              )
+              const file = path.join(outside.path, "lib.ts")
+              expect(external).toEqual({ type: "text", value: `Found 1 matches\n${file}:\n  Line 1: needle\n` })
+              expect((yield* mutation.resolve({ path: file, kind: "file" })).canonical).toBe(file)
+            }),
+          )
+        }),
+      ([base, outside]) =>
+        Effect.promise(() => Promise.all([base[Symbol.asyncDispose](), outside[Symbol.asyncDispose]()])),
     ),
   )
 })

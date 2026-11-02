@@ -80,6 +80,7 @@ export function make(input: {
 }): Interface {
   const session = input.session ?? makeSessionService()
   const directoryService = input.directory ?? makeDirectoryService()
+  const usage = input.usage ?? makeUsageService(input.sdk)
   const sessionSnapshots = new Map<string, Directory.Snapshot>()
   const events = input.connection
     ? ACPEvent.start({ sdk: input.sdk, connection: input.connection, session })
@@ -512,7 +513,7 @@ export function make(input: {
             ),
           "session",
         )
-        yield* sendUsageUpdate(input.usage, input.sdk, input.connection, current.id, current.cwd)
+        yield* sendUsageUpdate(usage, input.connection, current.id, current.cwd)
         return yield* promptResponse(response.info, params.messageId)
       }
 
@@ -534,7 +535,7 @@ export function make(input: {
             ),
           "session",
         )
-        yield* sendUsageUpdate(input.usage, input.sdk, input.connection, current.id, current.cwd)
+        yield* sendUsageUpdate(usage, input.connection, current.id, current.cwd)
         return yield* promptResponse(response.info, params.messageId)
       }
 
@@ -554,7 +555,7 @@ export function make(input: {
         )
       }
 
-      yield* sendUsageUpdate(input.usage, input.sdk, input.connection, current.id, current.cwd)
+      yield* sendUsageUpdate(usage, input.connection, current.id, current.cwd)
       return yield* promptResponse(undefined, params.messageId)
     }),
     cancel,
@@ -582,9 +583,22 @@ function makeDirectoryService() {
 }
 
 function makeUsageService(sdk: ForgeClient) {
-  return ManagedRuntime.make(
+  // The usage graph opens the database, whose layer builds asynchronously, so
+  // it cannot be resolved with runSync. The runtime builds its layer on the
+  // first usage update, concurrent callers wait on that one build, and every
+  // later prompt reuses the service and its context-limit cache.
+  const runtime = ManagedRuntime.make(
     AppNodeBuilderV1.build(UsageService.node, [[UsageService.messageLoaderNode, UsageService.messageLoaderLayer(sdk)]]),
-  ).runSync(UsageService.Service.use((service) => Effect.succeed(service)))
+  )
+  const use = <A>(f: (service: UsageService.Interface) => Effect.Effect<A>) =>
+    runtime.contextEffect.pipe(Effect.flatMap((context) => f(Context.get(context, UsageService.Service))))
+  return {
+    buildUsage: UsageService.buildUsage,
+    latestAssistantMessage: UsageService.latestAssistantMessage,
+    totalSessionCost: UsageService.totalSessionCost,
+    contextLimit: (input) => use((service) => service.contextLimit(input)),
+    sendUpdate: (input) => use((service) => service.sendUpdate(input)),
+  } satisfies UsageService.Interface
 }
 
 function replayMessages(subscription: ACPEvent.Subscription | undefined, messages: SessionMessageResponse[]) {
@@ -715,18 +729,20 @@ function promptErrorMessage(error: AssistantError) {
 }
 
 function sendUsageUpdate(
-  usage: UsageService.Interface | undefined,
-  sdk: ForgeClient,
+  usage: UsageService.Interface,
   connection: ServiceConnection | undefined,
   sessionID: string,
   directory: string,
 ) {
   if (!connection) return Effect.void
-  return (usage ?? makeUsageService(sdk)).sendUpdate({
-    connection,
-    sessionID,
-    directory,
-  })
+  // The backend has already finished the turn, and the usage runtime caches a
+  // failed build, so a failed update must not fail this or any later prompt.
+  // There is no timeout: usage.ts caches each context-limit load with
+  // Effect.cached, which keeps an interrupted first load and would fail every
+  // later update for that directory and model.
+  return usage
+    .sendUpdate({ connection, sessionID, directory })
+    .pipe(Effect.catchCause((cause) => Effect.logWarning("ACP usage update failed", { cause })))
 }
 
 function selectVariant(snapshot: Directory.Snapshot, model: Directory.DefaultModel) {

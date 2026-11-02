@@ -3,7 +3,12 @@ import type { ServerConnection } from "@/context/server"
 import { decode64 } from "@/utils/base64"
 
 export function authTokenFromCredentials(input: { username?: string; password: string }) {
-  return btoa(`${input.username ?? "forge"}:${input.password}`)
+  // The server decodes Basic credentials as UTF-8, while btoa only takes Latin-1 code units.
+  return btoa(
+    Array.from(new TextEncoder().encode(`${input.username ?? "forge"}:${input.password}`), (byte) =>
+      String.fromCharCode(byte),
+    ).join(""),
+  )
 }
 
 export function authFromToken(token: string | null) {

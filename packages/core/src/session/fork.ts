@@ -69,12 +69,13 @@ export const plan = Effect.fn("SessionFork.plan")(function* (
 /**
  * Writes a planned transcript onto a freshly created Session.
  *
- * V2 has no `part` rows and no cross-message pointers, so this is a row copy and
- * nothing more. In particular there is no V2 analogue of V1's
- * `compaction.tail_start_id` rewiring: a V2 `compaction` message carries its tail
- * inline as `recent` text, and history assembly cuts positionally with
- * `seq >= compaction.seq` (see history.ts). Preserving relative order preserves
- * the cut, so there is no pointer left to remap.
+ * V2 has no `part` rows, so this is a row copy with one pointer to remap: a
+ * `compaction` message's `throughSeq`, the V2 analogue of V1's
+ * `compaction.tail_start_id`. History assembly keeps the rows after it as the
+ * checkpoint's structured tail (see history.ts), but it names a seq in the source
+ * Session, so each copy points at the new seq of the last copied row at or before
+ * it. A checkpoint without `throughSeq` cuts at its own seq, which preserving
+ * relative order already keeps.
  *
  * Copied rows take negative `seq` values, exactly as transcript adoption does for
  * a converted legacy transcript. The new Session's own durable event log starts at
@@ -101,13 +102,19 @@ export const apply = Effect.fn("SessionFork.apply")(function* (
         for (const [index, row] of rows.entries()) {
           const id = SessionMessage.ID.create()
           const seq = index - rows.length
-          // `synthetic` is the one message shape that embeds its own sessionID in
-          // `data`; every other field is position independent. The column type is
-          // a union that `type` cannot narrow, hence the assertion.
+          // `synthetic` embeds its own sessionID in `data`, and `compaction` names a
+          // source row by its seq in `throughSeq`; every other field is position
+          // independent. When no copied row is at or before `throughSeq`,
+          // `findLastIndex` gives -1 and the cut still lands below every copied row.
+          // The column type is a union that `type` cannot narrow, hence the assertion.
+          const throughSeq =
+            "throughSeq" in row.data && typeof row.data.throughSeq === "number" ? row.data.throughSeq : undefined
           const data = (
             row.type === "synthetic"
               ? { ...(row.data as Record<string, unknown>), sessionID: input.targetID }
-              : row.data
+              : throughSeq === undefined
+                ? row.data
+                : { ...row.data, throughSeq: rows.findLastIndex((source) => source.seq <= throughSeq) - rows.length }
           ) as typeof SessionMessageTable.$inferInsert.data
           yield* SessionInput.projectMessageIdentity(db, {
             id,

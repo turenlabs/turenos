@@ -4,6 +4,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { pathToFileURL } from "node:url"
+import { Match } from "@turenlabs/schema/filesystem"
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
 import { Ripgrep } from "@turenlabs/core/ripgrep"
 import { RipgrepWasm } from "@turenlabs/core/ripgrep/wasm"
@@ -28,6 +29,7 @@ w("sub/b.ts", "foo sub\nnested foo\n")
 w("sub/c.md", "foo doc\n")
 w("bin.dat", Buffer.concat([Buffer.from("foo before\n"), Buffer.from([0])]))
 w("nonewline.txt", "foo tail")
+w("empty.txt", "")
 // Windows denies symlink creation without developer mode/admin.
 let hasSymlinks = false
 if (process.platform !== "win32") {
@@ -107,6 +109,21 @@ describe("ripgrep wasm", () => {
     for (const f of files) expect(got.get(f)).toBe(expected.get(f))
   })
 
+  // rg leaves the path off its output when it searches a single path, and exits 1
+  // when an empty file gives `^` nothing to match, so a lone file, even an empty
+  // one, must still come back keyed by its path.
+  test("lines counts a single file like native", async () => {
+    for (const [file, count] of [
+      ["sub/b.ts", 2],
+      ["empty.txt", 0],
+    ] as const) {
+      const expected = await runNative((r) => r.lines({ cwd: fixture, files: [file] }))
+      const got = await runWasm((r) => r.lines({ cwd: fixture, files: [file] }))
+      expect(expected.get(file)).toBe(count)
+      expect(got.get(file)).toBe(count)
+    }
+  })
+
   test("grep matches native", async () => {
     const input = { cwd: fixture, pattern: "foo", limit: 100 }
     const expected = await runNative((r) => r.grep(input))
@@ -116,12 +133,69 @@ describe("ripgrep wasm", () => {
     expect(got.map(key).sort()).toEqual(expected.map(key).sort())
   })
 
+  // rg --json writes a line or match that is not valid UTF-8 as base64 `bytes`
+  // instead of `text`; one Latin-1 line must not fail the whole native search.
+  test("grep on a line that is not UTF-8 matches native", async () => {
+    const latin1 = fs.mkdtempSync(path.join(os.tmpdir(), "rgwasm-latin1-"))
+    fs.writeFileSync(path.join(latin1, "good.ts"), "const needle = 1\n")
+    fs.writeFileSync(path.join(latin1, "legacy.c"), Buffer.from("/* needle caf\xe9 */\n", "latin1"))
+    const key = (m: Match) =>
+      `${m.entry.path}:${m.line}:${m.offset}:${m.text}:${m.submatches.map((s) => `${s.start},${s.end},${s.text}`).join(";")}`
+    for (const pattern of ["needle", "caf(?-u:\\xE9)"]) {
+      const input = { cwd: latin1, pattern, limit: 100 }
+      const expected = await runNative((r) => r.grep(input))
+      const got = await runWasm((r) => r.grep(input))
+      expect(expected.map(key).sort()).toEqual(got.map(key).sort())
+    }
+    const native = await runNative((r) => r.grep({ cwd: latin1, pattern: "needle", limit: 100 }))
+    expect(native.map((m) => `${m.entry.path}:${m.text}`).sort()).toEqual([
+      "good.ts:const needle = 1\n",
+      "legacy.c:/* needle caf\uFFFD */\n",
+    ])
+  })
+
   test("grep with include glob matches native", async () => {
     const input = { cwd: fixture, pattern: "foo", include: "*.ts", limit: 100 }
     const expected = await runNative((r) => r.grep(input))
     const got = await runWasm((r) => r.grep(input))
     expect(got.map((m) => m.entry.path).sort()).toEqual(expected.map((m) => m.entry.path).sort())
     expect(got.every((m) => m.entry.path.endsWith(".ts"))).toBe(true)
+  })
+
+  // A --json match record carries the whole matching line, so one match in a
+  // minified bundle or source map makes a record of hundreds of kilobytes.
+  test("grep on a line over 64 KiB matches native", async () => {
+    const long = fs.mkdtempSync(path.join(os.tmpdir(), "rgwasm-long-"))
+    fs.writeFileSync(path.join(long, "app.min.js"), `${"x".repeat(200_000)} needle ${"y".repeat(1_000)}\n`)
+    fs.writeFileSync(path.join(long, "short.ts"), "const needle = 1\n")
+    const input = { cwd: long, pattern: "needle", limit: 100 }
+    const native = await runNative((r) => r.grep(input))
+    const got = await runWasm((r) => r.grep(input))
+    expect(Object.fromEntries(native.map((m) => [m.entry.path, m]))).toEqual(
+      Object.fromEntries(got.map((m) => [m.entry.path, m])),
+    )
+    expect(native.map((m) => String(m.entry.path)).sort()).toEqual(["app.min.js", "short.ts"])
+    expect(native.find((m) => m.entry.path === "app.min.js")?.text).toBe(`${"x".repeat(2_000)}...`)
+  })
+
+  test("native grep bounds long submatch previews without changing offsets", async () => {
+    const long = fs.mkdtempSync(path.join(os.tmpdir(), "rg-native-long-match-"))
+    try {
+      for (let index = 0; index < 4; index++) {
+        fs.writeFileSync(path.join(long, `${index}.txt`), `prefix\n${"x".repeat(131_072)}\n`)
+      }
+      const matches = await runNative((r) => r.grep({ cwd: long, pattern: "^x+$", limit: 4 }))
+      expect(matches).toHaveLength(4)
+      for (const match of matches) {
+        expect(match.line).toBe(2)
+        expect(match.offset).toBe(7)
+        expect(match.text).toBe(`${"x".repeat(2_000)}...`)
+        expect(match.submatches).toEqual([{ text: `${"x".repeat(2_000)}...`, start: 0, end: 131_072 }])
+      }
+      expect(Buffer.byteLength(JSON.stringify(matches))).toBeLessThan(20_000)
+    } finally {
+      fs.rmSync(long, { recursive: true, force: true })
+    }
   })
 
   // The host hands file contents to the wasm side in bounded batches (8 MiB). A

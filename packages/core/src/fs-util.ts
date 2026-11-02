@@ -166,13 +166,17 @@ export namespace FSUtil {
 
       const up = Effect.fn("FileSystem.up")(function* (options: { targets: string[]; start: string; stop?: string }) {
         const result: string[] = []
+        // The start keeps the spelling the caller opened, which can go through a symlink or end in a
+        // separator, while the stop is often canonical. Compare real paths so the walk still ends at
+        // the stop instead of continuing to the filesystem root.
+        const stop = options.stop === undefined ? undefined : yield* resolve(options.stop)
         let current = options.start
         while (true) {
           for (const target of options.targets) {
             const search = join(current, target)
             if (yield* fs.exists(search)) result.push(search)
           }
-          if (options.stop === current) break
+          if (stop !== undefined && (yield* resolve(current)) === stop) break
           const parent = dirname(current)
           if (parent === current) break
           current = parent

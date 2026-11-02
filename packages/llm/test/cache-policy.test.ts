@@ -124,10 +124,18 @@ describe("applyCachePolicy", () => {
       )
       expect((next.body as typeof body).messages.slice(0, -1)).toEqual(body.messages.slice(0, -1))
 
+      // Converse keeps roles alternating, so the trailing context joins the tool-result message after its cache point.
       const bedrock = yield* LLMClient.prepare(LLM.updateRequest(request, { model: bedrockModel }))
       expect(bedrock.body).toMatchObject({
         messages: expect.arrayContaining([
-          { role: "user", content: [{ toolResult: expect.anything() }, { cachePoint: { type: "default" } }] },
+          {
+            role: "user",
+            content: [
+              { toolResult: expect.anything() },
+              { cachePoint: { type: "default" } },
+              { text: "goal: 123 tokens remaining" },
+            ],
+          },
         ]),
       })
     }),

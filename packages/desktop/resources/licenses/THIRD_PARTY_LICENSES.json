@@ -1275,7 +1275,7 @@
     },
     {
       "name": "@modelcontextprotocol/sdk",
-      "version": "1.31.0",
+      "version": "1.32.0",
       "license": "MIT",
       "source": "git+https://github.com/modelcontextprotocol/typescript-sdk.git",
       "licenseFiles": [
@@ -4597,7 +4597,7 @@
     },
     {
       "name": "electron",
-      "version": "42.11.1",
+      "version": "42.11.16",
       "license": "MIT",
       "source": "https://github.com/electron/electron",
       "licenseFiles": [

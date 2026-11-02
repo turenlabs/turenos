@@ -205,6 +205,22 @@ describe("tool.edit", () => {
       }),
     )
 
+    // A lossy decode would turn every non-UTF-8 byte in the file into U+FFFD on write, far from the
+    // replaced text.
+    it.instance("refuses a file that is not valid UTF-8 and leaves its bytes unchanged", () =>
+      Effect.gen(function* () {
+        const test = yield* TestInstance
+        const filepath = path.join(test.directory, "legacy.c")
+        const original = Buffer.concat([Buffer.from("/* caf"), Buffer.from([0xe9]), Buffer.from(" */\nint x = 1;\n")])
+        yield* Effect.promise(() => fs.writeFile(filepath, original))
+
+        expect((yield* fail({ filePath: filepath, oldString: "int x = 1;", newString: "int x = 2;" })).message).toBe(
+          `File is not valid UTF-8: ${filepath}. Only UTF-8 text files can be edited.`,
+        )
+        expect(yield* Effect.promise(() => fs.readFile(filepath))).toEqual(original)
+      }),
+    )
+
     it.instance("throws error when oldString not found in file", () =>
       Effect.gen(function* () {
         const test = yield* TestInstance

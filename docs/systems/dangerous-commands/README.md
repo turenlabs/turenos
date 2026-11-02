@@ -132,7 +132,9 @@ Two `forge.json` keys are relevant to the surrounding behaviour:
 
 `shell` is documented as "Default shell to use for terminal and shell tool execution". It matters here only because
 `ShellSafety.kind` derives the grammar from it: setting it to `pwsh` selects PowerShell analysis, setting it to `cmd.exe`
-selects the `cmd` path, and setting it to anything else selects bash analysis.
+selects the `cmd` path, and setting it to anything else selects bash analysis. The V2 `bash` tool reads it only from the
+global config files. Neither it nor the legacy `shell` tool uses a value from a repository's `forge.json` or `.forge/`
+files; see [Configuration](../configuration.md#where-configuration-is-read).
 
 Older configuration files use the v1 `permission` object (keyed by tool) instead. Session V2 migrates it into
 `permissions` when it reads the file, and the legacy `shell` tool reads it directly; see

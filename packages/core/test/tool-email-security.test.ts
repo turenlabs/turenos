@@ -109,6 +109,77 @@ describe("EmailSecurityTools", () => {
           expect(attachment.value).toContain('"mime_filename_mismatch": true')
           expect(attachment.value).toContain("use email_extract_attachment")
 
+          const single = yield* executeTool(registry, {
+            sessionID: SessionV2.ID.make("ses_email_attachment_test"),
+            ...toolIdentity,
+            call: {
+              type: "tool-call",
+              id: "call-email-single-attachment",
+              name: "email_attachment_inspect",
+              input: { path: "message.eml" },
+            },
+          })
+          expect(single.type).toBe("text")
+          if (single.type === "text") expect(single.value).toContain('"index": 0')
+
+          yield* Effect.promise(() =>
+            fs.writeFile(
+              `${tmp.path}/duplicate.eml`,
+              [
+                'Content-Type: multipart/mixed; boundary="duplicate"',
+                "",
+                "--duplicate",
+                'Content-Disposition: attachment; filename="invoice.txt"',
+                "Content-Type: text/plain",
+                "",
+                "first",
+                "--duplicate",
+                'Content-Disposition: attachment; filename="invoice.txt"',
+                "Content-Type: text/plain",
+                "",
+                "second",
+                "--duplicate--",
+                "",
+              ].join("\r\n"),
+            ),
+          )
+          const unselected = yield* executeTool(registry, {
+            sessionID: SessionV2.ID.make("ses_email_attachment_test"),
+            ...toolIdentity,
+            call: {
+              type: "tool-call",
+              id: "call-email-unselected-attachments",
+              name: "email_attachment_inspect",
+              input: { path: "duplicate.eml" },
+            },
+          })
+          expect(unselected.type).toBe("error")
+          if (unselected.type === "error") expect(unselected.value).toContain("2 attachments")
+          const ambiguous = yield* executeTool(registry, {
+            sessionID: SessionV2.ID.make("ses_email_attachment_test"),
+            ...toolIdentity,
+            call: {
+              type: "tool-call",
+              id: "call-email-duplicate-name",
+              name: "email_attachment_inspect",
+              input: { path: "duplicate.eml", attachmentName: "invoice.txt" },
+            },
+          })
+          expect(ambiguous.type).toBe("error")
+          if (ambiguous.type === "error") expect(ambiguous.value).toContain("matches attachments 0, 1")
+          const selectedDuplicate = yield* executeTool(registry, {
+            sessionID: SessionV2.ID.make("ses_email_attachment_test"),
+            ...toolIdentity,
+            call: {
+              type: "tool-call",
+              id: "call-email-duplicate-index",
+              name: "email_attachment_inspect",
+              input: { path: "duplicate.eml", attachmentName: "invoice.txt", attachmentIndex: 1 },
+            },
+          })
+          expect(selectedDuplicate.type).toBe("text")
+          if (selectedDuplicate.type === "text") expect(selectedDuplicate.value).toContain('"index": 1')
+
           const links = yield* executeTool(registry, {
             sessionID: SessionV2.ID.make("ses_email_links_test"),
             ...toolIdentity,
@@ -142,12 +213,14 @@ describe("EmailSecurityTools", () => {
               input: { path: "message.eml" },
             },
           })
-          expect(sanitized.type).toBe("text")
-          if (sanitized.type !== "text") return
-          expect(sanitized.value).toContain('href="https://example.test/login"')
-          expect(sanitized.value).not.toContain("javascript:")
-          expect(sanitized.value).not.toContain("onclick")
-          expect(sanitized.value).not.toContain("alert(3)")
+          expect(sanitized.type).toBe("content")
+          if (sanitized.type !== "content") return
+          const sanitizedText = sanitized.value.flatMap((item) => (item.type === "text" ? [item.text] : [])).join("")
+          expect(sanitizedText).toContain("[Captured result res_")
+          expect(sanitizedText).toContain('href="https://example.test/login"')
+          expect(sanitizedText).not.toContain("javascript:")
+          expect(sanitizedText).not.toContain("onclick")
+          expect(sanitizedText).not.toContain("alert(3)")
         }).pipe(
           Effect.provide(
             AppNodeBuilder.build(

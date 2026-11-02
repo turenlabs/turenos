@@ -60,6 +60,24 @@ test("a name-only edit leaves the schedule alone and a changed schedule is sent"
   expect(patched(changed)).toMatchObject({ intervalSeconds: 7200 })
 })
 
+test("a name-only edit keeps a multi-line or long prompt and a changed prompt is sent", async () => {
+  // The single-line field holds neither line breaks nor more than 4,096 characters.
+  for (const prompt of ["Run the tests.\n\nThen:\n- summarise failures", "x".repeat(5000)]) {
+    const app = await editLoop({ ...loop, prompt })
+    await app.screen("It is saved only if you change it.")
+    await app.confirm(" two")
+    await app.screen("Automation saved.")
+    expect(patched(app)).toEqual({ name: "Nightly check two" })
+  }
+
+  const changed = await editLoop(loop)
+  expect(await changed.screen("Edit automation")).not.toContain("whole prompt")
+  changed.view.mockInput.pressTab()
+  await changed.confirm(" now")
+  await changed.screen("Automation saved.")
+  expect(patched(changed)).toEqual({ name: "Nightly check", prompt: "Run the tests now" })
+})
+
 test("an interval too long to count in seconds is refused with a reason", async () => {
   const app = await editLoop(loop)
   app.view.mockInput.pressTab()

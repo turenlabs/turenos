@@ -1,6 +1,6 @@
 export * as Ripgrep from "./ripgrep"
 
-import { Context, Effect, Fiber, Layer, Schema, Stream } from "effect"
+import { Context, Effect, Fiber, Layer, Schema, SchemaGetter, Stream } from "effect"
 import { ChildProcess } from "effect/unstable/process"
 import { Entry, Match } from "@turenlabs/schema/filesystem"
 import { makeGlobalNode } from "./effect/app-node"
@@ -18,19 +18,30 @@ import { Protected } from "./filesystem/protected"
  */
 
 const ERROR_BYTES = 8 * 1024
-const MAX_RECORD_BYTES = 64 * 1024
 const MAX_SUBMATCHES = 100
+
+// rg --json writes a path, line or match that is not valid UTF-8 as base64
+// `bytes` instead of `text`. Decode it lossily, as the WASM backend does.
+const ArbitraryData = Schema.Union([
+  Schema.Struct({ text: Schema.String }),
+  Schema.Struct({ bytes: Schema.String }).pipe(
+    Schema.decodeTo(Schema.Struct({ text: Schema.String }), {
+      decode: SchemaGetter.transform((data) => ({ text: Buffer.from(data.bytes, "base64").toString("utf8") })),
+      encode: SchemaGetter.transform((data) => ({ bytes: Buffer.from(data.text, "utf8").toString("base64") })),
+    }),
+  ),
+])
 
 const RawMatch = Schema.Struct({
   type: Schema.Literal("match"),
   data: Schema.Struct({
-    path: Schema.Struct({ text: Schema.String }),
-    lines: Schema.Struct({ text: Schema.String }),
+    path: ArbitraryData,
+    lines: ArbitraryData,
     line_number: PositiveInt,
     absolute_offset: NonNegativeInt,
     submatches: Schema.Array(
       Schema.Struct({
-        match: Schema.Struct({ text: Schema.String }),
+        match: ArbitraryData,
         start: NonNegativeInt,
         end: NonNegativeInt,
       }),
@@ -171,7 +182,9 @@ const native = Layer.effect(
           if (code !== 0 && code !== 1 && code !== 2) {
             return yield* failure(stderr.trim() || `ripgrep failed with code ${code}`)
           }
-          return { items: code === 1 ? [] : rows, truncated: false, partial: code === 2 }
+          // Exit 1 means nothing matched, which leaves other searches with no parsed
+          // rows, but `--count --include-zero` still lists each file it counted as zero.
+          return { items: rows, truncated: false, partial: code === 2 }
         }),
       )
       const abortable = input.signal ? program.pipe(Effect.raceFirst(waitForAbort(input.signal))) : program
@@ -230,7 +243,18 @@ const native = Layer.effect(
               // Explicit paths keep the cost proportional to the requested files rather
               // than the tree; ripgrep always searches a path it was handed, so binary
               // files report the lines found before NUL detection stopped the scan.
-              args: ["--no-config", "--count", "--include-zero", "--no-messages", "--", "^", ...files],
+              // rg omits the path when it searches a single path; --with-filename keeps
+              // a one-file batch keyed by its path.
+              args: [
+                "--no-config",
+                "--count",
+                "--include-zero",
+                "--no-messages",
+                "--with-filename",
+                "--",
+                "^",
+                ...files,
+              ],
               parse: (line) => {
                 const separator = line.lastIndexOf(":")
                 const count = separator < 0 ? Number.NaN : Number(line.slice(separator + 1))
@@ -290,14 +314,15 @@ const native = Layer.effect(
             input.pattern,
             input.file ?? ".",
           ],
+          // rg ignores --max-columns under --json, so a match record carries its whole line,
+          // however long. Cap the line text while parsing so a collected row keeps at most 2,000
+          // characters of it. Bound each retained submatch preview too, but preserve
+          // its original byte offsets even when its text is truncated.
           parse: (line) =>
-            (Buffer.byteLength(line, "utf8") > MAX_RECORD_BYTES
-              ? Effect.fail(failure(`Ripgrep JSON record exceeded ${MAX_RECORD_BYTES} bytes`))
-              : Effect.try({
-                  try: () => JSON.parse(line) as unknown,
-                  catch: (cause) => failure("Invalid ripgrep JSON output", cause),
-                })
-            ).pipe(
+            Effect.try({
+              try: () => JSON.parse(line) as unknown,
+              catch: (cause) => failure("Invalid ripgrep JSON output", cause),
+            }).pipe(
               Effect.flatMap((json) => {
                 if (!json || typeof json !== "object" || !("type" in json) || json.type !== "match")
                   return Effect.succeed(undefined)
@@ -305,7 +330,21 @@ const native = Layer.effect(
                   Effect.map((match) => ({
                     ...match.data,
                     path: { text: match.data.path.text.replace(/^\.[\\/]/, "") },
-                    submatches: match.data.submatches.slice(0, MAX_SUBMATCHES),
+                    lines: {
+                      text:
+                        match.data.lines.text.length > 2_000
+                          ? match.data.lines.text.slice(0, 2_000) + "..."
+                          : match.data.lines.text,
+                    },
+                    submatches: match.data.submatches.slice(0, MAX_SUBMATCHES).map((submatch) => ({
+                      ...submatch,
+                      match: {
+                        text:
+                          submatch.match.text.length > 2_000
+                            ? submatch.match.text.slice(0, 2_000) + "..."
+                            : submatch.match.text,
+                      },
+                    })),
                   })),
                   Effect.mapError((cause) => failure("Invalid ripgrep match output", cause)),
                 )
@@ -325,7 +364,7 @@ const native = Layer.effect(
                 }),
                 line: match.line_number,
                 offset: match.absolute_offset,
-                text: match.lines.text.length > 2_000 ? match.lines.text.slice(0, 2_000) + "..." : match.lines.text,
+                text: match.lines.text,
                 submatches: match.submatches.map((submatch) => ({
                   text: submatch.match.text,
                   start: submatch.start,

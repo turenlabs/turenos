@@ -61,7 +61,8 @@ its first call.
   identity. One live app window controls a case at a time.
 - Any HTTP(S) destination is allowed so the browser can follow real SaaS flows
   across identity, collaboration, cloud, and cluster services. App-internal
-  origins remain protected.
+  origins remain protected, including loopback aliases of them such as
+  `localhost`, `*.localhost` or `[::1]` on the same scheme and port.
 - Browser data uses a fresh non-persistent partition per open generation. Closing
   the browser clears that profile, but not the case's encrypted history.
 - Core reuses Storage guarded batches and SecretVault. Payloads are chunked before

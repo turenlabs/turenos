@@ -765,4 +765,57 @@ describe("Config", () => {
       }),
     ),
   )
+
+  it.live("stops the ancestor walk at the project root when the opened path is not canonical", () =>
+    Effect.acquireRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+    ).pipe(
+      Effect.flatMap((tmp) => {
+        const global = path.join(tmp.path, "global")
+        const parent = path.join(tmp.path, "real", "parent")
+        // Git discovery reports the canonical worktree, so the project root is always the real path.
+        const root = path.join(parent, "repo")
+        const link = path.join(tmp.path, "link")
+        const elsewhere = path.join(tmp.path, "elsewhere")
+        const opened = [
+          { directory: path.join(link, "repo"), documents: ["global", "root"] },
+          { directory: `${root}${path.sep}`, documents: ["global", "root"] },
+          // A linked directory inside the project still walks up to the project root that holds it.
+          { directory: path.join(root, "linked"), documents: ["global", "root", "linked"] },
+        ]
+        return Effect.gen(function* () {
+          yield* Effect.promise(async () => {
+            await Promise.all(
+              [global, path.join(parent, ".forge"), root, elsewhere].map((directory) =>
+                fs.mkdir(directory, { recursive: true }),
+              ),
+            )
+            await Promise.all([
+              fs.writeFile(path.join(global, "forge.json"), JSON.stringify({ $schema: "global" })),
+              fs.writeFile(path.join(parent, "forge.json"), JSON.stringify({ $schema: "outside" })),
+              fs.writeFile(path.join(parent, ".forge", "forge.json"), JSON.stringify({ $schema: "outside-dot" })),
+              fs.writeFile(path.join(root, "forge.json"), JSON.stringify({ $schema: "root" })),
+              fs.writeFile(path.join(elsewhere, "forge.json"), JSON.stringify({ $schema: "linked" })),
+              fs.symlink(parent, link),
+              fs.symlink(elsewhere, path.join(root, "linked")),
+            ])
+          })
+
+          const loaded = yield* Effect.forEach(opened, (item) =>
+            Config.Service.pipe(
+              Effect.flatMap((config) => config.entries()),
+              Effect.map((entries) => ({
+                directory: item.directory,
+                documents: entries.flatMap((entry) => (entry.type === "document" ? [entry.info.$schema] : [])),
+              })),
+              Effect.provide(testLayer(item.directory, global, root)),
+            ),
+          )
+
+          expect(loaded).toEqual(opened)
+        })
+      }),
+    ),
+  )
 })

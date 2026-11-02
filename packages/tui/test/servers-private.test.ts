@@ -126,6 +126,48 @@ describe("record identity", () => {
     expect(await local(home).scan()).toHaveLength(1)
   })
 
+  // Only macOS reads the start time from ps, whose lstart follows the locale. Bun.spawn hands children the
+  // environment this process started with, so the locale is set on a child, which must also write the record
+  // because the record names the pid that wrote it.
+  test.skipIf(process.platform !== "darwin")("a desktop record is trusted under a non-English locale", async () => {
+    const script = `
+import { mkdir, writeFile } from "node:fs/promises"
+import { join } from "node:path"
+import { createServers } from ${JSON.stringify(new URL("../src/servers.ts", import.meta.url).href)}
+const home = process.env.TUI_TEST_HOME
+const directory = join(home, "Library", "Application Support", "com.turenlabs.forge")
+await mkdir(directory, { recursive: true })
+const record = { version: 1, url: process.env.TUI_TEST_URL, username: "forge", password: "secret", pid: process.pid }
+await writeFile(join(directory, "attach.json"), JSON.stringify(record), { mode: 0o600 })
+const servers = createServers({ home, platform: "darwin", env: {}, forge: null, config: join(home, "servers.json") })
+const kinds = (await servers.scan()).map((entry) => entry.target.kind)
+const target = await servers.preferred()
+const endpoint = target ? await servers.resolve(target) : undefined
+endpoint?.close?.()
+process.stdout.write(JSON.stringify({ kinds, problems: servers.problems(), version: endpoint?.version }))
+`
+    const child = Bun.spawn([process.execPath, "--eval", script], {
+      env: {
+        ...process.env,
+        LC_ALL: "de_DE.UTF-8",
+        LANG: "de_DE.UTF-8",
+        TUI_TEST_HOME: await scratch(),
+        TUI_TEST_URL: server().url.origin,
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+      timeout: 15000,
+    })
+    const [code, stdout, stderr] = await Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ])
+    expect(stderr).toBe("")
+    expect(code).toBe(0)
+    expect(JSON.parse(stdout)).toEqual({ kinds: ["desktop"], problems: [], version: "1.0.32" })
+  })
+
   test("a quick-connect state older than its pid is ignored", async () => {
     const home = await scratch()
     const run = join(home, ".forge", "run")

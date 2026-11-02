@@ -8,6 +8,7 @@ import { useServerSDK } from "./server-sdk"
 import { base64Encode } from "@turenlabs/core/util/encode"
 import { defaultTitle, titleNumber } from "./terminal-title"
 import { Persist, persisted, removePersisted, updatePersisted } from "@/utils/persist"
+import { pathKey } from "@/utils/path-key"
 import { ScopedKey, ServerScope, type ServerScope as ServerScopeValue } from "@/utils/server-scope"
 
 export type LocalPTY = {
@@ -245,12 +246,15 @@ function terminalPersistTarget(scope: ServerScopeValue, dir: string, legacy?: st
   return Persist.serverWorkspace(scope, dir, "terminal", legacy)
 }
 
+// Takes the raw workspace directory; the provider keys its stores by the
+// base64-encoded canonical form (`sdk().directory` is already a pathKey).
 export function clearWorkspaceTerminals(
-  dir: string,
+  directory: string,
   sessionIDs?: string[],
   platform?: Platform,
   scope: ServerScopeValue = ServerScope.local,
 ) {
+  const dir = base64Encode(pathKey(directory))
   const key = getWorkspaceTerminalCacheKey(dir, scope)
   for (const cache of caches) {
     const entry = cache.get(key)
@@ -290,7 +294,7 @@ export function pruneTerminalStateEntries(value: unknown, ptyIDs: ReadonlySet<st
 // outside the TerminalProvider (workspace cleanup disposes the PTY server
 // side after the provider unmounted, so pty.exited never prunes the entry and
 // the next open would adopt a dead PTY). Takes the raw workspace directory;
-// the provider keys its stores by the base64-encoded form.
+// the provider keys its stores by the base64-encoded canonical form.
 export function removeWorkspaceTerminalEntries(input: {
   directory: string
   ptyIDs: readonly string[]
@@ -300,7 +304,7 @@ export function removeWorkspaceTerminalEntries(input: {
   const ids = new Set(input.ptyIDs.filter((id) => !!id))
   if (ids.size === 0) return
   const scope = input.scope ?? ServerScope.local
-  const dir = base64Encode(input.directory)
+  const dir = base64Encode(pathKey(input.directory))
   const key = getWorkspaceTerminalCacheKey(dir, scope)
 
   // A live session owns the persisted key: mutate through it so the reactive

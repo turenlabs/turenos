@@ -176,7 +176,10 @@ const Content = Schema.Union([
   }),
 ]).pipe(Schema.toTaggedUnion("type"))
 
-export const Output = Schema.Struct({ content: Schema.Array(Content) })
+export const Output = Schema.Struct({
+  content: Schema.Array(Content),
+  structuredContent: Schema.optional(Schema.Unknown),
+})
 export type Output = typeof Output.Type
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -237,7 +240,10 @@ export function toOutput(result: CallResult): Output {
   // A structured-only result is the documented shape for tools that declare an
   // `outputSchema`; without this the model would receive an empty tool result.
   if (blocks.length === 0 && result.structuredContent !== undefined && result.structuredContent !== null)
-    return { content: [{ type: "text", text: stringify(result.structuredContent) }] }
+    return {
+      content: [{ type: "text", text: stringify(result.structuredContent) }],
+      structuredContent: result.structuredContent,
+    }
 
   const content: Array<typeof Content.Type> = []
   let attachmentBytes = 0
@@ -301,7 +307,7 @@ export function toOutput(result: CallResult): Output {
     }
     content.push({ type: "text", text: stringify(block) })
   }
-  return { content }
+  return { content, ...(result.structuredContent === undefined ? {} : { structuredContent: result.structuredContent }) }
 }
 
 /**

@@ -14,6 +14,7 @@ import { createWindowRegistry } from "./window-registry"
 import { safeWindowURL } from "./window-state"
 import { MIN_WINDOW_HEIGHT, MIN_WINDOW_WIDTH } from "./storage/product"
 import {
+  isRendererPermissionAllowed,
   isRendererUrl,
   isTrustedRendererIpcEvent,
   mainWindowNavigation,
@@ -26,9 +27,6 @@ import {
 
 const root = dirname(fileURLToPath(import.meta.url))
 const rendererRoot = join(root, "../renderer")
-const clipboardWritePermission = "clipboard-sanitized-write"
-const notificationPermission = "notifications"
-const rendererPermissions = new Set([clipboardWritePermission, notificationPermission])
 const oc2Theme = oc2ThemeJson as DesktopTheme
 const oc2Background = {
   light: resolveThemeVariant(oc2Theme.light, false)["background-base"],
@@ -597,24 +595,12 @@ function addDocumentPolicy(response: Response, file: string) {
 }
 
 function allowRendererPermissions(win: BrowserWindow) {
-  const webContentsId = win.webContents.id
-
   win.webContents.session.setPermissionRequestHandler((webContents, permission, callback, details) => {
-    callback(
-      rendererPermissions.has(permission) &&
-        isTrustedRendererUrl(details.requestingUrl) &&
-        webContents.id === webContentsId,
-    )
+    callback(isRendererPermissionAllowed(permission, webContents, [details.requestingUrl], ownsMainWindow))
   })
-  win.webContents.session.setPermissionCheckHandler((webContents, permission, requestingOrigin, details) => {
-    if (!rendererPermissions.has(permission)) return false
-    if (webContents && webContents.id !== webContentsId) return false
-    return isTrustedRendererUrl(details.requestingUrl) || isTrustedRendererUrl(requestingOrigin)
-  })
-}
-
-function isTrustedRendererUrl(value?: string) {
-  return isRendererUrl(value)
+  win.webContents.session.setPermissionCheckHandler((webContents, permission, requestingOrigin, details) =>
+    isRendererPermissionAllowed(permission, webContents, [details.requestingUrl, requestingOrigin], ownsMainWindow),
+  )
 }
 
 function addRendererDocumentPolicyHeader(value: string, headers: Record<string, any>) {

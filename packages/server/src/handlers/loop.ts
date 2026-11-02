@@ -29,6 +29,8 @@ const loopError = (error: unknown, loopID: string) => {
     })
   if (tagOf(error) === "LoopInvalidStateError" || tagOf(error) === "LoopActiveLimitError")
     return new ConflictError({ message: "Loop state conflicts with this operation", resource: loopID })
+  if (error instanceof Loop.InvalidInputError)
+    return new InvalidRequestError({ message: error.message, kind: error._tag })
   return new InvalidRequestError({ message: "Invalid loop request", kind: tagOf(error) })
 }
 

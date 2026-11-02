@@ -95,13 +95,9 @@ const google: Lowerer = {
       settings: omit(options, ["apiKey", "baseURL", "headers", "body"]),
     }
   },
-  request(options) {
-    const generationConfig = pick(options, ["thinkingConfig", "responseModalities", "mediaResolution", "imageConfig"])
-    return {
-      ...omit(options, ["thinkingConfig", "responseModalities", "mediaResolution", "imageConfig"]),
-      ...(Object.keys(generationConfig).length ? { generationConfig } : {}),
-    }
-  },
+  // Google model bodies keep the AI SDK option names: the session runner moves `thinkingConfig` into
+  // provider options, and the native Gemini route rejects a `generationConfig` body overlay.
+  request: clone,
 }
 
 const azure: Lowerer = {
@@ -192,10 +188,6 @@ function clone(options: Options) {
 
 function omit(options: Options, keys: ReadonlyArray<string>) {
   return Object.fromEntries(Object.entries(options).filter(([key]) => !keys.includes(key)))
-}
-
-function pick(options: Options, keys: ReadonlyArray<string>) {
-  return Object.fromEntries(Object.entries(options).filter(([key]) => keys.includes(key)))
 }
 
 function headers(input: unknown) {

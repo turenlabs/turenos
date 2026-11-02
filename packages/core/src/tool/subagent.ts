@@ -60,6 +60,10 @@ export function toolPermissions(permissions: PermissionV2.Ruleset): PermissionV2
       "session_context",
       "session_checkpoint",
       "session_recall",
+      "result_list",
+      "result_read",
+      "result_search",
+      "result_compute",
       "memory_search",
       "memory_read",
       "reflection_read",
@@ -520,9 +524,7 @@ const layer = Layer.effect(
                   if (input.wave === undefined) {
                     const snapshot = yield* tasks.getMany(ids).pipe(Effect.orDie)
                     const queued = snapshot.some((task) => task.status === "queued")
-                    const running = snapshot.filter(
-                      (task) => task.status === "running" || task.status === "starting",
-                    )
+                    const running = snapshot.filter((task) => task.status === "running" || task.status === "starting")
                     if (!queued && running.length === 0) return yield* Effect.never
                     if (!queued) {
                       const parked = yield* rooms.parked(room.id)
@@ -630,9 +632,7 @@ const layer = Layer.effect(
                 )
                 const settled = new Map(completed.map((item) => [item.task.id, item.task]))
                 return {
-                  tasks: prepared
-                    .slice(0, MAX_WAVE_VIEWS)
-                    .map((item) => view(settled.get(item.task.id) ?? item.task)),
+                  tasks: prepared.slice(0, MAX_WAVE_VIEWS).map((item) => view(settled.get(item.task.id) ?? item.task)),
                   interrupted: prepared.length,
                   remaining: targets.length - batch.length,
                 }

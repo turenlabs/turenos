@@ -63,6 +63,22 @@ describe("McpOAuthProvider.clientMetadata", () => {
 })
 
 describe("MCP OAuth scope selection", () => {
+  test("adds offline access only when refresh tokens are supported", () => {
+    const options = {
+      requestedScope: "resource.read",
+      authServerMetadata: {
+        issuer: "https://auth.example.test",
+        authorization_endpoint: "https://auth.example.test/authorize",
+        token_endpoint: "https://auth.example.test/token",
+        response_types_supported: ["code"],
+        scopes_supported: ["resource.read", "offline_access"],
+      },
+      clientMetadata: { redirect_uris: [], grant_types: ["refresh_token"] },
+    }
+    expect(determineScope(options)).toBe("resource.read offline_access")
+    expect(determineScope({ ...options, clientMetadata: { redirect_uris: [] } })).toBe("resource.read")
+  })
+
   test("adds offline_access when the authorization server and client support refresh tokens", () => {
     expect(
       determineScope({

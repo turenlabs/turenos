@@ -10,6 +10,8 @@ import { SessionSchema } from "./session/schema"
 import { Identifier } from "./util/identifier"
 import { SecretOutput } from "./secret-output"
 import type { ToolOutput } from "@turenlabs/llm"
+import { ToolResultStore } from "./tool-result-store"
+import { BoundedJson } from "./util/bounded-json"
 
 export const MAX_LINES = 2_000
 export const MAX_BYTES = 50 * 1024
@@ -23,6 +25,9 @@ export interface BoundInput {
   readonly output: ToolOutput
   /** The caller's operation snapshot; a fresh one is acquired when omitted. */
   readonly protection?: SecretOutput.Snapshot
+  readonly retain?: boolean
+  readonly tool?: string
+  readonly assistantMessageID?: string
 }
 
 export interface BoundResult {
@@ -133,6 +138,7 @@ const layer = Layer.effect(
     const global = yield* Global.Service
     const secretOutput = yield* SecretOutput.Service
     const config = yield* Effect.serviceOption(Config.Service)
+    const results = yield* ToolResultStore.Service
     const directory = path.join(global.data, MANAGED_DIRECTORY)
     const limits = Effect.fn("ToolOutputStore.limits")(function* () {
       if (Option.isNone(config)) return { maxLines: MAX_LINES, maxBytes: MAX_BYTES }
@@ -164,19 +170,6 @@ const layer = Layer.effect(
 
     const bound = Effect.fn("ToolOutputStore.bound")(function* (input: BoundInput) {
       const outputLimits = yield* limits()
-      const media = input.output.content.filter((item) => item.type === "file")
-      const text = input.output.content.filter((item) => item.type === "text")
-      const values =
-        input.output.content.length === 0
-          ? [
-              yield* Effect.try({
-                try: () => JSON.stringify(input.output.structured, null, 2) ?? String(input.output.structured),
-                catch: (cause) => new StorageError({ operation: "encode", cause }),
-              }),
-            ]
-          : text.map((item) => item.text)
-      // Joining separately safe text blocks can reconstruct a credential. Protect
-      // the exact bytes retained and previewed, not only each incoming block.
       const protection =
         input.protection ??
         (yield* secretOutput
@@ -186,44 +179,146 @@ const layer = Layer.effect(
               () => new StorageError({ operation: "encode", cause: new Error("Secret output protection unavailable") }),
             ),
           ))
+      const capture = input.retain
+        ? yield* Effect.try({
+            try: () => {
+              const encoded = BoundedJson.encode(input.output.structured, ToolResultStore.MAX_BYTES)
+              return encoded === undefined
+                ? { rejected: input.output.structured !== undefined }
+                : { encoded, value: JSON.parse(encoded) as Schema.Json }
+            },
+            catch: () => true,
+          }).pipe(Effect.catch(() => Effect.succeed({ rejected: true })))
+        : undefined
+      const rejected = capture && "rejected" in capture && capture.rejected
+      // Rejected source structure is omitted, never passed to a recursive redactor or serializer.
+      // Every value that remains is protected before either retained store writes any bytes.
+      const base = yield* Effect.try({
+        try: () =>
+          input.retain
+            ? {
+                structured: protection.json(
+                  rejected
+                    ? {
+                        retentionUnavailable: "Structured capture exceeded JSON limits or used an unsupported value.",
+                        truncated: true,
+                      }
+                    : capture && "value" in capture
+                      ? capture.value
+                      : undefined,
+                ),
+                content: input.output.content.map((item) =>
+                  item.type === "file" && item.name !== undefined
+                    ? { ...item, name: protection.text(item.name) }
+                    : item,
+                ),
+              }
+            : input.output,
+        catch: () =>
+          new StorageError({ operation: "encode", cause: new Error("Secret output protection unavailable") }),
+      })
+      const media = base.content.filter((item) => item.type === "file")
+      const text = base.content.filter((item) => item.type === "text")
+      const values =
+        base.content.length === 0
+          ? [
+              yield* Effect.try({
+                try: () => JSON.stringify(base.structured, null, 2) ?? String(base.structured),
+                catch: (cause) => new StorageError({ operation: "encode", cause }),
+              }),
+            ]
+          : text.map((item) => item.text)
+      // Joining separately safe text blocks can reconstruct a credential. Protect
+      // the exact bytes retained and previewed, not only each incoming block.
       const parts = yield* Effect.try({
         try: () => protection.parts(values),
         catch: () =>
           new StorageError({ operation: "encode", cause: new Error("Secret output protection unavailable") }),
       })
       const contextual = parts.join("")
-      if (
-        lineCount(contextual) <= outputLimits.maxLines &&
-        Buffer.byteLength(contextual, "utf-8") <= outputLimits.maxBytes
-      ) {
-        if (parts.every((part, index) => part === values[index])) return { output: input.output, outputPaths: [] }
-        if (text.length === 0)
-          return {
-            output: { structured: input.output.structured, content: [{ type: "text" as const, text: contextual }] },
-            outputPaths: [],
+      const changed = !parts.every((part, index) => part === values[index])
+      const protectedText = new Map(text.map((item, index) => [item, parts[index]]))
+      const protectedOutput: ToolOutput = !changed
+        ? base
+        : {
+            structured: base.structured,
+            content:
+              text.length === 0
+                ? [{ type: "text", text: contextual }]
+                : base.content.flatMap((item): ToolOutput["content"][number][] => {
+                    if (item.type !== "text") return [item]
+                    const part = protectedText.get(item) ?? ""
+                    return part === "" && item.text !== "" ? [] : [{ type: "text", text: part }]
+                  }),
           }
-        // Each block keeps its own protected text, so attachments stay between the same text. A
-        // block whose text was wholly part of a credential starting earlier is dropped.
-        const protectedText = new Map(text.map((item, index) => [item, parts[index]]))
-        return {
-          output: {
-            structured: input.output.structured,
-            content: input.output.content.flatMap((item): ToolOutput["content"][number][] => {
-              if (item.type !== "text") return [item]
-              const part = protectedText.get(item) ?? ""
-              return part === "" && item.text !== "" ? [] : [{ type: "text", text: part }]
-            }),
-          },
-          outputPaths: [],
-        }
-      }
+      const oversized =
+        lineCount(contextual) > outputLimits.maxLines || Buffer.byteLength(contextual, "utf-8") > outputLimits.maxBytes
+      const structured =
+        input.retain && !rejected
+          ? yield* Effect.try({
+              try: () => BoundedJson.encode(base.structured, ToolResultStore.MAX_BYTES),
+              catch: () => undefined,
+            }).pipe(Effect.catch(() => Effect.succeed(undefined)))
+          : undefined
+      const partial =
+        rejected ||
+        (typeof base.structured === "object" &&
+          base.structured !== null &&
+          "truncated" in base.structured &&
+          base.structured.truncated === true)
+      const retained =
+        input.retain &&
+        (oversized || partial || (structured !== undefined && Buffer.byteLength(structured) > outputLimits.maxBytes))
+          ? yield* results
+              .put({
+                sessionID: input.sessionID,
+                toolCallID: input.toolCallID,
+                tool: input.tool ?? "unknown",
+                ...(input.assistantMessageID === undefined ? {} : { assistantMessageID: input.assistantMessageID }),
+                text: contextual,
+                ...(structured === undefined ? {} : { structured: JSON.parse(structured) as Schema.Json }),
+                captureTruncated: partial,
+              })
+              .pipe(
+                Effect.match({
+                  onSuccess: (reference) => ({ reference }),
+                  onFailure: (error) => ({ unavailable: error.message }),
+                }),
+              )
+          : undefined
+      // Retention is advisory after a tool has executed. A quota or capture failure must not
+      // turn a successful mutation into an indeterminate execution or invite a source retry.
+      const reference = retained && "reference" in retained ? retained.reference : undefined
+      const hint = reference
+        ? `Captured result ${reference.id}; use result_read for exact pages, result_search for matching passages, or result_compute for exhaustive calculations. Expires ${new Date(reference.expiresAt).toISOString()}.${reference.captureTruncated ? " Capture is partial; source truncation or retention limits omitted data." : ""}`
+        : retained && "unavailable" in retained
+          ? `Retained capture unavailable: ${retained.unavailable} The source tool already completed; do not repeat a mutation to recover its output.`
+          : undefined
+      const output = hint
+        ? {
+            structured: reference ? ToolResultStore.withReference(base.structured, reference) : base.structured,
+            // Keep structured-only results visible through ToolOutput.toResultValue.
+            content: protectedOutput.content.length
+              ? [...protectedOutput.content, { type: "text" as const, text: `\n\n[${hint}]` }]
+              : [],
+          }
+        : protectedOutput
+      if (
+        !oversized &&
+        (!hint ||
+          (lineCount(contextual + hint) <= outputLimits.maxLines &&
+            Buffer.byteLength(contextual + hint) + 4 <= outputLimits.maxBytes))
+      )
+        return { output, outputPaths: [] }
 
       const outputPath = yield* write(contextual)
-      const marker = `... output truncated; full content saved to ${outputPath} ...`
+      const marker = hint
+        ? `... output excerpted. ${hint} ...`
+        : `... output truncated; full content saved to ${outputPath} ...`
 
       return {
         output: {
-          structured: input.output.structured,
+          structured: output.structured,
           content: [
             {
               type: "text" as const,
@@ -237,6 +332,7 @@ const layer = Layer.effect(
     })
 
     const cleanup = Effect.fn("ToolOutputStore.cleanup")(function* () {
+      yield* results.cleanup()
       const entries = yield* fs.readDirectory(directory).pipe(Effect.catch(() => Effect.succeed([])))
       const cutoff = Date.now() - Duration.toMillis(RETENTION)
       for (const entry of entries) {
@@ -258,13 +354,13 @@ const layer = Layer.effect(
 export const node = makeLocationNode({
   service: Service,
   layer,
-  deps: [FSUtil.node, Global.node, Config.node, SecretOutput.node],
+  deps: [FSUtil.node, Global.node, Config.node, SecretOutput.node, ToolResultStore.node],
 })
 
 export const nodeWithoutConfig = makeLocationNode({
   service: Service,
   layer,
-  deps: [FSUtil.node, Global.node, SecretOutput.node],
+  deps: [FSUtil.node, Global.node, SecretOutput.node, ToolResultStore.node],
 })
 
 /** Runs retention scanning once globally rather than once per active Location. */
@@ -278,5 +374,5 @@ export const cleanupLayer = Layer.effectDiscard(
 export const cleanupNode = makeGlobalNode({
   name: "tool-output-cleanup",
   layer: Layer.merge(layer, cleanupLayer.pipe(Layer.provide(layer))),
-  deps: [FSUtil.node, Global.node, SecretOutput.node],
+  deps: [FSUtil.node, Global.node, SecretOutput.node, ToolResultStore.node],
 })

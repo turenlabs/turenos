@@ -1,3 +1,4 @@
+import { ResultTools } from "@turenlabs/core/tool/results"
 /**
  * Scenario simulator for TurenOS's agent-turn pipeline.
  *
@@ -529,6 +530,7 @@ const it = testEffect(
       ToolRegistry.node,
       ToolRegistry.toolsNode,
       simToolsNode,
+      ResultTools.node,
       GoalTool.node,
       QuestionTool.node,
       SubagentTool.node,

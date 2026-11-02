@@ -422,6 +422,40 @@ try {
   assert.deepEqual(posts.at(-1), posts.at(-2), "Retry after navigation changed the message")
   await until(() => drafts().length === 0, "Retried draft was not cleared")
 
+  // Message text stays in the room where it was typed.
+  const field = () => composer().querySelector("textarea")!
+  const type = (value: string) => {
+    field().value = value
+    field().dispatchEvent(new InputEvent("input", { bubbles: true }))
+  }
+  type("Only for room A")
+  await room("room-b", "Second")
+  assert.equal(field().value, "", "Room A text followed into room B")
+  type("Only for room B")
+  await room("room-a", "First")
+  assert.equal(field().value, "Only for room A", "Room A text was lost on navigation")
+
+  // A failed send keeps its retry in its own room while another room sends a new message.
+  failPost = true
+  await send()
+  await until(() => !!host.textContent?.includes("Network lost"), "Failed text send was not reported")
+  const failed = posts.at(-1)!
+  assert.equal(failed.roomID, "room-a")
+  failPost = false
+  await room("room-b", "Second")
+  assert.ok(!host.textContent?.includes("Retrying original message"), "Room A retry showed in room B")
+  await send()
+  await until(() => posts.at(-1)?.roomID === "room-b", "Room B text was not sent to room B")
+  assert.equal(posts.at(-1)!.text, "Only for room B")
+  assert.notEqual(posts.at(-1)!.id, failed.id, "Room B reused room A's message ID")
+  await until(() => field().value === "", "Sent room B text was not cleared")
+  await room("room-a", "First")
+  assert.equal(field().value, "Only for room A", "Room B send cleared room A text")
+  await send()
+  await until(() => posts.at(-1)?.roomID === "room-a", "Room A retry was not sent")
+  assert.deepEqual(posts.at(-1), failed, "Room A retry changed the message")
+  await until(() => field().value === "", "Sent room A text was not cleared")
+
   // Archived rooms show stored attachments but accept none.
   await room("room-c", "Old")
   await until(() => !!log().querySelector('img[alt="pixel.png"]'), "Archived attachment did not render")

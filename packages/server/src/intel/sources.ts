@@ -275,10 +275,17 @@ export function parseRss(xml: string): ReadonlyArray<RssRaw> {
     const field = (tag: string) => {
       const match = block.match(new RegExp(`<${tag}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${tag}>`, "i"))
       if (!match) return ""
-      return match[1]
-        .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
-        .replace(/<[^>]+>/g, "")
-        .trim()
+      // Feed text is HTML, either entity-escaped or inside CDATA, where feeds such as Dark Reading
+      // still escape `&`. Read the XML layer first (CDATA stays literal, references outside it are
+      // decoded), then strip the HTML tags and decode the HTML's own references. So `&lt;p&gt;` and
+      // `<![CDATA[<p>]]>` are both removed, and `<![CDATA[AT&amp;T]]>` reads `AT&T`.
+      return decodeReferences(
+        match[1]
+          .split(/<!\[CDATA\[([\s\S]*?)\]\]>/)
+          .map((part, index) => (index % 2 ? part : decodeReferences(part)))
+          .join("")
+          .replace(/<[^>]+>/g, ""),
+      ).trim()
     }
     const title = field("title")
     const link = field("link")
@@ -292,4 +299,18 @@ export function parseRss(xml: string): ReadonlyArray<RssRaw> {
       },
     ]
   })
+}
+
+const XML_ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" }
+
+// Numeric references above U+10FFFF stay as written, because String.fromCodePoint throws on them.
+function decodeReferences(text: string) {
+  return text.replace(
+    /&(?:#x([0-9a-fA-F]+)|#(\d+)|(amp|lt|gt|quot|apos));/g,
+    (reference, hex?: string, decimal?: string, name?: string) => {
+      if (name) return XML_ENTITIES[name]
+      const code = hex ? Number.parseInt(hex, 16) : Number(decimal)
+      return code <= 0x10ffff ? String.fromCodePoint(code) : reference
+    },
+  )
 }

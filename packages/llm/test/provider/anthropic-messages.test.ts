@@ -423,6 +423,153 @@ describe("Anthropic Messages route", () => {
     }),
   )
 
+  // Core strips provider metadata from failed turns, so their reasoning comes back without a
+  // signature, and Anthropic rejects a Claude thinking block that has none.
+  it.effect("drops unsigned reasoning and keeps signed reasoning", () =>
+    Effect.gen(function* () {
+      const prepared = yield* LLMClient.prepare<AnthropicMessages.AnthropicMessagesBody>(
+        LLM.request({
+          model,
+          messages: [
+            Message.user("Start."),
+            Message.assistant([
+              { type: "reasoning", text: "Interrupted thinking." },
+              { type: "text", text: "Partial answer." },
+            ]),
+            Message.user("Try again."),
+            Message.assistant([
+              { type: "reasoning", text: "thinking", providerMetadata: { anthropic: { signature: "sig_1" } } },
+              { type: "reasoning", text: "more thinking", encrypted: "sig_2" },
+              { type: "text", text: "Done." },
+            ]),
+          ],
+          cache: "none",
+        }),
+      )
+
+      expect(prepared.body.messages).toEqual([
+        { role: "user", content: [{ type: "text", text: "Start." }] },
+        { role: "assistant", content: [{ type: "text", text: "Partial answer." }] },
+        { role: "user", content: [{ type: "text", text: "Try again." }] },
+        {
+          role: "assistant",
+          content: [
+            { type: "thinking", thinking: "thinking", signature: "sig_1" },
+            { type: "thinking", thinking: "more thinking", signature: "sig_2" },
+            { type: "text", text: "Done." },
+          ],
+        },
+      ])
+    }),
+  )
+
+  // A failed turn can end on a tool call. The call and its result stay; only the unsigned thinking
+  // goes. With thinking on, Anthropic may still want this turn to start with a thinking block, and
+  // that needs the signature core dropped.
+  it.effect("keeps the tool call of a failed turn and drops its unsigned reasoning", () =>
+    Effect.gen(function* () {
+      const prepared = yield* LLMClient.prepare<AnthropicMessages.AnthropicMessagesBody>(
+        LLM.request({
+          model,
+          messages: [
+            Message.user("Check the weather."),
+            Message.assistant([
+              { type: "reasoning", text: "Interrupted thinking." },
+              ToolCallPart.make({ id: "call_1", name: "lookup", input: { query: "weather" } }),
+            ]),
+            Message.tool({ id: "call_1", name: "lookup", result: { forecast: "sunny" } }),
+          ],
+          cache: "none",
+        }),
+      )
+
+      expect(prepared.body.messages).toEqual([
+        { role: "user", content: [{ type: "text", text: "Check the weather." }] },
+        {
+          role: "assistant",
+          content: [{ type: "tool_use", id: "call_1", name: "lookup", input: { query: "weather" } }],
+        },
+        { role: "user", content: [{ type: "tool_result", tool_use_id: "call_1", content: '{"forecast":"sunny"}' }] },
+      ])
+    }),
+  )
+
+  it.effect("drops an assistant turn that only held unsigned reasoning", () =>
+    Effect.gen(function* () {
+      const prepared = yield* LLMClient.prepare<AnthropicMessages.AnthropicMessagesBody>(
+        LLM.request({
+          model: opus48,
+          messages: [
+            Message.user("Start."),
+            Message.system("Context update."),
+            Message.assistant([{ type: "reasoning", text: "Interrupted thinking." }]),
+            Message.user("Try again."),
+          ],
+          cache: "none",
+        }),
+      )
+
+      // Without the assistant turn the system update would be followed by a user turn. This route's
+      // native placement rule (canUseNativeSystemUpdate) does not allow that, so the update falls
+      // back to wrapped user text.
+      expect(prepared.body.messages).toEqual([
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "Start." },
+            { type: "text", text: "<system-update>\nContext update.\n</system-update>" },
+          ],
+        },
+        { role: "user", content: [{ type: "text", text: "Try again." }] },
+      ])
+    }),
+  )
+
+  // Other models on this route, such as MiniMax, may not sign their thinking and ask for it back
+  // unchanged, so their unsigned reasoning is still sent and no turn is dropped.
+  it.effect("keeps unsigned reasoning for a non-Claude model", () =>
+    Effect.gen(function* () {
+      const prepared = yield* LLMClient.prepare<AnthropicMessages.AnthropicMessagesBody>(
+        LLM.request({
+          model: AnthropicMessages.route
+            .with({
+              endpoint: { baseURL: "https://api.minimax.test/anthropic/v1/" },
+              auth: Auth.header("x-api-key", "test"),
+            })
+            .model({ id: "MiniMax-M2" }),
+          messages: [
+            Message.user("Start."),
+            Message.assistant([
+              { type: "reasoning", text: "Unsigned thinking." },
+              { type: "text", text: "Partial answer." },
+            ]),
+            Message.user("Try again."),
+            Message.assistant([{ type: "reasoning", text: "Interrupted thinking." }]),
+            Message.user("Go on."),
+          ],
+          cache: "none",
+        }),
+      )
+
+      expect(prepared.body.messages).toEqual([
+        { role: "user", content: [{ type: "text", text: "Start." }] },
+        {
+          role: "assistant",
+          content: [
+            { type: "thinking", thinking: "Unsigned thinking.", signature: undefined },
+            { type: "text", text: "Partial answer." },
+          ],
+        },
+        { role: "user", content: [{ type: "text", text: "Try again." }] },
+        {
+          role: "assistant",
+          content: [{ type: "thinking", thinking: "Interrupted thinking.", signature: undefined }],
+        },
+        { role: "user", content: [{ type: "text", text: "Go on." }] },
+      ])
+    }),
+  )
+
   it.effect("parses text, reasoning, and usage stream fixtures", () =>
     Effect.gen(function* () {
       const body = sseEvents(
@@ -464,6 +611,53 @@ describe("Anthropic Messages route", () => {
         type: "finish",
         reason: "stop",
         providerMetadata: { anthropic: { stopSequence: "\n\nHuman:" } },
+      })
+    }),
+  )
+
+  // Adaptive thinking with display "omitted" (the default on newer Claude models) streams a
+  // thinking block with no text, only its signature. The signed block must go back next turn.
+  it.effect("keeps the signature of a thinking block that streams no text", () =>
+    Effect.gen(function* () {
+      const body = sseEvents(
+        { type: "message_start", message: { usage: { input_tokens: 5 } } },
+        { type: "content_block_start", index: 0, content_block: { type: "thinking", thinking: "" } },
+        { type: "content_block_delta", index: 0, delta: { type: "signature_delta", signature: "sig_omitted" } },
+        { type: "content_block_stop", index: 0 },
+        { type: "content_block_start", index: 1, content_block: { type: "tool_use", id: "call_1", name: "lookup" } },
+        { type: "content_block_delta", index: 1, delta: { type: "input_json_delta", partial_json: '{"query":"x"}' } },
+        { type: "content_block_stop", index: 1 },
+        { type: "message_delta", delta: { stop_reason: "tool_use" }, usage: { output_tokens: 1 } },
+      )
+      const response = yield* LLMClient.generate(
+        LLM.updateRequest(request, {
+          tools: [{ name: "lookup", description: "Lookup data", inputSchema: { type: "object" } }],
+        }),
+      ).pipe(Effect.provide(fixedResponse(body)))
+
+      expect(response.message.content).toEqual([
+        { type: "reasoning", text: "", providerMetadata: { anthropic: { signature: "sig_omitted" } } },
+        { type: "tool-call", id: "call_1", name: "lookup", input: { query: "x" } },
+      ])
+
+      const prepared = yield* LLMClient.prepare<AnthropicMessages.AnthropicMessagesBody>(
+        LLM.request({
+          model,
+          messages: [
+            Message.user("Look it up."),
+            response.message,
+            Message.tool({ id: "call_1", name: "lookup", result: { found: true } }),
+          ],
+          cache: "none",
+        }),
+      )
+
+      expect(prepared.body.messages[1]).toEqual({
+        role: "assistant",
+        content: [
+          { type: "thinking", thinking: "", signature: "sig_omitted" },
+          { type: "tool_use", id: "call_1", name: "lookup", input: { query: "x" } },
+        ],
       })
     }),
   )

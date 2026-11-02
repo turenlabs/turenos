@@ -12,6 +12,7 @@ import { ModelV2 } from "@turenlabs/core/model"
 import { ModelsDev } from "@turenlabs/core/models-dev"
 import { ModelsDevPlugin } from "@turenlabs/core/plugin/models-dev"
 import { ProviderV2 } from "@turenlabs/core/provider"
+import { SessionRunnerModel } from "@turenlabs/core/session/runner/model"
 import { AbsolutePath } from "@turenlabs/core/schema"
 import { location } from "../fixture/location"
 import { testEffect } from "../lib/effect"
@@ -27,7 +28,7 @@ const layer = AppNodeBuilder.build(LayerNode.group([Catalog.node, Integration.no
 const it = testEffect(layer)
 
 describe("ModelsDevPlugin", () => {
-  it.effect("projects models.dev modes as separate models instead of variants", () =>
+  it.effect("inherits provider SDK metadata and projects modes as separate models", () =>
     Effect.gen(function* () {
       const integrations = yield* Integration.Service
       const catalog = yield* Catalog.Service
@@ -75,6 +76,29 @@ describe("ModelsDevPlugin", () => {
                       },
                     },
                   },
+                  provider: { api: "https://models.acme.test/v1" },
+                },
+              },
+            },
+            "opencode-go": {
+              id: "opencode-go",
+              name: "OpenCode Go",
+              env: ["OPENCODE_API_KEY"],
+              npm: "@ai-sdk/openai-compatible",
+              api: "https://opencode.ai/inference/go/openai/v1",
+              models: {
+                "deepseek-v4.1-flash": {
+                  id: "deepseek-v4.1-flash",
+                  name: "DeepSeek V4.1 Flash",
+                  family: "deepseek-flash",
+                  release_date: "2026-09-10",
+                  attachment: true,
+                  reasoning: true,
+                  temperature: true,
+                  tool_call: true,
+                  modalities: { input: ["text", "image"], output: ["text"] },
+                  limit: { context: 1_000_000, output: 384_000 },
+                  provider: { api: "https://opencode.ai/inference/go/openai/v1" },
                 },
               },
             },
@@ -92,7 +116,27 @@ describe("ModelsDevPlugin", () => {
       const providerID = ProviderV2.ID.make("acme")
       const base = yield* catalog.model.get(providerID, ModelV2.ID.make("gpt-5.4"))
       const fast = yield* catalog.model.get(providerID, ModelV2.ID.make("gpt-5.4-fast"))
+      const deepseek = yield* catalog.model.get(
+        ProviderV2.ID.make("opencode-go"),
+        ModelV2.ID.make("deepseek-v4.1-flash"),
+      )
 
+      expect(base?.api).toMatchObject({
+        type: "aisdk",
+        package: "@ai-sdk/openai-compatible",
+        url: "https://models.acme.test/v1",
+      })
+      expect(deepseek).toMatchObject({
+        id: "deepseek-v4.1-flash",
+        providerID: "opencode-go",
+        api: {
+          id: "deepseek-v4.1-flash",
+          type: "aisdk",
+          package: "@ai-sdk/openai-compatible",
+          url: "https://opencode.ai/inference/go/openai/v1",
+        },
+      })
+      expect(deepseek && SessionRunnerModel.selectable(deepseek)).toBe(true)
       expect(base?.variants).toEqual([])
       expect(base?.request.body).toEqual({})
       expect(fast).toMatchObject({

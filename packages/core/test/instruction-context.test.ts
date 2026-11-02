@@ -196,6 +196,103 @@ describe("InstructionContext", () => {
     ),
   )
 
+  it.live("skips instruction candidates that are not files", () =>
+    Effect.acquireRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+    ).pipe(
+      Effect.flatMap((tmp) =>
+        Effect.gen(function* () {
+          const global = path.join(tmp.path, "global")
+          const globalClaudeFile = path.join(global, ".claude", "CLAUDE.md")
+          const directory = path.join(tmp.path, "packages", "core")
+          const file = path.join(tmp.path, "CLAUDE.md")
+          yield* Effect.promise(async () => {
+            await fs.mkdir(path.join(global, "AGENTS.md"), { recursive: true })
+            await fs.mkdir(path.dirname(globalClaudeFile), { recursive: true })
+            await fs.writeFile(globalClaudeFile, "global claude")
+            await fs.mkdir(path.join(tmp.path, "AGENTS.md"))
+            await fs.mkdir(path.join(directory, "CLAUDE.md"), { recursive: true })
+            await fs.writeFile(file, "project claude")
+          })
+          const context = yield* SystemContextRegistry.Service.pipe(
+            Effect.flatMap((service) => service.load()),
+            Effect.provide(
+              instructionLayer({
+                config: global,
+                locationServiceLayer: Layer.succeed(
+                  Location.Service,
+                  Location.Service.of(
+                    location(
+                      { directory: AbsolutePath.make(directory) },
+                      { projectDirectory: AbsolutePath.make(tmp.path) },
+                    ),
+                  ),
+                ),
+              }),
+            ),
+          )
+
+          expect((yield* SystemContext.initialize(context)).baseline).toBe(
+            [
+              `Instructions from: ${globalClaudeFile}\nglobal claude`,
+              `Instructions from: ${file}\nproject claude`,
+            ].join("\n\n"),
+          )
+        }),
+      ),
+    ),
+  )
+
+  it.live("skips instruction files that cannot be read", () =>
+    Effect.acquireRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+    ).pipe(
+      Effect.flatMap((tmp) =>
+        Effect.gen(function* () {
+          // Windows ignores the mode and root reads any file, so neither can make a file unreadable.
+          if (process.platform === "win32" || process.getuid?.() === 0) return
+          const global = path.join(tmp.path, "global")
+          const globalClaudeFile = path.join(global, ".claude", "CLAUDE.md")
+          const directory = path.join(tmp.path, "packages", "core")
+          const file = path.join(tmp.path, "AGENTS.md")
+          yield* Effect.promise(async () => {
+            await fs.mkdir(path.dirname(globalClaudeFile), { recursive: true })
+            await fs.writeFile(path.join(global, "AGENTS.md"), "unreadable", { mode: 0o000 })
+            await fs.writeFile(globalClaudeFile, "global claude")
+            await fs.mkdir(directory, { recursive: true })
+            await fs.writeFile(file, "project")
+            await fs.writeFile(path.join(directory, "AGENTS.md"), "unreadable", { mode: 0o000 })
+          })
+          const context = yield* SystemContextRegistry.Service.pipe(
+            Effect.flatMap((service) => service.load()),
+            Effect.provide(
+              instructionLayer({
+                config: global,
+                locationServiceLayer: Layer.succeed(
+                  Location.Service,
+                  Location.Service.of(
+                    location(
+                      { directory: AbsolutePath.make(directory) },
+                      { projectDirectory: AbsolutePath.make(tmp.path) },
+                    ),
+                  ),
+                ),
+              }),
+            ),
+          )
+
+          expect((yield* SystemContext.initialize(context)).baseline).toBe(
+            [`Instructions from: ${globalClaudeFile}\nglobal claude`, `Instructions from: ${file}\nproject`].join(
+              "\n\n",
+            ),
+          )
+        }),
+      ),
+    ),
+  )
+
   it.effect("preserves admitted instructions while observation is unavailable", () =>
     Effect.gen(function* () {
       const failingFS = Layer.effect(

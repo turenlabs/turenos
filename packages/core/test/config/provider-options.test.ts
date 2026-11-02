@@ -113,13 +113,11 @@ describe("ConfigProviderOptionsV1", () => {
         safetySettings: ["safe"],
       }),
     ).toEqual({
+      thinkingConfig: { thinkingBudget: 1024 },
+      responseModalities: ["TEXT"],
+      mediaResolution: "high",
+      imageConfig: { aspectRatio: "16:9" },
       safetySettings: ["safe"],
-      generationConfig: {
-        thinkingConfig: { thinkingBudget: 1024 },
-        responseModalities: ["TEXT"],
-        mediaResolution: "high",
-        imageConfig: { aspectRatio: "16:9" },
-      },
     })
   })
 

@@ -5,10 +5,16 @@ import {
   supportedSyntaxMessage,
 } from "../interpreter/model.js"
 import { copyIn, copyOut } from "../tool-runtime.js"
+import type { ExecutionBudget } from "../interpreter/budget.js"
 
 export const jsonStatics = new Set(["stringify", "parse"])
 
-export const invokeJsonMethod = (name: string, args: Array<unknown>, node: AstNode): unknown => {
+export const invokeJsonMethod = (
+  name: string,
+  args: Array<unknown>,
+  node: AstNode,
+  budget?: ExecutionBudget,
+): unknown => {
   if (!jsonStatics.has(name)) throw new InterpreterRuntimeError(`JSON.${name} is not available in CodeMode.`, node)
   switch (name) {
     case "stringify": {
@@ -23,11 +29,15 @@ export const invokeJsonMethod = (name: string, args: Array<unknown>, node: AstNo
       }
       const space = args[2]
       const indent = typeof space === "number" || typeof space === "string" ? space : undefined
+      // Includes expanded shared children, escaping and the maximum indentation at
+      // every depth, before either plain-data copying or native serialization.
+      budget?.value(args[0], indent ? 64 : 8)
       return JSON.stringify(copyOut(copyIn(args[0], "JSON.stringify value")), null, indent)
     }
     case "parse": {
       const text = args[0]
       if (typeof text !== "string") throw new InterpreterRuntimeError("JSON.parse expects a string.", node)
+      budget?.json(text)
       try {
         return copyIn(JSON.parse(text), "JSON.parse result")
       } catch (error) {

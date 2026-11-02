@@ -35,6 +35,32 @@ const eventFrame = (type: string, payload: object) =>
     body: utf8Encoder.encode(JSON.stringify(payload)),
   })
 
+// Modeled stream errors (throttlingException, validationException, ...) are
+// not events on the wire: AWS sends them as `:message-type=exception` frames
+// named by `:exception-type`.
+const exceptionFrame = (type: string, payload: object) =>
+  codec.encode({
+    headers: {
+      ":message-type": { type: "string", value: "exception" },
+      ":exception-type": { type: "string", value: type },
+      ":content-type": { type: "string", value: "application/json" },
+    },
+    body: utf8Encoder.encode(JSON.stringify(payload)),
+  })
+
+// Unmodeled stream errors have no member or payload: AWS sends them as
+// `:message-type=error` frames described only by `:error-code` and
+// `:error-message` headers.
+const errorFrame = (code: string, message: string) =>
+  codec.encode({
+    headers: {
+      ":message-type": { type: "string", value: "error" },
+      ":error-code": { type: "string", value: code },
+      ":error-message": { type: "string", value: message },
+    },
+    body: new Uint8Array(0),
+  })
+
 const concat = (frames: ReadonlyArray<Uint8Array>) => {
   const total = frames.reduce((sum, frame) => sum + frame.length, 0)
   const out = new Uint8Array(total)
@@ -191,6 +217,47 @@ describe("Bedrock Converse route", () => {
           },
         ],
       })
+    }),
+  )
+
+  it.effect("sends parallel tool results and a following prompt as one user message", () =>
+    Effect.gen(function* () {
+      const prepared = yield* LLMClient.prepare<BedrockConverse.BedrockConverseBody>(
+        LLM.request({
+          model,
+          messages: [
+            Message.user("Compare two lookups."),
+            Message.assistant([
+              ToolCallPart.make({ id: "tool_a", name: "lookup", input: { query: "a" } }),
+              ToolCallPart.make({ id: "tool_b", name: "lookup", input: { query: "b" } }),
+            ]),
+            Message.tool({ id: "tool_a", name: "lookup", result: { answer: "A" } }),
+            Message.tool({ id: "tool_b", name: "lookup", result: { answer: "B" } }),
+            Message.user("Now summarize."),
+          ],
+          cache: "none",
+        }),
+      )
+
+      // Converse requires alternating roles, with every toolResult in the user message after the toolUse turn.
+      expect(prepared.body.messages).toEqual([
+        { role: "user", content: [{ text: "Compare two lookups." }] },
+        {
+          role: "assistant",
+          content: [
+            { toolUse: { toolUseId: "tool_a", name: "lookup", input: { query: "a" } } },
+            { toolUse: { toolUseId: "tool_b", name: "lookup", input: { query: "b" } } },
+          ],
+        },
+        {
+          role: "user",
+          content: [
+            { toolResult: { toolUseId: "tool_a", content: [{ json: { answer: "A" } }], status: "success" } },
+            { toolResult: { toolUseId: "tool_b", content: [{ json: { answer: "B" } }], status: "success" } },
+            { text: "Now summarize." },
+          ],
+        },
+      ])
     }),
   )
 
@@ -381,17 +448,185 @@ describe("Bedrock Converse route", () => {
     }),
   )
 
-  it.effect("emits provider-error for throttlingException", () =>
+  // Claude with adaptive thinking display "omitted" streams a reasoning block with no text, only
+  // its signature. The signed block must go back next turn.
+  it.effect("keeps the signature of a reasoning block that streams no text", () =>
     Effect.gen(function* () {
       const body = eventStreamBody(
         ["messageStart", { role: "assistant" }],
-        ["throttlingException", { message: "Slow down" }],
+        ["contentBlockDelta", { contentBlockIndex: 0, delta: { reasoningContent: { signature: "sig_omitted" } } }],
+        ["contentBlockStop", { contentBlockIndex: 0 }],
+        ["contentBlockStart", { contentBlockIndex: 1, start: { toolUse: { toolUseId: "tool_1", name: "lookup" } } }],
+        ["contentBlockDelta", { contentBlockIndex: 1, delta: { toolUse: { input: '{"query":"x"}' } } }],
+        ["contentBlockStop", { contentBlockIndex: 1 }],
+        ["messageStop", { stopReason: "tool_use" }],
       )
+      const response = yield* LLMClient.generate(
+        LLM.updateRequest(baseRequest, {
+          tools: [{ name: "lookup", description: "Lookup", inputSchema: { type: "object" } }],
+        }),
+      ).pipe(Effect.provide(fixedBytes(body)))
+
+      expect(response.message.content).toEqual([
+        { type: "reasoning", text: "", providerMetadata: { bedrock: { signature: "sig_omitted" } } },
+        { type: "tool-call", id: "tool_1", name: "lookup", input: { query: "x" } },
+      ])
+
+      const prepared = yield* LLMClient.prepare<BedrockConverse.BedrockConverseBody>(
+        LLM.request({
+          model,
+          messages: [
+            Message.user("Look it up."),
+            response.message,
+            Message.tool({ id: "tool_1", name: "lookup", result: { found: true } }),
+          ],
+          cache: "none",
+        }),
+      )
+
+      expect(prepared.body.messages[1]).toEqual({
+        role: "assistant",
+        content: [
+          { reasoningContent: { reasoningText: { text: "", signature: "sig_omitted" } } },
+          { toolUse: { toolUseId: "tool_1", name: "lookup", input: { query: "x" } } },
+        ],
+      })
+    }),
+  )
+
+  // Core strips provider metadata from failed turns, so their reasoning comes back without a
+  // signature, which Claude on Bedrock rejects.
+  it.effect("drops unsigned reasoning and keeps signed reasoning", () =>
+    Effect.gen(function* () {
+      const prepared = yield* LLMClient.prepare<BedrockConverse.BedrockConverseBody>(
+        LLM.request({
+          model,
+          messages: [
+            Message.user("Start."),
+            Message.assistant([
+              { type: "reasoning", text: "Interrupted thinking." },
+              { type: "text", text: "Partial answer." },
+            ]),
+            Message.user("Try again."),
+            Message.assistant([
+              { type: "reasoning", text: "Let me think.", providerMetadata: { bedrock: { signature: "sig_1" } } },
+              { type: "text", text: "Done." },
+            ]),
+          ],
+          cache: "none",
+        }),
+      )
+
+      expect(prepared.body.messages).toEqual([
+        { role: "user", content: [{ text: "Start." }] },
+        { role: "assistant", content: [{ text: "Partial answer." }] },
+        { role: "user", content: [{ text: "Try again." }] },
+        {
+          role: "assistant",
+          content: [
+            { reasoningContent: { reasoningText: { text: "Let me think.", signature: "sig_1" } } },
+            { text: "Done." },
+          ],
+        },
+      ])
+    }),
+  )
+
+  it.effect("drops an assistant turn that only held unsigned reasoning", () =>
+    Effect.gen(function* () {
+      const prepared = yield* LLMClient.prepare<BedrockConverse.BedrockConverseBody>(
+        LLM.request({
+          model,
+          messages: [
+            Message.user("Start."),
+            Message.assistant([{ type: "reasoning", text: "Interrupted thinking." }]),
+            Message.user("Try again."),
+          ],
+          cache: "none",
+        }),
+      )
+
+      // Dropping the turn leaves the two user turns next to each other. Whether they go out as one
+      // message or two depends on whether adjacent user messages are merged, so check the blocks in order.
+      expect(prepared.body.messages.map((message) => message.role)).not.toContain("assistant")
+      expect(prepared.body.messages.flatMap((message) => [...message.content])).toEqual([
+        { text: "Start." },
+        { text: "Try again." },
+      ])
+    }),
+  )
+
+  // Other models, such as DeepSeek R1, may not sign their reasoning, so it is still sent unsigned
+  // and no turn is dropped.
+  it.effect("keeps unsigned reasoning for a non-Claude model", () =>
+    Effect.gen(function* () {
+      const prepared = yield* LLMClient.prepare<BedrockConverse.BedrockConverseBody>(
+        LLM.request({
+          model: AmazonBedrock.configure({ baseURL: "https://bedrock-runtime.test", apiKey: "test-bearer" }).model(
+            "us.deepseek.r1-v1:0",
+          ),
+          messages: [
+            Message.user("Start."),
+            Message.assistant([
+              { type: "reasoning", text: "Unsigned thinking." },
+              { type: "text", text: "Partial answer." },
+            ]),
+            Message.user("Try again."),
+            Message.assistant([{ type: "reasoning", text: "Interrupted thinking." }]),
+            Message.user("Go on."),
+          ],
+          cache: "none",
+        }),
+      )
+
+      expect(prepared.body.messages).toEqual([
+        { role: "user", content: [{ text: "Start." }] },
+        {
+          role: "assistant",
+          content: [
+            { reasoningContent: { reasoningText: { text: "Unsigned thinking.", signature: undefined } } },
+            { text: "Partial answer." },
+          ],
+        },
+        { role: "user", content: [{ text: "Try again." }] },
+        {
+          role: "assistant",
+          content: [{ reasoningContent: { reasoningText: { text: "Interrupted thinking.", signature: undefined } } }],
+        },
+        { role: "user", content: [{ text: "Go on." }] },
+      ])
+    }),
+  )
+
+  it.effect("emits provider-error for a mid-stream throttlingException frame", () =>
+    Effect.gen(function* () {
+      const body = concat([
+        eventFrame("messageStart", { role: "assistant" }),
+        eventFrame("contentBlockDelta", { contentBlockIndex: 0, delta: { text: "Hel" } }),
+        exceptionFrame("throttlingException", { message: "Too many tokens, please wait before trying again." }),
+      ])
+      const response = yield* LLMClient.generate(baseRequest).pipe(Effect.provide(fixedBytes(body)))
+
+      expect(response.text).toBe("Hel")
+      expect(response.events.find((event) => event.type === "provider-error")).toEqual({
+        type: "provider-error",
+        message: "Too many tokens, please wait before trying again.",
+        retryable: true,
+      })
+    }),
+  )
+
+  it.effect("emits retryable provider-error for a modelStreamErrorException frame", () =>
+    Effect.gen(function* () {
+      const body = concat([
+        eventFrame("messageStart", { role: "assistant" }),
+        exceptionFrame("modelStreamErrorException", { message: "Model stream failed" }),
+      ])
       const response = yield* LLMClient.generate(baseRequest).pipe(Effect.provide(fixedBytes(body)))
 
       expect(response.events.find((event) => event.type === "provider-error")).toEqual({
         type: "provider-error",
-        message: "Slow down",
+        message: "Model stream failed",
         retryable: true,
       })
     }),
@@ -401,7 +636,7 @@ describe("Bedrock Converse route", () => {
     Effect.gen(function* () {
       const response = yield* LLMClient.generate(baseRequest).pipe(
         Effect.provide(
-          fixedBytes(eventStreamBody(["validationException", { message: "Input is too long for requested model" }])),
+          fixedBytes(exceptionFrame("validationException", { message: "Input is too long for requested model" })),
         ),
       )
 
@@ -410,6 +645,41 @@ describe("Bedrock Converse route", () => {
         message: "Input is too long for requested model",
         classification: "context-overflow",
         retryable: false,
+      })
+    }),
+  )
+
+  it.effect("emits retryable provider-error with the code and message of a mid-stream error frame", () =>
+    Effect.gen(function* () {
+      const body = concat([
+        eventFrame("messageStart", { role: "assistant" }),
+        eventFrame("contentBlockDelta", { contentBlockIndex: 0, delta: { text: "Hel" } }),
+        errorFrame("ServiceUnavailable", "Service unavailable, please try again later."),
+      ])
+      const response = yield* LLMClient.generate(baseRequest).pipe(Effect.provide(fixedBytes(body)))
+
+      expect(response.text).toBe("Hel")
+      expect(response.events.find((event) => event.type === "provider-error")).toEqual({
+        type: "provider-error",
+        message: "ServiceUnavailable: Service unavailable, please try again later.",
+        retryable: true,
+      })
+    }),
+  )
+
+  it.effect("does not mark a non-transient error frame retryable", () =>
+    Effect.gen(function* () {
+      const response = yield* LLMClient.generate(baseRequest).pipe(
+        Effect.provide(
+          fixedBytes(
+            errorFrame("AccessDeniedException", "You don't have access to the model with the specified model ID."),
+          ),
+        ),
+      )
+
+      expect(response.events.find((event) => event.type === "provider-error")).toEqual({
+        type: "provider-error",
+        message: "AccessDeniedException: You don't have access to the model with the specified model ID.",
       })
     }),
   )

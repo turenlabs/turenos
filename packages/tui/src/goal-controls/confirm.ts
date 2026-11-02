@@ -109,7 +109,8 @@ function addInput(env: GoalEnv, dialog: ModalState, base: Goal, action: Action, 
     // Deliberately not dialog.editor: that field opts into Enter-to-send.
     dialog.frame.add(editor, dialog.frame.getChildren().indexOf(dialog.error))
     env.dialogs.track(dialog, editor)
-    editor.cursorOffset = editor.plainText.length
+    // The caret counts display cells, not string length, so a wide character would leave it mid-text.
+    editor.gotoBufferEnd()
     editor.focus()
   } else if (action === "Clear") {
     dialog.frame.add(

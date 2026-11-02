@@ -75,6 +75,7 @@ export interface Interface {
   readonly runBefore: (input: Identity & { readonly input: unknown }) => Effect.Effect<Outcome>
   readonly runAfter: (input: Omit<AfterEvent, "notes">) => Effect.Effect<ReadonlyArray<string>>
   readonly runFinally: (input: FinalizeEvent) => Effect.Effect<void>
+  readonly openTurn: (input: TurnEvent) => Effect.Effect<void>
   readonly runTurnComplete: (input: TurnEvent) => Effect.Effect<void>
   readonly awaitTurnComplete: (input: TurnEvent) => Effect.Effect<void>
 }
@@ -107,7 +108,10 @@ const layer = Layer.effect(
     let afterHooks: Callback<AfterEvent>[] = []
     let finalizeHooks: Callback<FinalizeEvent>[] = []
     let turnHooks: Callback<TurnEvent>[] = []
-    const completedTurns = new Set<string>()
+    // A call waits for its provider turn only while the turn is open: from `openTurn`, which the runner calls
+    // before it forks the turn's calls, until `runTurnComplete`. A call that arrives after that has nothing to
+    // wait for, so a completed turn leaves nothing behind.
+    const openTurns = new Set<string>()
     const turnWaiters = new Map<string, Set<() => void>>()
     const turnKey = (input: TurnEvent) => `${input.sessionID}:${input.assistantMessageID}`
 
@@ -220,9 +224,15 @@ const layer = Layer.effect(
       }
     })
 
+    const openTurn = Effect.fn("ToolInterceptor.openTurn")((input: TurnEvent) =>
+      Effect.sync(() => {
+        openTurns.add(turnKey(input))
+      }),
+    )
+
     const runTurnComplete = Effect.fn("ToolInterceptor.turnComplete")(function* (input: TurnEvent) {
       const key = turnKey(input)
-      completedTurns.add(key)
+      openTurns.delete(key)
       turnWaiters.get(key)?.forEach((resolve) => resolve())
       turnWaiters.delete(key)
       if (turnHooks.length === 0) return
@@ -235,11 +245,13 @@ const layer = Layer.effect(
     })
 
     const awaitTurnComplete = Effect.fn("ToolInterceptor.awaitTurnComplete")((input: TurnEvent) => {
-      if (turnHooks.length === 0 || completedTurns.has(turnKey(input))) return Effect.void
+      if (turnHooks.length === 0) return Effect.void
       return Effect.promise(
         () =>
           new Promise<void>((resolve) => {
             const key = turnKey(input)
+            // Checked here, not before `Effect.promise`, so the turn cannot complete between check and wait.
+            if (!openTurns.has(key)) return resolve()
             const waiters = turnWaiters.get(key) ?? new Set<() => void>()
             waiters.add(resolve)
             turnWaiters.set(key, waiters)
@@ -269,6 +281,7 @@ const layer = Layer.effect(
       runBefore,
       runAfter,
       runFinally,
+      openTurn,
       runTurnComplete,
       awaitTurnComplete,
     })

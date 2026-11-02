@@ -164,7 +164,7 @@ Each row identifies a resolved package and version, its declared license, and it
 | `@mermaid-js/parser` | `0.6.3` | MIT | [source](https://github.com/mermaid-js/mermaid.git) |
 | `@mermaid-js/parser` | `1.2.1` | MIT | [source](https://github.com/mermaid-js/mermaid.git) |
 | `@mixmark-io/domino` | `2.2.0` | BSD-2-Clause | [source](https://github.com/mixmark-io/domino.git) |
-| `@modelcontextprotocol/sdk` | `1.31.0` | MIT | [source](git+https://github.com/modelcontextprotocol/typescript-sdk.git) |
+| `@modelcontextprotocol/sdk` | `1.32.0` | MIT | [source](git+https://github.com/modelcontextprotocol/typescript-sdk.git) |
 | `@msgpackr-extract/msgpackr-extract-linux-x64` | `3.0.4` | MIT | [source](http://github.com/kriszyp/msgpackr-extract) |
 | `@nodable/entities` | `2.1.1` | MIT | [source](git+https://github.com/nodable/val-parsers.git) |
 | `@npmcli/agent` | `4.0.2` | ISC | [source](git+https://github.com/npm/agent.git) |
@@ -541,7 +541,7 @@ Each row identifies a resolved package and version, its declared license, and it
 | `ecdsa-sig-formatter` | `1.0.11` | Apache-2.0 | [source](git+ssh://git@github.com/Brightspace/node-ecdsa-sig-formatter.git) |
 | `ee-first` | `1.1.1` | MIT | [source](jonathanong/ee-first) |
 | `effect` | `4.0.0-beta.83` | MIT | [source](https://github.com/Effect-TS/effect-smol.git) |
-| `electron` | `42.11.1` | MIT | [source](https://github.com/electron/electron) |
+| `electron` | `42.11.16` | MIT | [source](https://github.com/electron/electron) |
 | `electron-context-menu` | `4.1.2` | MIT | [source](sindresorhus/electron-context-menu) |
 | `electron-dl` | `4.0.0` | MIT | [source](sindresorhus/electron-dl) |
 | `electron-is-dev` | `3.0.1` | MIT | [source](sindresorhus/electron-is-dev) |

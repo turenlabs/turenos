@@ -120,6 +120,11 @@ export default defineConfig(({ command }) => ({
               await fs.copyFile(`${FORGE_SERVER_DIST}/${l}`, `./out/main/chunks/${l}`)
               continue
             }
+            if (l === "result-compute-worker.js") {
+              await fs.mkdir("./out/main/chunks/result-compute", { recursive: true })
+              await fs.copyFile(`${FORGE_SERVER_DIST}/${l}`, `./out/main/chunks/result-compute/${l}`)
+              continue
+            }
             if (l === "yara-worker.js") {
               await fs.copyFile(`${FORGE_SERVER_DIST}/${l}`, `./out/main/chunks/${l}`)
               continue

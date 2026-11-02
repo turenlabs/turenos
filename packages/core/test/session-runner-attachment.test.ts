@@ -2,7 +2,7 @@ import fs from "fs"
 import path from "path"
 import { pathToFileURL } from "url"
 import { describe, expect } from "bun:test"
-import { DateTime, Effect, Layer } from "effect"
+import { DateTime, Effect, Layer, Stream } from "effect"
 import { AppNodeBuilder } from "@turenlabs/core/effect/app-node-builder"
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
 import { Config } from "@turenlabs/core/config"
@@ -13,8 +13,12 @@ import { SessionMessage } from "@turenlabs/core/session/message"
 import { FileAttachment } from "@turenlabs/core/session/prompt"
 import { SessionRunnerAttachment } from "@turenlabs/core/session/runner/attachment"
 import { toLLMMessages } from "@turenlabs/core/session/runner/to-llm-message"
-import { Model } from "@turenlabs/llm"
+import { LLM, Model } from "@turenlabs/llm"
 import * as OpenAIChat from "@turenlabs/llm/protocols/openai-chat"
+import { Auth } from "@turenlabs/llm/route"
+import { dynamicResponse } from "../../llm/test/lib/http"
+import { finishChunk } from "../../llm/test/lib/openai-chunks"
+import { sseEvents } from "../../llm/test/lib/sse"
 import { testEffect } from "./lib/effect"
 
 // Real fixtures, not synthetic base64 literals: `large-image.png` is a genuine 2560x1422 photo
@@ -215,11 +219,65 @@ describe("SessionRunnerAttachment.materialize", () => {
     }),
   )
 
+  it.effect("reads the file behind a composer mention rather than its source token", () =>
+    Effect.gen(function* () {
+      configEntries = []
+      const file = FileAttachment.make({
+        uri: pathToFileURL(notesPath).toString(),
+        mime: "text/markdown",
+        name: "notes.md",
+        source: { text: "@notes.md", start: 0, end: 9 },
+      })
+      const [materialized] = yield* SessionRunnerAttachment.materialize(yield* deps, [userMessage([file])])
+      expect(toLLMMessages([materialized!], model)[0]?.content).toContainEqual({
+        type: "text",
+        text: `<file path="notes.md" mime="text/markdown">\n${notesText}\n</file>`,
+      })
+    }),
+  )
+
+  it.effect("sends mentioned file contents through the OpenAI Chat HTTP transport", () =>
+    Effect.gen(function* () {
+      configEntries = []
+      const file = FileAttachment.make({
+        uri: pathToFileURL(notesPath).toString(),
+        mime: "text/markdown",
+        name: "notes.md",
+        source: { text: "@notes.md", start: 0, end: 9 },
+      })
+      const wireModel = OpenAIChat.route
+        .with({ endpoint: { baseURL: "https://provider.test/v1/" }, auth: Auth.bearer("fixture") })
+        .model({ id: "fixture-model" })
+      const bodies: string[] = []
+      const transport = dynamicResponse((input) =>
+        Effect.sync(() => {
+          bodies.push(input.text)
+          return input.respond(sseEvents(finishChunk("stop")), { headers: { "content-type": "text/event-stream" } })
+        }),
+      )
+      const [materialized] = yield* SessionRunnerAttachment.materialize(yield* deps, [userMessage([file])])
+      yield* LLM.stream(LLM.request({ model: wireModel, messages: toLLMMessages([materialized!], wireModel) })).pipe(
+        Stream.runCollect,
+        Effect.provide(transport),
+      )
+      expect(bodies).toHaveLength(1)
+      const body = JSON.parse(bodies[0]!) as { messages: { role: string; content: string }[] }
+      expect(body.messages).toEqual([
+        { role: "user", content: `See attached<file path="notes.md" mime="text/markdown">\n${notesText}\n</file>` },
+      ])
+    }),
+  )
+
   it.effect("slices a file: text attachment to the requested line range", () =>
     Effect.gen(function* () {
       configEntries = []
       const uri = `${pathToFileURL(notesPath).toString()}?start=3&end=4`
-      const file = FileAttachment.make({ uri, mime: "text/markdown", name: "notes.md" })
+      const file = FileAttachment.make({
+        uri,
+        mime: "text/markdown",
+        name: "notes.md",
+        source: { text: "@notes.md#3-4", start: 0, end: 13 },
+      })
 
       const [materialized] = yield* SessionRunnerAttachment.materialize(yield* deps, [userMessage([file])])
       const rendered = toLLMMessages([materialized!], model)
@@ -230,7 +288,7 @@ describe("SessionRunnerAttachment.materialize", () => {
     }),
   )
 
-  it.effect("prefers already-captured source.text over reading the file, skipping disk entirely", () =>
+  it.effect("reports a missing mentioned file rather than treating its source token as content", () =>
     Effect.gen(function* () {
       configEntries = []
       const uri = pathToFileURL(path.join(FIXTURES, "does-not-exist.md")).toString()
@@ -238,17 +296,44 @@ describe("SessionRunnerAttachment.materialize", () => {
         uri,
         mime: "text/plain",
         name: "selection.md",
-        source: { start: 0, end: 1, text: "captured client-side" },
+        source: { start: 0, end: 13, text: "@selection.md" },
       })
 
       const [materialized] = yield* SessionRunnerAttachment.materialize(yield* deps, [userMessage([file])])
       const resultFile = filesOf(materialized!)?.[0]
-      // Untouched: the nonexistent path was never read because source.text made it unnecessary.
-      expect(resultFile).toEqual(file)
       const rendered = toLLMMessages([materialized!], model)
-      expect(rendered[0]?.content).toContainEqual({
+      expect(resultFile?.mime).toBe("text/plain")
+      expect(rendered[0]?.content.findLast((part) => part.type === "text")).toMatchObject({
+        text: expect.stringContaining("Could not read attachment selection.md"),
+      })
+    }),
+  )
+
+  it.effect("uses data URI content and preserves cleared-media notes", () =>
+    Effect.gen(function* () {
+      const files = [
+        FileAttachment.make({
+          uri: `data:text/plain;base64,${Buffer.from("inline evidence").toString("base64")}`,
+          mime: "text/plain",
+          name: "inline.txt",
+          source: { text: "@inline.txt", start: 0, end: 11 },
+        }),
+        FileAttachment.make({
+          uri: "cleared:old.png",
+          mime: "text/plain",
+          name: "old.png",
+          source: { text: "image omitted", start: 0, end: 0 },
+        }),
+      ]
+      const [materialized] = yield* SessionRunnerAttachment.materialize(yield* deps, [userMessage(files)])
+      const content = toLLMMessages([materialized!], model)[0]?.content
+      expect(content).toContainEqual({
         type: "text",
-        text: `<file path="selection.md" mime="text/plain">\ncaptured client-side\n</file>`,
+        text: '<file path="inline.txt" mime="text/plain">\ninline evidence\n</file>',
+      })
+      expect(content).toContainEqual({
+        type: "text",
+        text: '<file path="old.png" mime="text/plain">\nimage omitted\n</file>',
       })
     }),
   )

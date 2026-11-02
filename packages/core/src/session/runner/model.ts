@@ -396,6 +396,8 @@ const scopedProviderOptions = (
   }
   if (Object.keys(options).length === 0) return {}
   if (model.api.package === "@ai-sdk/azure") return { openai: options, azure: options }
+  // The native Gemini route reads `gemini` options; the AI SDK Google provider behind the bridge reads `google`.
+  if (model.api.package === "@ai-sdk/google") return { google: options, gemini: options }
   return { [providerOptionKey(model)]: options }
 }
 

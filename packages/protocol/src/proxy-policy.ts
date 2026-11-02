@@ -39,6 +39,29 @@ export function matches(value: string, prefix: string) {
   }
 }
 
+// `localhost`, `*.localhost`, 127.0.0.0/8, 0.0.0.0, `::1`, `::` and IPv4-mapped loopback can all reach a local
+// listener, so a protected loopback origin covers each of them on its scheme and port.
+export function isProtected(target: URL, origins: readonly string[]) {
+  if (origins.includes(target.origin)) return true
+  const loopback = (hostname: string) => {
+    const host = hostname.replace(/\.$/, "")
+    return (
+      host === "localhost" ||
+      host.endsWith(".localhost") ||
+      host === "0.0.0.0" ||
+      /^127\.\d+\.\d+\.\d+$/.test(host) ||
+      host === "[::1]" ||
+      host === "[::]" ||
+      /^\[::ffff:7f[0-9a-f]{2}:[0-9a-f]{1,4}\]$/.test(host)
+    )
+  }
+  if (!loopback(target.hostname)) return false
+  return origins.some((origin) => {
+    const parsed = URL.parse(origin)
+    return !!parsed && parsed.protocol === target.protocol && parsed.port === target.port && loopback(parsed.hostname)
+  })
+}
+
 export function requireCreate(input: SecurityProxy.Create) {
   if (!input.name.trim()) throw new Error("Name is required")
   return { ...input, name: input.name.trim() }
@@ -110,7 +133,9 @@ export function publicBody(body: SecurityProxy.Body): SecurityProxy.Body {
     data: body.data
       .slice(0, 65536)
       .replace(
-        /("[^"\n]*(?:token|password|passwd|secret|session|api[_-]?key)[^"\n]*"\s*:\s*)"(?:\\.|[^"\\])*"/gi,
+        // The value may have no closing quote when the preview cut or an incomplete capture ends inside it; mask
+        // through the end then, or the start of the secret stays visible.
+        /("[^"\n]*(?:token|password|passwd|secret|session|api[_-]?key)[^"\n]*"\s*:\s*)"(?:\\[\s\S]|[^"\\]|\\$)*(?:"|$)/gi,
         '$1"[REDACTED]"',
       )
       .replace(/((?:password|token|secret|api[_-]?key)=)[^&\s]*/gi, "$1[REDACTED]"),

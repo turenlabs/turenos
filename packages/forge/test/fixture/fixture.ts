@@ -140,7 +140,7 @@ export function tmpdirScoped<E = never, R = never>(options?: {
           JSON.stringify({ $schema: "https://github.com/turenlabs/forge/config.json", ...resolved }),
         ),
       )
-      if (resolved.provider) yield* trustedProviderConfig(dir, resolved.provider)
+      if (resolved.provider || resolved.shell) yield* trustedConfig(dir, resolved)
     }
 
     if (options?.init) yield* options.init(dir)
@@ -150,21 +150,26 @@ export function tmpdirScoped<E = never, R = never>(options?: {
 }
 
 /**
- * Makes a test's provider config trusted by mirroring it into a per-test global config directory.
+ * Makes a test's provider and shell config trusted by mirroring it into a per-test global config directory.
  *
- * Provider routing (baseURL, npm, env, headers) from a project `forge.json` is ignored because a
- * cloned repository controls that file. Tests that point a provider at a local fake server therefore
- * need the same block in global config, which is what a person would do. `Global.Path.config` is
- * swapped for the test's scope and restored afterwards; bun runs tests in a file sequentially.
+ * Provider routing (baseURL, npm, env, headers) and `shell` from a project `forge.json` are ignored
+ * because a cloned repository controls that file. Tests that point a provider at a local fake server,
+ * or pick a shell, therefore need the same keys in global config, which is what a person would do.
+ * `Global.Path.config` is swapped for the test's scope and restored afterwards; bun runs tests in a
+ * file sequentially.
  */
-export const trustedProviderConfig = (dir: string, provider: NonNullable<ConfigV1.Info["provider"]>) =>
+export const trustedConfig = (dir: string, config: Pick<ConfigV1.Info, "provider" | "shell">) =>
   Effect.acquireRelease(
     Effect.promise(async () => {
       const globalDir = `${dir}.global-config`
       await fs.mkdir(globalDir, { recursive: true })
       await Bun.write(
         path.join(globalDir, "forge.json"),
-        JSON.stringify({ $schema: "https://github.com/turenlabs/forge/config.json", provider }),
+        JSON.stringify({
+          $schema: "https://github.com/turenlabs/forge/config.json",
+          provider: config.provider,
+          shell: config.shell,
+        }),
       )
       const previous = Global.Path.config
       ;(Global.Path as { config: string }).config = globalDir

@@ -10,6 +10,7 @@ import { ToolFailure } from "@turenlabs/llm"
 import { FileDiff } from "@turenlabs/schema/file-diff"
 import { createTwoFilesPatch, diffLines } from "diff"
 import { Effect, Layer, Schema } from "effect"
+import { isUtf8 } from "node:buffer"
 import { makeLocationNode } from "../effect/app-node"
 import { FileMutation } from "../file-mutation"
 import { FSUtil } from "../fs-util"
@@ -50,17 +51,6 @@ const joinBom = (text: string, bom: boolean) => (bom ? `\uFEFF${text}` : text)
 const decodeUtf8 = (content: Uint8Array) => {
   const bom = content[0] === 0xef && content[1] === 0xbb && content[2] === 0xbf
   return { bom, content, text: new TextDecoder().decode(bom ? content.slice(3) : content) }
-}
-
-const countOccurrences = (content: string, search: string) => {
-  if (search === "") return content.length + 1
-  let count = 0
-  let offset = 0
-  while ((offset = content.indexOf(search, offset)) !== -1) {
-    count++
-    offset += search.length
-  }
-  return count
 }
 
 const previewLines = (value: string, prefix: "+" | "-") => {
@@ -162,11 +152,33 @@ const layer = Layer.effectDiscard(
                     source: permissionSource,
                   }),
                 )
-                const source = decodeUtf8(yield* unableToEdit(fs.readFile(target.canonical)))
+                const content = yield* unableToEdit(fs.readFile(target.canonical))
+                // The whole file is re-encoded on write, so a lossy decode would replace every invalid
+                // byte with U+FFFD, not just the text being edited.
+                if (!isUtf8(content)) {
+                  return yield* new ToolFailure({
+                    message: `File is not valid UTF-8: ${input.path}. edit only rewrites UTF-8 text.`,
+                  })
+                }
+                const source = decodeUtf8(content)
                 const ending = detectLineEnding(source.text)
-                const oldString = convertToLineEnding(input.oldString, ending)
-                const newString = convertToLineEnding(input.newString, ending)
-                const replacements = countOccurrences(source.text, oldString)
+                // read shows every line break as LF and a file can mix LF and CRLF, so each line break in
+                // oldString matches either ending wherever it lands.
+                const pattern = yield* Effect.try({
+                  try: () =>
+                    new RegExp(
+                      normalizeLineEndings(input.oldString)
+                        .split("\n")
+                        .map((line) => line.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+                        .join("\r?\n"),
+                      "g",
+                    ),
+                  // Every syntax character is escaped, so the only rejection is the engine's pattern size
+                  // limit (about a million characters in JavaScriptCore).
+                  catch: () =>
+                    new ToolFailure({ message: "oldString is too large to match. Replace a smaller block of text." }),
+                })
+                const replacements = source.text.match(pattern)?.length ?? 0
                 if (replacements === 0) {
                   return yield* new ToolFailure({
                     message:
@@ -182,10 +194,11 @@ const layer = Layer.effectDiscard(
 
                 // A function replacement keeps newString literal: as a string, `$$`, `$&`, `` $` `` and
                 // `$'` are substitution patterns, and a Makefile's `$$` would land in the file as `$`.
-                const replaced =
-                  input.replaceAll === true
-                    ? source.text.replaceAll(oldString, () => newString)
-                    : source.text.replace(oldString, () => newString)
+                // The global pattern replaces every match, which is one match unless replaceAll is set.
+                // newString takes the line ending of the text it replaces, or the file's when that has none.
+                const replaced = source.text.replace(pattern, (match) =>
+                  convertToLineEnding(input.newString, match.includes("\n") ? detectLineEnding(match) : ending),
+                )
                 const counts = diffLines(source.text, replaced).reduce(
                   (result, item) => ({
                     additions: result.additions + (item.added ? (item.count ?? 0) : 0),

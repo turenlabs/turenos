@@ -307,6 +307,7 @@ describe("ReadTool", () => {
         value: [
           { type: "text", text: "Image read successfully" },
           { type: "file", uri: `data:image/png;base64,${png}`, mime: "image/png", name: "large.png" },
+          { type: "text", text: expect.stringContaining("[Captured result res_") },
         ],
       })
     }),
@@ -681,9 +682,13 @@ describe("ReadTool", () => {
             input: { path: "large.txt", offset: 2, limit: 1 },
           },
         }),
-        // Body plus only the load-bearing paging state — the mime/offset envelope
-        // stays durable-only.
-      ).toEqual({ type: "text", value: "hello\n[truncated — continue with offset 3]" })
+      ).toEqual({
+        type: "content",
+        value: [
+          { type: "text", text: "hello\n[truncated — continue with offset 3]" },
+          { type: "text", text: expect.stringContaining("Capture is partial") },
+        ],
+      })
       expect(readCalls).toEqual([
         { input: AbsolutePath.make(path.join(process.cwd(), "large.txt")), page: { offset: 2, limit: 1 } },
       ])

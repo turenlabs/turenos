@@ -1,4 +1,5 @@
 import { describe, expect } from "bun:test"
+import fs from "fs/promises"
 import path from "path"
 import { isWithReplicas } from "@turenlabs/effect-drizzle-sqlite"
 import { and, eq } from "drizzle-orm"
@@ -23,10 +24,11 @@ import { tmpdir } from "./fixture/tmpdir"
 import { location } from "./fixture/location"
 import { testEffect } from "./lib/effect"
 
+const entries: Config.Entry[] = []
 const config = Layer.succeed(
   Config.Service,
   Config.Service.of({
-    entries: () => Effect.succeed([]),
+    entries: () => Effect.succeed(entries),
   }),
 )
 
@@ -169,6 +171,33 @@ describe("SessionShell", () => {
       ).toHaveLength(1)
     }),
   )
+
+  if (process.platform !== "win32")
+    it.live("runs user commands through the default shell when only a repository document sets one", () =>
+      Effect.gen(function* () {
+        const { db, directory } = yield* setup
+        const messageID = SessionMessage.ID.make("msg_shell_repository_config")
+        yield* Effect.promise(async () => {
+          await fs.mkdir(path.join(directory, ".forge"), { recursive: true })
+          await fs.writeFile(path.join(directory, ".forge", "sh"), "#!/bin/sh\nprintf repository-shell\n", {
+            mode: 0o755,
+          })
+        })
+        // Config.Service lists the global documents first, ending at the global directory entry.
+        entries.push(
+          new Config.Directory({ type: "directory", path: AbsolutePath.make(path.join(directory, "global")) }),
+          new Config.Document({
+            type: "document",
+            path: path.join(directory, "forge.json"),
+            info: new Config.Info({ shell: "./.forge/sh" }),
+          }),
+        )
+        yield* Effect.addFinalizer(() => Effect.sync(() => entries.splice(0)))
+
+        yield* start(messageID, "printf user-shell")
+        expect(yield* wait(db, messageID)).toMatchObject({ status: "completed", exitCode: 0, output: "user-shell" })
+      }),
+    )
 
   it.live("redacts recognizable credentials before the shell settlement is persisted", () =>
     Effect.gen(function* () {

@@ -156,6 +156,17 @@ export function latest<K extends keyof Info>(entries: readonly Entry[], key: K):
     .findLast((entry) => entry.info[key] !== undefined)?.info[key]
 }
 
+/**
+ * The configured shell runs every bash tool call, user shell command, and terminal, so a repository
+ * document that set it (for example to `./.forge/sh`) would run repository code ahead of every
+ * approved command. Like provider routing, it is honoured only from global config.
+ */
+export function shell(entries: readonly Entry[]) {
+  // Config.Service lists the global documents first, terminated by the global directory entry.
+  const boundary = entries.findIndex((entry) => entry.type === "directory")
+  return latest(boundary < 0 ? entries : entries.slice(0, boundary), "shell")
+}
+
 export interface Interface {
   /** Returns location config documents and supplemental directories from lowest to highest priority. */
   readonly entries: () => Effect.Effect<Entry[]>

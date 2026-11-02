@@ -25,6 +25,14 @@ type JsonRpcNotification<T = unknown> = {
 
 export type AcpClient = {
   readonly request: <T>(method: string, params?: unknown) => Effect.Effect<JsonRpcResponse<T>, unknown>
+  // Like `request`, but also returns the notifications that arrived before the response.
+  readonly requestWithNotifications: <T>(
+    method: string,
+    params?: unknown,
+  ) => Effect.Effect<
+    { readonly response: JsonRpcResponse<T>; readonly notifications: readonly JsonRpcNotification[] },
+    unknown
+  >
   readonly receive: Effect.Effect<unknown>
   readonly waitForNotification: <T>(
     method: string,
@@ -36,18 +44,23 @@ export type AcpClient = {
 export function createAcpClient(acp: AcpHandle): AcpClient {
   const state = { nextId: 1 }
 
-  const request = <T>(method: string, params?: unknown) =>
+  const requestWithNotifications = <T>(method: string, params?: unknown) =>
     Effect.gen(function* () {
       const id = state.nextId++
       const message: JsonRpcRequest =
         params === undefined ? { jsonrpc: "2.0", id, method } : { jsonrpc: "2.0", id, method, params }
       yield* acp.send(message)
 
+      const notifications: JsonRpcNotification[] = []
       while (true) {
         const received = yield* acp.receive.pipe(Effect.timeout(Duration.seconds(15)))
-        if (isJsonRpcResponse<T>(received) && received.id === id) return received
+        if (isJsonRpcResponse<T>(received) && received.id === id) return { response: received, notifications }
+        if (isJsonRpcNotification(received)) notifications.push(received)
       }
     })
+
+  const request = <T>(method: string, params?: unknown) =>
+    requestWithNotifications<T>(method, params).pipe(Effect.map((result) => result.response))
 
   const waitForNotification = <T>(method: string, predicate: (params: T) => boolean, timeoutMs = 15_000) =>
     Effect.gen(function* () {
@@ -60,6 +73,7 @@ export function createAcpClient(acp: AcpHandle): AcpClient {
 
   return {
     request,
+    requestWithNotifications,
     receive: acp.receive,
     waitForNotification,
   }

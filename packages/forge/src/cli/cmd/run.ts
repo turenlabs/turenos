@@ -508,6 +508,19 @@ export const RunCommand = effectCmd({
         async function loop(client: ForgeClient, events: Awaited<ReturnType<typeof sdk.event.subscribe>>) {
           const toggles = new Map<string, boolean>()
           let error: string | undefined
+          // Subagents ask from their own child sessions, and an unanswered ask blocks the run
+          // forever, so asks from every session below this one are answered too.
+          const family = new Set([sessionID])
+          async function descends(id: string): Promise<boolean> {
+            if (family.has(id)) return true
+            const parentID = await client.session
+              .get({ sessionID: id })
+              .then((result) => result.data?.parentID)
+              .catch(() => undefined)
+            if (!parentID || !(await descends(parentID))) return false
+            family.add(id)
+            return true
+          }
 
           for await (const event of events.stream) {
             if (
@@ -606,7 +619,7 @@ export const RunCommand = effectCmd({
 
             if (event.type === "permission.asked") {
               const permission = event.properties
-              if (permission.sessionID !== sessionID) continue
+              if (!(await descends(permission.sessionID))) continue
 
               UI.println(
                 UI.Style.TEXT_WARNING_BOLD + "!",

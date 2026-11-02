@@ -252,6 +252,8 @@ describe("SessionV2 human transcript", () => {
       const modelContext = yield* session.context(created.id)
       expect(modelContext.map((message) => message.id)).toEqual([checkpoints[1], ...expected.slice(-2)])
       expect(modelContext[0]).toMatchObject({ summary: "Summary through 3" })
+      const database = yield* Database.Service
+      expect(yield* SessionHistory.compactionCount(database.db, created.id)).toBe(2)
       expect(yield* session.message({ sessionID: created.id, messageID: expected[1]! })).toMatchObject({
         type: "assistant",
         content: [{ type: "text", text: "Answer 0" }],
@@ -276,7 +278,6 @@ describe("SessionV2 human transcript", () => {
         yield* session.messages({ sessionID: created.id, cursor: { id: checkpoints[1]!, direction: "next" } }),
       ).toEqual([])
       expect(yield* session.message({ sessionID: created.id, messageID: expected.at(-1)! })).toBeUndefined()
-      const database = yield* Database.Service
       yield* database.db.delete(SessionTable).where(eq(SessionTable.id, created.id)).run()
       expect((yield* session.messages({ sessionID: created.id }).pipe(Effect.flip))._tag).toBe("Session.NotFoundError")
     }),

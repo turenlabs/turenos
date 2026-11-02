@@ -88,7 +88,8 @@ export default function TeamPage() {
     dutyRetry: number
     loading: boolean
     busy: boolean
-    text: string
+    /** Unsent message text, keyed by `draftScope`. */
+    texts: Record<string, string>
     attachmentError?: string
     dragging: boolean
     selected?: string
@@ -111,7 +112,7 @@ export default function TeamPage() {
     dutyRetry: 0,
     loading: true,
     busy: false,
-    text: "",
+    texts: {},
     dragging: false,
     createOpen: false,
     roomOpen: false,
@@ -152,18 +153,20 @@ export default function TeamPage() {
   let roomRevision = 0
   const loadingKeys = new Set<string>()
   const scroll = createTeamScroll()
-  let pendingPost:
-    | {
-        id: string
-        roomID: string
-        text: string
-        scope: string
-        attachments: TeamAttachment[]
-        attachmentIDs: string[]
-        client: ReturnType<typeof serverSDK>["client"]
-        generation: number
-      }
-    | undefined
+  // A failed send per room, keyed by `draftScope`, so its retry reuses the same message ID.
+  const pendingPosts = new Map<
+    string,
+    {
+      id: string
+      roomID: string
+      text: string
+      scope: string
+      attachments: TeamAttachment[]
+      attachmentIDs: string[]
+      client: ReturnType<typeof serverSDK>["client"]
+      generation: number
+    }
+  >()
   let pendingFactoryRun:
     | { id: string; roomID: string; client: ReturnType<typeof serverSDK>["client"]; generation: number }
     | undefined
@@ -177,11 +180,14 @@ export default function TeamPage() {
   const selectedServer = createMemo(() => serverOptions().find((option) => option.key === server.key))
   // Attachment drafts belong to one room on one server; the same room ID can exist on two servers.
   const draftScope = (roomID: string) => JSON.stringify([serverSDK().url, serverSDK().scope, roomID])
+  // Message text is kept per room too, so a draft stays in the room where it was typed.
+  const textScope = () => (state.value ? draftScope(state.value.room.id) : undefined)
+  const text = () => state.texts[textScope() ?? ""] ?? ""
   const draft = createTeamAttachmentDraft({
     scope: () => (state.value && !archived() ? draftScope(state.value.room.id) : undefined),
     // A changed draft is a new message, so it must not reuse the failed message's ID.
     onChange: () => {
-      pendingPost = undefined
+      pendingPosts.delete(textScope() ?? "")
     },
     onError: (message) => setState("attachmentError", message),
     readClipboardImage: platform.readClipboardImage,
@@ -268,7 +274,7 @@ export default function TeamPage() {
     setState("attachmentError", undefined)
     setState("dragging", false)
     // Leaving a room frees its attachment draft. Only a failed send keeps its draft, for the exact retry.
-    untrack(() => draft.prune([pendingPost?.scope]))
+    untrack(() => draft.prune([...pendingPosts.keys()]))
     setState("busy", false)
     setState("olderLoading", false)
     setState("factoryConfig", {
@@ -358,15 +364,16 @@ export default function TeamPage() {
 
   const send = async () => {
     if (state.busy || draft.reading() || !state.value || archived()) return
-    if (!state.text.trim() && draft.list().length === 0) return
+    if (!text().trim() && draft.list().length === 0) return
     const sendGeneration = generation
     const roomID = state.value.room.id
-    pendingPost = pendingMessage(
-      pendingPost,
+    const scope = draftScope(roomID)
+    const submitted = pendingMessage(
+      pendingPosts.get(scope),
       {
         roomID,
-        text: state.text.trim(),
-        scope: draftScope(roomID),
+        text: text().trim(),
+        scope,
         attachments: draft.attachments(),
         attachmentIDs: draft.list().map((item) => item.id),
         client: serverSDK().client,
@@ -374,7 +381,7 @@ export default function TeamPage() {
       },
       () => crypto.randomUUID(),
     )
-    const submitted = pendingPost
+    pendingPosts.set(scope, submitted)
     setState("busy", true)
     setState("error", undefined)
     try {
@@ -385,6 +392,8 @@ export default function TeamPage() {
         ...(submitted.attachments.length ? { attachments: submitted.attachments } : {}),
       })
       draft.clear(submitted.scope, submitted.attachmentIDs)
+      // Clear the room's text even if the user moved on, unless it was edited after sending.
+      if ((state.texts[submitted.scope] ?? "").trim() === submitted.text) setState("texts", submitted.scope, "")
       if (
         ownsTeamResponse(
           { client: submitted.client, roomID: submitted.roomID, generation: sendGeneration },
@@ -394,10 +403,9 @@ export default function TeamPage() {
         setState("value", (previous) =>
           previous ? { ...previous, messages: mergeMessages(previous.messages, [posted.message]) } : previous,
         )
-        if (state.text.trim() === submitted.text) setState("text", "")
         scroll.resume()
       }
-      pendingPost = undefined
+      if (pendingPosts.get(submitted.scope) === submitted) pendingPosts.delete(submitted.scope)
       void load("poll")
     } catch (error) {
       if (sendGeneration === generation)
@@ -685,7 +693,7 @@ export default function TeamPage() {
     })
     setState("selected", teammate.id)
   }
-  const assigned = () => (state.value ? assignedHandles(state.text, state.value.teammates) : [])
+  const assigned = () => (state.value ? assignedHandles(text(), state.value.teammates) : [])
   const activeRun = () => state.value?.factoryRuns?.find((run) => run.status === "running")
   // A run waiting for the user's answer does not block a new run, but it is unfinished and can be stopped.
   const stoppableRun = () =>
@@ -1299,11 +1307,13 @@ export default function TeamPage() {
           </label>
           <TeamMentionInput
             disabled={!state.value || archived()}
-            value={state.text}
+            value={text()}
             teammates={state.value?.teammates ?? []}
             onInput={(value) => {
-              setState("text", value)
-              if (pendingPost && value.trim() !== pendingPost.text) pendingPost = undefined
+              const scope = textScope()
+              if (!scope) return
+              setState("texts", scope, value)
+              if (value.trim() !== pendingPosts.get(scope)?.text) pendingPosts.delete(scope)
             }}
             onSend={() => void send()}
           />
@@ -1350,8 +1360,8 @@ export default function TeamPage() {
           <div class="mt-2 flex items-end gap-3 text-[11px] leading-4 text-v2-text-text-muted">
             <div id="team-message-hint" class="min-w-0 flex-1">
               <p>
-                {pendingPost
-                  ? `Retrying original message to #${state.value?.rooms.find((room) => room.id === pendingPost?.roomID)?.name ?? "previous room"}`
+                {pendingPosts.has(textScope() ?? "")
+                  ? `Retrying original message to #${state.value?.room.name}`
                   : assigned().length
                     ? `Assigning to ${assigned()
                         .map((handle) => `@${handle}`)
@@ -1399,7 +1409,7 @@ export default function TeamPage() {
               disabled={
                 state.busy ||
                 draft.reading() ||
-                (!state.text.trim() && draft.list().length === 0) ||
+                (!text().trim() && draft.list().length === 0) ||
                 !state.value ||
                 archived()
               }

@@ -139,6 +139,51 @@ describe("ProjectV2.resolve", () => {
     }),
   )
 
+  it.live("normalizes scp remotes without a user to the same id as https", () =>
+    Effect.gen(function* () {
+      const scp = yield* Effect.acquireRelease(
+        Effect.promise(() => tmpdir()),
+        (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+      )
+      const https = yield* Effect.acquireRelease(
+        Effect.promise(() => tmpdir()),
+        (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+      )
+      yield* Effect.promise(() => initRepo(scp.path, { commit: true, remote: "github.com:owner/repo.git" }))
+      yield* Effect.promise(() => initRepo(https.path, { commit: true, remote: "https://github.com/owner/repo.git" }))
+      const project = yield* ProjectV2.Service
+
+      const a = yield* project.resolve(abs(scp.path))
+      const b = yield* project.resolve(abs(https.path))
+
+      expect(a.id).toBe(remoteID("github.com/owner/repo"))
+      expect(b.id).toBe(a.id)
+    }),
+  )
+
+  it.live("ignores Windows drive remotes and falls back to root commit", () =>
+    Effect.gen(function* () {
+      const drive = yield* Effect.acquireRelease(
+        Effect.promise(() => tmpdir()),
+        (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+      )
+      const alias = yield* Effect.acquireRelease(
+        Effect.promise(() => tmpdir()),
+        (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+      )
+      yield* Effect.promise(() => initRepo(drive.path, { commit: true, remote: "C:/repos/app" }))
+      yield* Effect.promise(() => initRepo(alias.path, { commit: true, remote: "git@h:owner/repo.git" }))
+      const project = yield* ProjectV2.Service
+
+      const a = yield* project.resolve(abs(drive.path))
+      const b = yield* project.resolve(abs(alias.path))
+
+      expect(a.id).toBe(ProjectV2.ID.make(yield* Effect.promise(() => rootCommit(drive.path))))
+      // A one-letter host after a user is still a scp host, not a drive.
+      expect(b.id).toBe(remoteID("h/owner/repo"))
+    }),
+  )
+
   it.live("ignores file remotes and falls back to root commit", () =>
     Effect.gen(function* () {
       const tmp = yield* Effect.acquireRelease(

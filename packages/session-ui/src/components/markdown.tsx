@@ -37,6 +37,7 @@ import { markdownBlockKey, type MarkdownToken } from "./markdown-worker-protocol
 import { shouldResetCodeTokens, type RenderedCodeState } from "./markdown-code-state"
 import { getCachedMarkdown, sanitizeMarkdown, touchCachedMarkdown, type MarkdownCacheEntry } from "./markdown-cache"
 import { inlineCodeKind } from "./markdown-inline-code-kind"
+import { markCodeLinks } from "./markdown-code-links"
 import { localMarkdownPath, resolveMarkdownImages, type MarkdownImageResolver } from "./markdown-image"
 
 type RenderedBlock =
@@ -101,19 +102,6 @@ type CopyButtonState = {
 }
 
 const copyButtonState = new WeakMap<HTMLElement, CopyButtonState>()
-
-const urlPattern = /^https?:\/\/[^\s<>()`"']+$/
-
-function codeUrl(text: string) {
-  const href = text.trim().replace(/[),.;!?]+$/, "")
-  if (!urlPattern.test(href)) return
-  try {
-    const url = new URL(href)
-    return url.toString()
-  } catch {
-    return
-  }
-}
 
 function createCopyButton(labels: CopyLabels) {
   const host = document.createElement("div")
@@ -235,35 +223,6 @@ function ensureCodeWrapper(block: HTMLPreElement, labels: CopyLabels) {
   for (const button of buttons.slice(1)) {
     disposeCopyButton(button)
     button.remove()
-  }
-}
-
-function markCodeLinks(root: HTMLDivElement) {
-  const codeNodes = Array.from(root.querySelectorAll(":not(pre) > code"))
-  for (const code of codeNodes) {
-    const href = codeUrl(code.textContent ?? "")
-    const parentLink =
-      code.parentElement instanceof HTMLAnchorElement && code.parentElement.classList.contains("external-link")
-        ? code.parentElement
-        : null
-
-    if (!href) {
-      if (parentLink) parentLink.replaceWith(code)
-      continue
-    }
-
-    if (parentLink) {
-      parentLink.href = href
-      continue
-    }
-
-    const link = document.createElement("a")
-    link.href = href
-    link.className = "external-link"
-    link.target = "_blank"
-    link.rel = "noopener noreferrer"
-    code.parentNode?.replaceChild(link, code)
-    link.appendChild(code)
   }
 }
 

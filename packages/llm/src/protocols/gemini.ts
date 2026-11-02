@@ -93,6 +93,7 @@ const GeminiToolConfig = Schema.Struct({
 
 const GeminiThinkingConfig = Schema.Struct({
   thinkingBudget: Schema.optional(Schema.Number),
+  thinkingLevel: Schema.optional(Schema.String),
   includeThoughts: Schema.optional(Schema.Boolean),
 })
 
@@ -281,6 +282,13 @@ const lowerMessages = Effect.fn("Gemini.lowerMessages")(function* (request: LLMR
       }
       response.response.content = text.join("\n")
     }
+    // Parallel tool results arrive as separate tool messages, but Gemini requires the content after
+    // a function call turn to answer every functionCall in it, so consecutive results share one content.
+    const previous = contents.at(-1)
+    if (previous?.role === "user" && previous.parts.some((part) => "functionResponse" in part)) {
+      contents[contents.length - 1] = { role: "user", parts: [...previous.parts, ...parts] }
+      continue
+    }
     contents.push({ role: "user", parts })
   }
 
@@ -294,6 +302,7 @@ const thinkingConfig = (request: LLMRequest) => {
   if (!ProviderShared.isRecord(value)) return undefined
   const result = {
     thinkingBudget: typeof value.thinkingBudget === "number" ? value.thinkingBudget : undefined,
+    thinkingLevel: typeof value.thinkingLevel === "string" ? value.thinkingLevel : undefined,
     includeThoughts: typeof value.includeThoughts === "boolean" ? value.includeThoughts : undefined,
   }
   return Object.values(result).some((item) => item !== undefined) ? result : undefined

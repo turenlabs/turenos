@@ -36,6 +36,23 @@ describe("Gemini route", () => {
     }),
   )
 
+  it.effect("lowers thinking options into generationConfig", () =>
+    Effect.gen(function* () {
+      const generationConfig = (thinkingConfig: Record<string, unknown>) =>
+        LLMClient.prepare<Gemini.GeminiBody>(
+          LLM.request({ model, prompt: "Say hello.", providerOptions: { gemini: { thinkingConfig } } }),
+        ).pipe(Effect.map((prepared) => prepared.body.generationConfig))
+
+      // Gemini 3 models set reasoning depth with thinkingLevel; earlier models use a token budget.
+      expect(yield* generationConfig({ includeThoughts: true, thinkingLevel: "low" })).toEqual({
+        thinkingConfig: { includeThoughts: true, thinkingLevel: "low" },
+      })
+      expect(yield* generationConfig({ includeThoughts: true, thinkingBudget: 1024 })).toEqual({
+        thinkingConfig: { includeThoughts: true, thinkingBudget: 1024 },
+      })
+    }),
+  )
+
   it.effect("lowers chronological system updates to wrapped user text in order", () =>
     Effect.gen(function* () {
       const prepared = yield* LLMClient.prepare<Gemini.GeminiBody>(
@@ -107,6 +124,42 @@ describe("Gemini route", () => {
         ],
         toolConfig: { functionCallingConfig: { mode: "ANY", allowedFunctionNames: ["lookup"] } },
       })
+    }),
+  )
+
+  it.effect("sends parallel tool results as one user content", () =>
+    Effect.gen(function* () {
+      const prepared = yield* LLMClient.prepare<Gemini.GeminiBody>(
+        LLM.request({
+          model,
+          messages: [
+            Message.assistant([
+              ToolCallPart.make({ id: "call_a", name: "lookup", input: { query: "a" } }),
+              ToolCallPart.make({ id: "call_b", name: "lookup", input: { query: "b" } }),
+            ]),
+            Message.tool({ id: "call_a", name: "lookup", result: { answer: "A" } }),
+            Message.tool({ id: "call_b", name: "lookup", result: { answer: "B" } }),
+          ],
+        }),
+      )
+
+      // Gemini requires the turn after a function call turn to carry one functionResponse per functionCall.
+      expect(prepared.body.contents).toEqual([
+        {
+          role: "model",
+          parts: [
+            { functionCall: { name: "lookup", args: { query: "a" } } },
+            { functionCall: { name: "lookup", args: { query: "b" } } },
+          ],
+        },
+        {
+          role: "user",
+          parts: [
+            { functionResponse: { name: "lookup", response: { name: "lookup", content: '{"answer":"A"}' } } },
+            { functionResponse: { name: "lookup", response: { name: "lookup", content: '{"answer":"B"}' } } },
+          ],
+        },
+      ])
     }),
   )
 

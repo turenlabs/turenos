@@ -426,6 +426,82 @@ describe("EditTool", () => {
     ),
   )
 
+  // A lossy decode would turn every non-UTF-8 byte in the file into U+FFFD on write, far from the
+  // replaced text.
+  it.live("refuses a file that is not valid UTF-8 and leaves its bytes unchanged", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) => {
+        reset()
+        const target = path.join(tmp.path, "legacy.c")
+        const original = Buffer.concat([Buffer.from("/* caf"), Buffer.from([0xe9]), Buffer.from(" */\nint x = 1;\n")])
+        return Effect.promise(() => fs.writeFile(target, original)).pipe(
+          Effect.andThen(
+            withTool(tmp.path, (registry) =>
+              executeTool(registry, call({ path: "legacy.c", oldString: "int x = 1;", newString: "int x = 2;" })),
+            ),
+          ),
+          Effect.andThen((result) =>
+            Effect.gen(function* () {
+              expect(result).toEqual({
+                type: "error",
+                value: "File is not valid UTF-8: legacy.c. edit only rewrites UTF-8 text.",
+              })
+              expect(yield* Effect.promise(() => fs.readFile(target))).toEqual(original)
+              expect(writes).toEqual([])
+            }),
+          ),
+        )
+      },
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+    ),
+  )
+
+  // read shows every line break as LF, so each one in oldString must match LF or CRLF where it lands.
+  it.live("matches oldString line by line in a file that mixes LF and CRLF", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) =>
+        Effect.gen(function* () {
+          reset()
+          const target = path.join(tmp.path, "mixed.txt")
+          const edit = (input: Omit<typeof EditTool.Input.Type, "path">, id: string) =>
+            withTool(tmp.path, (registry) => executeTool(registry, call({ path: "mixed.txt", ...input }, id)))
+          const read = () => Effect.promise(() => fs.readFile(target, "utf8"))
+
+          yield* Effect.promise(() => fs.writeFile(target, "one\ntwo\nthree\r\nfour\r\n"))
+          expect(yield* edit({ oldString: "one\ntwo", newString: "1\n2" }, "call-edit-lf")).toMatchObject({
+            type: "text",
+            value: expect.stringContaining("Replacements: 1"),
+          })
+          expect(yield* read()).toBe("1\n2\nthree\r\nfour\r\n")
+          expect(yield* edit({ oldString: "2\nthree\nfour", newString: "2-4" }, "call-edit-span")).toMatchObject({
+            type: "text",
+          })
+          expect(yield* read()).toBe("1\n2-4\r\n")
+
+          yield* Effect.promise(() => fs.writeFile(target, "k\nv\nk\r\nv\r\n"))
+          expect(yield* edit({ oldString: "k\nv", newString: "k\nw" }, "call-edit-ambiguous")).toEqual({
+            type: "error",
+            value:
+              "Found multiple exact matches for oldString. Provide more surrounding context or set replaceAll to true.",
+          })
+          expect(
+            yield* edit({ oldString: "k\nv", newString: "k\nw", replaceAll: true }, "call-edit-all"),
+          ).toMatchObject({ type: "text", value: expect.stringContaining("Replacements: 2") })
+          expect(yield* read()).toBe("k\nw\nk\r\nw\r\n")
+
+          // 400,000 line breaks build a pattern of 1.2 million characters, past JavaScriptCore's limit.
+          expect(yield* edit({ oldString: "\n".repeat(400_000), newString: "" }, "call-edit-too-large")).toEqual({
+            type: "error",
+            value: "oldString is too large to match. Replace a smaller block of text.",
+          })
+          expect(yield* read()).toBe("k\nw\nk\r\nw\r\n")
+        }),
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+    ),
+  )
+
   it.live("rejects an in-place content change after matching but before conditional commit", () =>
     Effect.acquireUseRelease(
       Effect.promise(() => tmpdir()),

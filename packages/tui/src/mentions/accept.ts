@@ -1,7 +1,7 @@
 import type { KeyEvent, TextareaRenderable } from "@opentui/core"
 import { matchesKey } from "../keys"
 import { mentionText } from "../prompt-files"
-import type { SuggestionPopup } from "../suggest"
+import { caretIndex, type SuggestionPopup } from "../suggest"
 import type { Entry } from "./popup"
 
 // A folder keeps the mention open for its next segment; a file closes it and
@@ -14,7 +14,7 @@ function acceptMention(popup: SuggestionPopup<Entry>, editor: TextareaRenderable
   if (!text) return false
   // Replacing a quoted path consumes its closing quote. Keep a following range
   // attached, and retain any existing whitespace before the remaining prose.
-  const suffix = editor.plainText.slice(editor.cursorOffset).replace(/^"/, "")
+  const suffix = editor.plainText.slice(caretIndex(editor)).replace(/^"/, "")
   const inserted = folder || /^[#\s]/.test(suffix) ? text : `${text} `
   // Keep the caret inside a quoted folder so its next segment keeps searching.
   popup.replace(inserted, folder && text.endsWith('"') ? inserted.length - 1 : inserted.length)

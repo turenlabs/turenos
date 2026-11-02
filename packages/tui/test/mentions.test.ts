@@ -331,6 +331,50 @@ test("completing a path with delimiters attaches that exact file, not a shorter 
   expect(parseMentions(f.editor.plainText, "/srv/project")[0]!.uri).toBe("file:///srv/project/src/app/(auth)/page.tsx")
 })
 
+test("wide and combined characters before the caret complete the mention under it", async () => {
+  const f = await picker(async () => [{ path: "src/auth.ts", type: "file" }])
+  // The editor counts the caret in cells, two per CJK character, while the mention grammar indexes the text.
+  await f.type("日本 @au")
+  expect(f.calls.at(-1)?.[1]).toBe("au")
+  expect(f.mentions.key(key("tab"))).toBe(true)
+  expect(f.editor.plainText).toBe("日本 @src/auth.ts ")
+  await f.append("ok")
+  expect(f.editor.plainText).toBe("日本 @src/auth.ts ok")
+
+  // With prose after the caret, only the mention before it is searched and replaced.
+  await f.type("请看 @au 然后")
+  // Back over " 然后" to just after `@au`.
+  for (let step = 0; step < 3; step++) f.view.mockInput.pressArrow("left")
+  await f.append("t")
+  expect(f.calls.at(-1)?.[1]).toBe("aut")
+  expect(f.mentions.key(key("tab"))).toBe(true)
+  expect(f.editor.plainText).toBe("请看 @src/auth.ts 然后")
+  await f.append("!")
+  expect(f.editor.plainText).toBe("请看 @src/auth.ts! 然后")
+
+  // An emoji with a skin tone is four characters in two cells.
+  f.editor.setText("")
+  await f.view.mockInput.pasteBracketedText("👍🏽 @au")
+  await f.append("t")
+  expect(f.calls.at(-1)?.[1]).toBe("aut")
+  expect(f.mentions.key(key("tab"))).toBe(true)
+  await f.append("ok")
+  expect(f.editor.plainText).toBe("👍🏽 @src/auth.ts ok")
+})
+
+test("completing a mention in a scrolled draft keeps the editor's view", async () => {
+  const f = await picker(async () => [{ path: "src/auth.ts", type: "file" }])
+  const lines = Array.from({ length: 20 }, (_, line) => `line ${line}`)
+  f.editor.setText(lines.join("\n"))
+  f.editor.cursorOffset = lines.slice(0, 11).join("\n").length
+  await f.append(" @au")
+  const view = f.editor.scrollY
+  expect(view).toBeGreaterThan(0)
+  expect(f.mentions.key(key("tab"))).toBe(true)
+  expect(f.editor.plainText.split("\n")[10]).toBe("line 10 @src/auth.ts")
+  expect(f.editor.scrollY).toBe(view)
+})
+
 test("an unavailable file search never blocks the draft or completes a guess", async () => {
   let fail = true
   const f = await picker(async () => {

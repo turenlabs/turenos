@@ -247,12 +247,9 @@ const layer = Layer.effect(
 
     const run = Effect.fn("SessionShell.run")(function* (input: StartInput, current: Active) {
       const timeout = input.timeout ?? DEFAULT_TIMEOUT_MS
-      const entries = yield* config.entries()
-      const configured = Object.assign(
-        {},
-        ...entries.flatMap((entry) => (entry.type === "document" ? [entry.info] : [])),
-      ).shell
-      const shell = configured ?? (process.platform === "win32" ? (process.env.COMSPEC ?? "cmd.exe") : "/bin/sh")
+      const shell =
+        Config.shell(yield* config.entries()) ??
+        (process.platform === "win32" ? (process.env.COMSPEC ?? "cmd.exe") : "/bin/sh")
       const command = ChildProcess.make(input.command, [], {
         cwd: location.directory,
         shell,

@@ -18,7 +18,7 @@ export function textArea(
   placeholder = "",
 ) {
   dialog.form.add(new TextRenderable(ctx.renderer, { content: caption, fg: color.muted }))
-  const field = ctx.dialogs.prompt(dialog, caption, value, value.length, true)
+  const field = ctx.dialogs.prompt(dialog, caption, value, undefined, true)
   dialog.editor = undefined
   field.height = height
   field.minHeight = Math.min(3, height)
