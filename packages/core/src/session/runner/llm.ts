@@ -1573,6 +1573,8 @@ const layer = Layer.effect(
               needsContinuation = true
               const assistantMessageID = yield* publisher.assistantMessageID(event.id)
               toolTurnIDs.add(assistantMessageID)
+              // Before the fork: a call that settles before the stream ends must still wait for `completeTurn`.
+              yield* toolMaterialization.openTurn({ sessionID: session.id, assistantMessageID })
               pendingToolCalls.set(event.id, { name: event.name, assistantMessageID, startedAt: Date.now() })
               // Goal updates settle on their own fiber set and are awaited after the real work, so
               // they stay outside the fan-out budget: a bookkeeping call must not queue behind eight

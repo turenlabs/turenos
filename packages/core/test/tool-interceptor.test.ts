@@ -307,6 +307,62 @@ describe("ToolInterceptor at the settlement boundary", () => {
     }),
   )
 
+  registryOnly.live("does not hold a call for a provider turn nobody opened", () =>
+    Effect.gen(function* () {
+      const registry = yield* registerTools
+      const interceptors = yield* ToolInterceptor.Service
+      const order: string[] = []
+      yield* interceptors.hook.turnComplete(() => {
+        order.push("turn")
+      })
+      yield* interceptors.hook.after((event) => {
+        order.push(`after:${event.callID}`)
+      })
+
+      // Nothing will ever complete this turn, so waiting for it would hold the call forever.
+      const settlement = yield* settleTool(registry, call({ text: "hello" }, "echo", "unopened")).pipe(
+        Effect.timeout(Duration.seconds(2)),
+      )
+
+      expect(settlement.result).toEqual({ type: "text", value: "hello" })
+      expect(order).toEqual(["after:unopened"])
+    }),
+  )
+
+  registryOnly.live("holds a call until its open provider turn completes, and not after", () =>
+    Effect.gen(function* () {
+      const registry = yield* registerTools
+      const interceptors = yield* ToolInterceptor.Service
+      const materialization = yield* registry.materialize()
+      const turn = { sessionID, assistantMessageID: toolIdentity.assistantMessageID }
+      const executed = yield* Deferred.make<void>()
+      const order: string[] = []
+      yield* interceptors.hook.turnComplete(() => {
+        order.push("turn")
+      })
+      yield* interceptors.hook.after((event) => {
+        order.push(`after:${event.callID}`)
+      })
+
+      yield* materialization.openTurn(turn)
+      const held = yield* materialization
+        .settle({
+          ...call({ text: "hello" }, "echo", "held"),
+          executeWithPermit: (effect) => effect.pipe(Effect.ensuring(Deferred.succeed(executed, undefined))),
+        })
+        .pipe(Effect.forkChild)
+      yield* Deferred.await(executed)
+      yield* Effect.sleep(Duration.millis(20))
+      expect(order).toEqual([])
+
+      yield* materialization.completeTurn(turn)
+      yield* Fiber.join(held)
+      yield* materialization.settle(call({ text: "hello" }, "echo", "late")).pipe(Effect.timeout(Duration.seconds(2)))
+
+      expect(order).toEqual(["turn", "after:held", "after:late"])
+    }),
+  )
+
   registryOnly.effect("stops running an interceptor once its scope closes", () =>
     Effect.gen(function* () {
       const registry = yield* registerTools
@@ -378,7 +434,7 @@ describe("ToolInterceptor at the settlement boundary", () => {
 // ---------------------------------------------------------------------------
 
 const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "forge-tool-interceptor-"))
-let responses: LLMEvent[][] = []
+let responses: Array<LLMEvent[] | Stream.Stream<LLMEvent>> = []
 const requests: LLMRequest[] = []
 const client = Layer.succeed(
   LLMClient.Service,
@@ -386,7 +442,8 @@ const client = Layer.succeed(
     prepare: () => Effect.die("unused"),
     stream: ((request: LLMRequest) => {
       requests.push(request)
-      return Stream.fromIterable(responses.shift() ?? [])
+      const next = responses.shift() ?? []
+      return Array.isArray(next) ? Stream.fromIterable(next) : next
     }) as unknown as LLMClientShape["stream"],
     generate: () => Effect.die("unused"),
   }),
@@ -533,6 +590,49 @@ const prepare = (id: SessionV2.ID) =>
   })
 
 describe("ToolInterceptor through a real provider turn", () => {
+  /**
+   * A native call can finish while the provider is still streaming. Its `after` hooks must still wait for the
+   * provider turn to complete, which only works if the runner opens the turn before it forks the call.
+   */
+  endToEnd.live("runs a native call's after hooks only once its provider turn completes", () =>
+    Effect.gen(function* () {
+      const ordered = SessionV2.ID.make("ses_interceptor_turn_order")
+      yield* prepare(ordered)
+      const interceptors = yield* ToolInterceptor.Service
+      const afterRan = yield* Deferred.make<void>()
+      const order: string[] = []
+      yield* interceptors.hook.turnComplete(() => {
+        order.push("turn")
+      })
+      yield* interceptors.hook.after((event) =>
+        Effect.sync(() => order.push(`after:${event.callID}`)).pipe(
+          Effect.andThen(Deferred.succeed(afterRan, undefined)),
+          Effect.asVoid,
+        ),
+      )
+
+      const events = turn({ name: "ordered.txt", content: "hello" }, "call-ordered")
+      // Hold the stream open after the tool call, so a call that did not wait would run its after hooks first.
+      responses = [
+        Stream.fromIterable<LLMEvent>(events[0].slice(0, 2)).pipe(
+          Stream.concat(
+            Stream.fromEffect(Effect.raceFirst(Deferred.await(afterRan), Effect.sleep(Duration.millis(200)))).pipe(
+              Stream.drain,
+            ),
+          ),
+          Stream.concat(Stream.fromIterable<LLMEvent>(events[0].slice(2))),
+        ),
+        events[1],
+      ]
+      const session = yield* SessionV2.Service
+      yield* session.prompt({ sessionID: ordered, prompt: Prompt.make({ text: "write it" }), resume: false })
+      yield* session.resume(ordered)
+
+      expect(fs.readFileSync(path.join(scratch, "ordered.txt"), "utf8")).toBe("hello")
+      expect(order).toEqual(["turn", "after:call-ordered"])
+    }),
+  )
+
   endToEnd.effect("stops a real side effect and annotates a real settled result", () =>
     Effect.gen(function* () {
       const denied = SessionV2.ID.make("ses_interceptor_denied")
