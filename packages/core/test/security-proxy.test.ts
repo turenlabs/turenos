@@ -55,6 +55,29 @@ function fixture(path: string) {
 const owned = { owner, caseID: input.id }
 
 describe("durable security proxy storage", () => {
+  test("does not expose or search a JSON secret cut by the masked preview limit", async () => {
+    await using tmp = await tmpdir()
+    const store = fixture(tmp.path)
+    await store.execute({ type: "create", owner, input })
+    const data = `{"message":"${"x".repeat(65500)}","token":"leak-boundary-secret-value"}`
+    await store.execute({
+      type: "put",
+      ...owned,
+      flow: { ...flow, responseBody: { ...body, data, size: data.length } },
+    })
+    const masked = await store.execute({ type: "flow", ...owned, flowID: flow.id })
+    expect(masked.flow!.responseBody.data.includes("leak")).toBe(false)
+    const page = await store.execute({ type: "flows", ...owned, view: "masked" })
+    expect(page.flows![0]!.responseBody.data.includes("leak")).toBe(false)
+    const search = await store.execute({
+      type: "flows",
+      ...owned,
+      filter: { query: "leak", content: true },
+    })
+    expect(search.flows).toEqual([])
+    expect((await store.execute({ type: "reveal", ...owned, flowID: flow.id })).flow!.responseBody.data).toBe(data)
+  })
+
   test("shares bounded flow pagination fields across command schemas", () => {
     const command = {
       type: "flows",
