@@ -19,6 +19,19 @@ const error = async (code: string) => {
   return result.error
 }
 
+describe("String.split", () => {
+  test("accepts an undefined separator and honors the limit", async () => {
+    expect(await value(`try { return "a,b".split(undefined, 0) } catch (e) { return e.message }`)).toEqual([])
+    expect(await value(`return "a,b".split(undefined, 2)`)).toEqual(["a,b"])
+    expect(await value(`return "a,b".split(undefined)`)).toEqual(["a,b"])
+    expect(await value(`return "a,b".split(undefined, 0.5)`)).toEqual([])
+    expect(await value(`return "a,b".split(undefined, 4294967296)`)).toEqual([])
+    expect(await value(`return "a,b".split()`)).toEqual(["a,b"])
+    expect(await value(`return "a,b".split(",", 1)`)).toEqual(["a"])
+    expect(await value(`return "a1b2".split(/\\d/, 2)`)).toEqual(["a", "b"])
+  })
+})
+
 describe("Date", () => {
   test("Date.now() returns a number", async () => {
     expect(await value(`return typeof Date.now()`)).toBe("number")

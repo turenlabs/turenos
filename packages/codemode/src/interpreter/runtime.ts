@@ -383,6 +383,7 @@ const invokeStringMethod = (
     if (name === "split") {
       const limit = args[1] === undefined ? value.length + 1 : Number(args[1]) >>> 0
       let count = Math.min(value.length + 1, limit)
+      if (args[0] === undefined) count = Math.min(1, limit)
       if (typeof args[0] === "string" && args[0].length > 0) {
         count = Math.min(1, limit)
         let offset = 0
@@ -454,8 +455,9 @@ const invokeStringMethod = (
       break
     }
     case "split": {
-      if (args.length === 0) {
-        result = [value]
+      if (args[0] === undefined) {
+        const limit = optNum(1)
+        result = limit !== undefined && limit >>> 0 === 0 ? [] : [value]
         break
       }
       if (args[0] instanceof SandboxRegExp) {
