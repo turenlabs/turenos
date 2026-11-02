@@ -8,6 +8,7 @@ import { CloudflareAIGatewayPlugin } from "./provider/cloudflare-ai-gateway"
 import { CloudflareWorkersAIPlugin } from "./provider/cloudflare-workers-ai"
 import { CoherePlugin } from "./provider/cohere"
 import { DeepInfraPlugin } from "./provider/deepinfra"
+import { DevinCLIPlugin } from "./provider/devin-cli"
 import { DynamicProviderPlugin } from "./provider/dynamic"
 import { GatewayPlugin } from "./provider/gateway"
 import { GithubCopilotPlugin } from "./provider/github-copilot"
@@ -50,6 +51,7 @@ export const ProviderPlugins: PluginInternal.Plugin<PluginInternal.Requirements 
   CloudflareWorkersAIPlugin,
   CoherePlugin,
   DeepInfraPlugin,
+  DevinCLIPlugin,
   GatewayPlugin,
   GithubCopilotPlugin,
   GitLabPlugin,

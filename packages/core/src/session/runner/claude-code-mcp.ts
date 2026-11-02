@@ -321,11 +321,12 @@ export const serve = Effect.fn("ClaudeCodeMcp.serve")(function* (token: string) 
           timer.unref?.()
         }),
       ])
+      // Close SSE readers before waiting for the HTTP listener to close.
+      await mcp.close().catch(() => undefined)
       await new Promise<void>((resolve) => {
         http.close(() => resolve())
         http.closeAllConnections()
       })
-      await mcp.close().catch(() => undefined)
     }),
   )
   return {

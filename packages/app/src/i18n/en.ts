@@ -160,6 +160,13 @@ export const dict = {
     "Install Claude Code on this machine and sign in with your Claude subscription. Then refresh to offer its models in TurenOS.",
   "provider.connect.claudeCode.command": "Run this command in a terminal",
   "provider.connect.claudeCode.notReady": "Claude Code is not installed or is not signed in yet.",
+  "provider.connect.localCli.command": "Run this command in a terminal",
+  "provider.connect.museCode.description":
+    "Muse Code uses its own local login. Sign in with the command below, then refresh. TurenOS stores no Meta API key.",
+  "provider.connect.museCode.notReady": "Muse Code is not available. Install it, run muse login, then refresh.",
+  "provider.connect.devinCli.description":
+    "Install Devin CLI on this machine or server. Run the command below, then refresh. Devin CLI manages your sign-in. TurenOS stores no API key.",
+  "provider.connect.devinCli.notReady": "Devin CLI is not available. Install it, run devin auth login, then refresh.",
   "provider.connect.localServer.description.ollama":
     "Ollama serves local models over HTTP on this machine. Install it, pull a model, then connect.",
   "provider.connect.localServer.description.llamaCpp":
@@ -1479,6 +1486,7 @@ export const dict = {
   "settings.localProviders.offline.description": "Configured but not reachable right now.",
   "settings.localProviders.available.claudeCode": "Runs Claude through the Claude Code CLI using your Claude sign-in.",
   "settings.localProviders.available.museCode": "Runs models through the Muse Code CLI using its own local sign-in.",
+  "settings.localProviders.available.devinCli": "Runs models through your installed Devin CLI using its own sign-in.",
   "settings.localProviders.available.ollama": "Serves models you pull locally over an OpenAI-compatible API.",
   "settings.localProviders.available.llamaCpp": "Serves a local GGUF model through llama-server.",
   "settings.localProviders.custom.title": "Custom local endpoint",

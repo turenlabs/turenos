@@ -108,6 +108,7 @@ outputs, ownership, failure behavior, and implementation links. These systems ha
   [Claude Code tool routing](./providers/claude-code/tool-routing.md) covers routing `claude -p` tools through TurenOS
   policy and settlement boundaries.
 - [Muse Code](./providers/muse-code.md): using the signed-in local Muse CLI with host-routed tools.
+- [Devin CLI](./providers/devin-cli.md): a version-qualified local ACP provider with host-routed tools and text-only input.
 - [Local models](./providers/local-models.md): running Bonsai 2 with its supported local runtime and connecting the
   loopback API.
 
@@ -137,6 +138,7 @@ outputs, ownership, failure behavior, and implementation links. These systems ha
 Prototypes and benchmarks that explore or measure rather than document shipped behavior. Each page states its status.
 
 - [Retained result research](./experimental/context-results/README.md): adopted offline probe with separate historical and integration evidence.
+- [Devin CLI research](./experimental/devin-cli/README.md): adopted ACP research behind the local managed provider.
 - [Zero-Mem prototype](./experimental/zero-mem.md): isolated graph/hierarchy retrieval prototype and benchmark methodology.
 - [Recursive context plugin](./experimental/recursive-context.md): an opt-in plugin that moves tagged long context out of
   the prompt behind bounded search and read tools.

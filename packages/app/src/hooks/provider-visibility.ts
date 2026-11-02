@@ -12,7 +12,7 @@ export function isRemovedProvider(id: string) {
 
 // Local runtimes that get their own settings area instead of appearing under Cloud Providers.
 // Anything else that terminates on loopback (custom endpoints, lmstudio) is classified local too.
-const localProviderIDs = new Set(["claude-code", "muse-code", "ollama", "llama-cpp"])
+const localProviderIDs = new Set(["claude-code", "muse-code", "devin-cli", "ollama", "llama-cpp"])
 
 export type LocalProviderMeta = {
   id: string
@@ -34,6 +34,12 @@ export const localProviders: LocalProviderMeta[] = [
     name: "Muse Code",
     kind: "cli",
     descriptionKey: "settings.localProviders.available.museCode",
+  },
+  {
+    id: "devin-cli",
+    name: "Devin CLI (local)",
+    kind: "cli",
+    descriptionKey: "settings.localProviders.available.devinCli",
   },
   {
     id: "ollama",

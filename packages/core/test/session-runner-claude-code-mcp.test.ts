@@ -5,7 +5,8 @@ import { ClaudeCodeBridge } from "@turenlabs/core/session/runner/claude-code-bri
 import { ClaudeCodeMcp } from "@turenlabs/core/session/runner/claude-code-mcp-namespace"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
-import { Effect } from "effect"
+import { ToolListChangedNotificationSchema } from "@modelcontextprotocol/sdk/types.js"
+import { Effect, Exit, Scope } from "effect"
 import { spawn } from "node:child_process"
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -24,6 +25,41 @@ const tool = (name: string) =>
   })
 
 const definitions = [tool("spawn_agent"), tool("wait_agents"), tool("read")]
+
+it.live(
+  "closes an active SSE stream before stopping the MCP listener",
+  () =>
+    Effect.gen(function* () {
+      const scope = yield* Effect.acquireRelease(Scope.make(), (scope) => Scope.close(scope, Exit.void))
+      const token = yield* ClaudeCodeMcp.register({
+        definitions,
+        execute: () => Effect.succeed({ type: "text", value: "unused" }),
+      })
+      const server = yield* ClaudeCodeMcp.serve(token).pipe(Effect.provideService(Scope.Scope, scope))
+      const client = new Client({ name: "forge-sse-test", version: "1" })
+      const received = { value: false }
+      client.setNotificationHandler(ToolListChangedNotificationSchema, async () => {
+        received.value = true
+      })
+      yield* Effect.acquireRelease(
+        Effect.promise(() =>
+          client.connect(
+            new StreamableHTTPClientTransport(new URL(server.url), {
+              requestInit: { headers: { Authorization: server.authorization } },
+            }),
+          ),
+        ),
+        () => Effect.promise(() => client.close()),
+      )
+      for (let attempt = 0; attempt < 100 && !received.value; attempt++) {
+        yield* ClaudeCodeMcp.refresh(token, definitions)
+        yield* Effect.sleep("10 millis")
+      }
+      expect(received.value).toBe(true)
+      yield* Scope.close(scope, Exit.void)
+    }),
+  5_000,
+)
 
 it.live("serves policy-filtered tools and returns annotated results", () =>
   Effect.gen(function* () {

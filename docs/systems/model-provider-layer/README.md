@@ -38,6 +38,11 @@ entry, or a local CLI bridge. `SessionRunner` constructs a canonical
 the resulting events, then owns tool execution and continuation. Provider
 streaming does not delegate to the legacy Forge prompt loop.
 
+The V2 local CLI routes include [Claude Code](../../providers/claude-code/README.md),
+[Muse Code](../../providers/muse-code.md), and [Devin CLI](../../providers/devin-cli.md).
+Devin uses ACP with a fresh private CLI session per provider turn and the existing
+host MCP tool bridge. It is not part of the legacy CLI-direct path below.
+
 If OpenAI rejects a ChatGPT OAuth token with HTTP 401, Session V2 can refresh it once and retry the same request.
 This recovery applies only before text or tool input starts. A second 401 or a failed refresh ends the attempt.
 API-key authentication failures do not use this recovery.
