@@ -62,9 +62,9 @@ const media = (file: FileAttachment, model: Model): ContentPart => {
       filename: file.name,
       metadata: file.description === undefined ? undefined : { description: file.description },
     }
-  // Composer-attached files already carry the selected text client-side; prefer it over decoding
-  // uri, which for that path is still the original file: reference (materialize skips reading it).
-  if (file.source?.text !== undefined) return wrapText(file, file.source.text)
+  // A cleared media attachment uses source.text for its synthesized omission note. Ordinary
+  // source text is the composer's mention span, not the attached file's contents.
+  if (file.uri.startsWith("cleared:") && file.source?.text !== undefined) return wrapText(file, file.source.text)
   if (!file.uri.startsWith("data:")) return wrapText(file, `[Attachment ${file.name ?? file.uri} could not be read]`)
   const payload = dataUrlPayload(file.uri)
   return wrapText(
