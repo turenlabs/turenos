@@ -153,6 +153,20 @@ describe("Memory", () => {
     }),
   )
 
+  it.effect("retains matching common terms when other query terms do not exist", () =>
+    Effect.gen(function* () {
+      const { service, wing, room } = yield* scaffold("prune-absent")
+      for (let index = 0; index < MemoryIndex.MIN_DOCUMENTS; index += 1) {
+        yield* service.write({ wingID: wing.id, roomID: room.id, title: "shared", body: "common", provenance })
+      }
+
+      const hits = yield* service.search({ query: "shared nonexistentterm", wings: [wing.id], limit: 5 })
+      expect(hits.length).toBe(5)
+      expect(hits.every((hit) => hit.drawer.title === "shared")).toBe(true)
+      expect(yield* service.search({ query: "missingone missingtwo", wings: [wing.id] })).toEqual([])
+    }),
+  )
+
   it.effect("never returns a drawer from a wing the caller did not name", () =>
     Effect.gen(function* () {
       const mine = yield* scaffold("acl-mine")

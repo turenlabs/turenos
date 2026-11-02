@@ -156,8 +156,11 @@ export function prune(db: Database, terms: readonly string[], wings: readonly st
       frequency.set(term, rows[0]?.doc ?? 0)
     }
     const cut = total * MAX_DOCUMENT_FREQUENCY
-    const kept = terms.filter((term) => (frequency.get(term) ?? 0) < cut)
+    // Absent terms cannot produce results and must not suppress the fallback
+    // to common terms that do occur in the scoped corpus.
+    const present = terms.filter((term) => (frequency.get(term) ?? 0) > 0)
+    const kept = present.filter((term) => (frequency.get(term) ?? 0) < cut)
     if (kept.length > 0) return kept
-    return [...terms].sort((a, b) => (frequency.get(a) ?? 0) - (frequency.get(b) ?? 0)).slice(0, MIN_KEPT_TERMS)
+    return present.sort((a, b) => (frequency.get(a) ?? 0) - (frequency.get(b) ?? 0)).slice(0, MIN_KEPT_TERMS)
   })
 }
