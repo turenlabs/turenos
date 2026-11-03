@@ -111,7 +111,7 @@ function createContext(
  */
 async function startIn(d: DashboardContext, directory: string | undefined) {
   if (!directory) return
-  const result = await resolveFolder(d.connection.client, directory).then(
+  const result = await resolveFolder(d.connection.client, directory, d.connection.local).then(
     (folder) => ({ folder, unreadable: false }),
     (error: unknown) => {
       const status = httpStatus(error)
