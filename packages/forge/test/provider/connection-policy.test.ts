@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { lookup } from "node:dns/promises"
 import {
   assertConnectionPolicyOptions,
   connectionPolicyKey,
@@ -18,6 +19,50 @@ const policy = {
 } satisfies ConnectionPolicy
 
 describe("provider connection policy", () => {
+  test("uses the production DNS-pinned transport and retires it without following redirects", async () => {
+    const requests: string[] = []
+    using server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch(request) {
+        const url = new URL(request.url)
+        requests.push(url.pathname)
+        if (url.pathname.endsWith("/302") || url.pathname.endsWith("/307"))
+          return new Response(null, {
+            status: Number(url.pathname.split("/").at(-1)),
+            headers: { location: "/coding/v1/followed" },
+          })
+        return new Response("production transport")
+      },
+    })
+    const origin = `http://localhost:${server.port}`
+    const fetch = createConnectionPolicyFetch({
+      id: "production-loopback",
+      origin,
+      pathPrefix: "/coding/v1",
+      pinnedAddresses: (await lookup("localhost", { all: true, verbatim: true })).map((entry) => entry.address),
+      expiresAt: Date.now() + 60_000,
+    })
+    try {
+      expect(await (await fetch(`${origin}/coding/v1/messages`, { signal: AbortSignal.timeout(3000) })).text()).toBe(
+        "production transport",
+      )
+      for (const status of [302, 307])
+        await expect(fetch(`${origin}/coding/v1/${status}`, { signal: AbortSignal.timeout(3000) })).rejects.toThrow(
+          "Endpoint redirects are prohibited",
+        )
+      expect(requests).toEqual(["/coding/v1/messages", "/coding/v1/302", "/coding/v1/307"])
+      expect(() => {
+        fetch.close()
+        fetch.close()
+      }).not.toThrow()
+      await expect(fetch(`${origin}/coding/v1/messages`)).rejects.toThrow("Connection policy transport retired")
+      expect(requests).toHaveLength(3)
+    } finally {
+      fetch.close()
+    }
+  })
+
   test("binds cache identity to the qualified provider credential", () => {
     const first = { ...policy, credentialHash: "a".repeat(64) }
     const second = { ...policy, credentialHash: "b".repeat(64) }
