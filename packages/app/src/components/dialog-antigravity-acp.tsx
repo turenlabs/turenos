@@ -30,16 +30,21 @@ export function AntigravityAcpConnection(props: { onBack: () => void; setBack: (
     const controller = untrack(() =>
       createAcpLoginController({
         authorize: async () => {
+          // The controller bounds the wait without aborting this ownership response.
           const response = await sdk.client.provider.acp.authorize({}, { throwOnError: true })
           if (!response.data) throw new Error("Missing ACP authorization state")
           return response.data
         },
         status: async (id, signal) => {
-          const response = await sdk.client.provider.acp.status({ id }, { signal, throwOnError: true })
+          const response = await sdk.client.provider.acp.status(
+            { id },
+            { signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]), throwOnError: true },
+          )
           if (!response.data) throw new Error("Missing ACP authorization state")
           return response.data
         },
-        cancel: (id) => sdk.client.provider.acp.cancel({ id }, { throwOnError: true }),
+        cancel: (id) =>
+          sdk.client.provider.acp.cancel({ id }, { signal: AbortSignal.timeout(10_000), throwOnError: true }),
         complete: async () => {
           await connection.enable("antigravity-acp")
           await sdk.client.global.dispose({ throwOnError: true })
@@ -55,7 +60,7 @@ export function AntigravityAcpConnection(props: { onBack: () => void; setBack: (
           })
         },
         onState: (next) => {
-          setState({ phase: next.phase, url: next.url, error: next.error })
+          setState({ phase: next.phase, url: next.url, error: next.error, retryBlocked: next.retryBlocked })
           if (next.phase === "cancelled" || next.phase === "error") focus.button?.focus()
         },
         failure: language.t("provider.connect.antigravity.failed"),
@@ -63,7 +68,7 @@ export function AntigravityAcpConnection(props: { onBack: () => void; setBack: (
       }),
     )
     control.current = controller
-    setState({ phase: "idle", url: undefined, error: undefined })
+    setState({ phase: "idle", url: undefined, error: undefined, retryBlocked: undefined })
     onCleanup(() => {
       controller.dispose()
       if (control.current === controller) control.current = undefined
@@ -113,7 +118,7 @@ export function AntigravityAcpConnection(props: { onBack: () => void; setBack: (
             autofocus
             size="large"
             variant="primary"
-            disabled={pending()}
+            disabled={pending() || state.retryBlocked}
             onClick={() => void control.current?.start()}
           >
             {language.t("provider.connect.antigravity.signIn")}

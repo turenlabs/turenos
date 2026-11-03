@@ -229,7 +229,8 @@ const layer = Layer.effect(
                   excludeProviderID: AntigravityAcpCLI.ID,
                 })
                 .pipe(Effect.option)
-              if (Option.isNone(resolved) || resolved.value.ref.providerID === AntigravityAcpCLI.ID) return "acp" as const
+              if (Option.isNone(resolved) || resolved.value.ref.providerID === AntigravityAcpCLI.ID)
+                return "acp" as const
               return resolved.value.ref
             }).pipe(
               Effect.provide(locations.get(ref)),
@@ -246,6 +247,8 @@ const layer = Layer.effect(
           const workflow = execution.workflow
           if (workflow) {
             let outputs = run.outputs
+            // Set the safe initial model once, then preserve Session inheritance.
+            let initialModel = run.currentStep === 0 ? resolvedExecutionModel : undefined
             yield* Effect.forEach(
               workflow.steps.slice(run.currentStep),
               (step, offset) =>
@@ -297,12 +300,9 @@ const layer = Layer.effect(
                       // A step without its own selection inherits the Session's agent and
                       // model, which the Automation set when the Session was created.
                       ...(step.agent ? { agent: step.agent } : {}),
-                      ...(step.model
-                        ? { model: step.model }
-                        : resolvedExecutionModel
-                          ? { model: resolvedExecutionModel }
-                          : {}),
+                      ...(step.model ? { model: step.model } : initialModel ? { model: initialModel } : {}),
                     })
+                    initialModel = undefined
                     yield* loops.startRun({ id: run.id, owner, sessionID: session.id, currentStep: index })
                     yield* sessions.resumePending(session.id)
                     const output = extractStepOutput(

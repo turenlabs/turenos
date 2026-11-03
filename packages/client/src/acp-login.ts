@@ -9,6 +9,7 @@ export type AcpLoginView = {
   readonly phase: "idle" | "starting" | "waiting" | "finishing" | "cancelling" | "authenticated" | "error" | "cancelled"
   readonly url?: string
   readonly error?: string
+  readonly retryBlocked?: boolean
 }
 
 type Attempt = {
@@ -31,9 +32,20 @@ export function createAcpLoginController(input: {
   onState: (state: AcpLoginView) => void
   failure: string
   cancellationFailure: string
+  timeoutMs?: number
 }) {
   let active: Attempt | undefined
   let disposed = false
+
+  const bounded = async <T>(promise: Promise<T>) => {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    return Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(input.failure)), input.timeoutMs ?? 10_000)
+      }),
+    ]).finally(() => clearTimeout(timer))
+  }
 
   const current = (attempt: Attempt) => !disposed && active === attempt && !attempt.cancelled
   const stop = (attempt: Attempt) => {
@@ -52,7 +64,7 @@ export function createAcpLoginController(input: {
     if (!disposed) input.onState({ phase: "cancelling" })
     // Do not abort authorize before learning its ID: a late response still owns
     // a native process. Keep retry disabled until that attempt is cancelled.
-    attempt.cancellation = (async () => {
+    const cleanup = (async () => {
       const result = await attempt.authorization
         .then(
           (state) => input.cancel(state.id).then(() => true),
@@ -60,21 +72,23 @@ export function createAcpLoginController(input: {
         )
         .catch(() => false)
       if (active !== attempt) return
-      active = undefined
+      if (result) active = undefined
       if (disposed) return
-      input.onState(result ? { phase: "cancelled" } : { phase: "error", error: input.cancellationFailure })
+      input.onState(
+        result ? { phase: "cancelled" } : { phase: "error", error: input.cancellationFailure, retryBlocked: true },
+      )
     })()
+    attempt.cancellation = bounded(cleanup).catch(() => {
+      if (!disposed && active === attempt)
+        input.onState({ phase: "error", error: input.cancellationFailure, retryBlocked: true })
+    })
     return attempt.cancellation
   }
 
   const fail = async (attempt: Attempt) => {
     if (!current(attempt)) return
-    stop(attempt)
-    attempt.cancelled = true
-    await input.cancel(attempt.id!).catch(() => undefined)
-    if (active !== attempt) return
-    active = undefined
-    if (!disposed) input.onState({ phase: "error", error: input.failure })
+    await cancel()
+    if (!disposed) input.onState({ phase: "error", error: input.failure, retryBlocked: active === attempt })
   }
 
   const accept = async (attempt: Attempt, state: AcpLoginState) => {
@@ -121,7 +135,7 @@ export function createAcpLoginController(input: {
     attempt.timer = undefined
     const request = new AbortController()
     attempt.request = request
-    await input.status(attempt.id, request.signal).then(
+    await bounded(input.status(attempt.id, request.signal)).then(
       (state) => accept(attempt, state),
       () => fail(attempt),
     )
@@ -133,16 +147,12 @@ export function createAcpLoginController(input: {
       input.onState({ phase: "starting" })
       const attempt: Attempt = { authorization: input.authorize(), cancelled: false, terminal: false }
       active = attempt
-      await attempt.authorization.then(
+      await bounded(attempt.authorization).then(
         (state) => {
           attempt.id = state.id
           return accept(attempt, state)
         },
-        () => {
-          if (!current(attempt)) return
-          active = undefined
-          input.onState({ phase: "error", error: input.failure })
-        },
+        () => fail(attempt),
       )
     },
     cancel,

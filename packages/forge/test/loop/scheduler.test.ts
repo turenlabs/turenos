@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { AgentV2 } from "@turenlabs/core/agent"
 import { DateTime, Deferred, Effect, Fiber, Layer, LayerMap, Option, Stream } from "effect"
 import { TestClock } from "effect/testing"
 import { Loop } from "@turenlabs/core/loop"
@@ -12,7 +13,13 @@ import type { LocationServices } from "@turenlabs/core/location-services"
 import { SessionV2 } from "@turenlabs/core/session"
 import { SessionRunnerModel } from "@turenlabs/core/session/runner/model"
 import { TeamWorkspace } from "@turenlabs/core/team/workspace"
-import { LoopScheduler, extractStepOutput, pollDue, renderWorkflowStep, toLoopRelativePath } from "../../src/loop/scheduler"
+import {
+  LoopScheduler,
+  extractStepOutput,
+  pollDue,
+  renderWorkflowStep,
+  toLoopRelativePath,
+} from "../../src/loop/scheduler"
 import { Database } from "@turenlabs/core/database/database"
 import { AppNodeBuilder } from "@turenlabs/core/effect/app-node-builder"
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
@@ -91,11 +98,7 @@ describe("LoopScheduler Automation workflow", () => {
   })
 
   test("marks a single-step workflow as the final delivery step", () => {
-    const rendered = renderWorkflowStep(
-      { id: "only", name: "Only", type: "agent", prompt: "Do it all." },
-      0,
-      1,
-    )
+    const rendered = renderWorkflowStep({ id: "only", name: "Only", type: "agent", prompt: "Do it all." }, 0, 1)
 
     expect(rendered).toContain("Automation step 1 of 1: Only")
     expect(rendered).toContain("delivered inside TurenOS")
@@ -142,9 +145,7 @@ describe("LoopScheduler extractStepOutput", () => {
   })
 
   test("decodes JSON output while leaving prose as text", () => {
-    const structured = extractStepOutput([
-      assistant("msg_json", [text("part-1", '{"failures": 2}')], { completed }),
-    ])
+    const structured = extractStepOutput([assistant("msg_json", [text("part-1", '{"failures": 2}')], { completed })])
     expect(structured).toMatchObject({ text: '{"failures": 2}', json: { failures: 2 } })
 
     const prose = extractStepOutput([assistant("msg_prose", [text("part-1", "all clear")], { completed })])
@@ -248,7 +249,12 @@ describe("LoopScheduler event trigger scoping", () => {
       steps: {},
     }
     const agent = renderWorkflowStep(
-      { id: "a", name: "A", type: "agent", prompt: "Handle {{ trigger.payload.file }} in {{ trigger.payload.directory }}" },
+      {
+        id: "a",
+        name: "A",
+        type: "agent",
+        prompt: "Handle {{ trigger.payload.file }} in {{ trigger.payload.directory }}",
+      },
       0,
       1,
       context,
@@ -476,6 +482,83 @@ describe("LoopScheduler wake with the Loop service", () => {
         "lop_idle_wake",
       ])
       yield* Fiber.interrupt(fiber)
+    }),
+  )
+
+  live.live("model-less workflow steps inherit the preceding Session model", () =>
+    Effect.gen(function* () {
+      const loops = yield* Loop.Service
+      const first = ModelV2.Ref.make({ ...model, id: ModelV2.ID.make("first") })
+      const loop = yield* loops.create({
+        id: "lop_model_inheritance",
+        name: "inherit model",
+        prompt: "workflow",
+        model,
+        location: { directory: "/work/model-inheritance" },
+        intervalSeconds: Loop.MIN_INTERVAL_SECONDS,
+        workflow: {
+          version: 1,
+          steps: [
+            { id: "first", name: "First", type: "agent", prompt: "first", model: first },
+            { id: "second", name: "Second", type: "agent", prompt: "second" },
+          ],
+          delivery: { type: "turen" },
+        },
+      })
+      const observed: (ModelV2.Ref | undefined)[] = []
+      const unexpected = () => Effect.die("Unexpected service call")
+      const dependencies = Layer.mergeAll(
+        Layer.succeed(Loop.Service, loops),
+        Layer.mock(TeamWorkspace.Service, { recordDutyRun: () => Effect.succeed(undefined) }),
+        Layer.mock(SessionV2.Service, {
+          goal: { get: unexpected, set: unexpected, edit: unexpected, status: unexpected, clear: unexpected },
+          revert: { stage: unexpected, clear: unexpected, commit: unexpected },
+          get: (id) => Effect.fail(new SessionV2.NotFoundError({ sessionID: id })),
+          create: (input) => Effect.succeed({ ...input, id: input.id!, model } as SessionV2.Info),
+          prompt: (input) =>
+            Effect.sync(() => {
+              observed.push(input.model)
+              return undefined as never
+            }),
+          resumePending: () => Effect.void,
+          messages: () => Effect.succeed([]),
+          interrupt: () => Effect.void,
+        }),
+        Layer.effect(
+          LocationServiceMap.Service,
+          LayerMap.make(
+            () =>
+              Layer.mergeAll(
+                Layer.mock(AgentV2.Service, { get: () => Effect.succeed(undefined) }),
+                Layer.mock(SessionRunnerModel.Service, {
+                  resolve: () => Effect.succeed({ ref: model } as SessionRunnerModel.Resolved),
+                }),
+              ) as Layer.Layer<LocationServices>,
+          ),
+        ),
+        Layer.mock(EventV2.Service, { subscribe: (() => Stream.never) as EventV2.Interface["subscribe"] }),
+      )
+      yield* Layer.build(
+        (
+          LoopScheduler.node.implementation as Layer.Layer<
+            LoopScheduler.Service,
+            never,
+            Loop.Service | TeamWorkspace.Service | SessionV2.Service | LocationServiceMap.Service | EventV2.Service
+          >
+        ).pipe(Layer.provide(dependencies)),
+      )
+      const result = yield* awaitWithTimeout(
+        Effect.gen(function* () {
+          while (true) {
+            const runs = yield* loops.listRuns(loop.id)
+            if (runs[0]?.status === "failed" || runs[0]?.status === "succeeded") return runs[0]
+            yield* Effect.sleep("20 millis")
+          }
+        }),
+        "workflow did not finish",
+      )
+      expect(result.status).toBe("succeeded")
+      expect(observed).toEqual([first, undefined])
     }),
   )
 

@@ -26,12 +26,13 @@ function setup(overrides: Partial<Parameters<typeof createAcpLoginController>[0]
     onAuthenticated: () => {
       completed.push("success")
     },
-    onState: (state) => {
-      states.push(state)
-    },
     failure: "Request failed",
     cancellationFailure: "Cancellation unconfirmed",
     ...overrides,
+    onState: (state) => {
+      states.push(state)
+      overrides.onState?.(state)
+    },
   })
   return { controller, states, cancelled, completed }
 }
@@ -182,21 +183,147 @@ describe("Antigravity ACP login controller", () => {
   test("rejects unexpected browser URLs and does not expose them", async () => {
     const flow = setup({ authorize: async () => ({ ...waiting, url: "https://accounts.google.com.evil.test/login" }) })
     await flow.controller.start()
-    expect(flow.states.at(-1)).toEqual({ phase: "error", error: "Request failed" })
+    expect(flow.states.at(-1)).toEqual({ phase: "error", error: "Request failed", retryBlocked: false })
     expect(flow.states.every((state) => !state.url)).toBe(true)
     expect(flow.cancelled).toEqual([waiting.id])
     flow.controller.dispose()
   })
 
   test("reports unconfirmed cancellation without claiming the native process stopped", async () => {
+    let started = 0
     const flow = setup({
+      authorize: async () => {
+        started++
+        return waiting
+      },
       cancel: async () => {
         throw new Error("offline")
       },
     })
     await flow.controller.start()
     await flow.controller.cancel()
-    expect(flow.states.at(-1)).toEqual({ phase: "error", error: "Cancellation unconfirmed" })
+    expect(flow.states.at(-1)).toEqual({ phase: "error", error: "Cancellation unconfirmed", retryBlocked: true })
+    await flow.controller.start()
+    expect(started).toBe(1)
+    flow.controller.dispose()
+  })
+
+  test("bounds stalled status, cancels its owner, and ignores late success", async () => {
+    const status = deferred<AcpLoginState>()
+    const failed = deferred<void>()
+    const flow = setup({
+      timeoutMs: 10,
+      status: () => status.promise,
+      onState: (state) => {
+        if (state.phase === "error") failed.resolve(undefined)
+      },
+    })
+    await flow.controller.start()
+    await failed.promise
+    expect(flow.states.at(-1)).toEqual({ phase: "error", error: "Request failed", retryBlocked: false })
+    expect(flow.cancelled).toEqual([waiting.id])
+    status.resolve({ ...waiting, status: "authenticated" })
+    await status.promise
+    expect(flow.completed).toEqual([])
+    flow.controller.dispose()
+  })
+
+  test("bounds stalled authorization and retains late cleanup ownership", async () => {
+    const authorization = deferred<AcpLoginState>()
+    const cleanup = deferred<void>()
+    const settled = deferred<void>()
+    let started = 0
+    const flow = setup({
+      timeoutMs: 10,
+      onState: (state) => {
+        if (state.phase === "cancelled") settled.resolve(undefined)
+      },
+      authorize: () => {
+        started++
+        return authorization.promise
+      },
+      cancel: async (id) => {
+        expect(id).toBe(waiting.id)
+        cleanup.resolve(undefined)
+      },
+    })
+    await flow.controller.start()
+    expect(flow.states.at(-1)).toEqual({ phase: "error", error: "Request failed", retryBlocked: true })
+    await flow.controller.start()
+    expect(started).toBe(1)
+    expect(flow.completed).toEqual([])
+    authorization.resolve({ ...waiting, status: "authenticated" })
+    await cleanup.promise
+    await settled.promise
+    expect(flow.completed).toEqual([])
+    expect(flow.states.at(-1)?.phase).toBe("cancelled")
+    flow.controller.dispose()
+  })
+
+  test("bounds cancel during stalled authorization without losing the late ID", async () => {
+    const authorization = deferred<AcpLoginState>()
+    const deletion = deferred<void>()
+    const deleting = deferred<void>()
+    const settled = deferred<void>()
+    let started = 0
+    const flow = setup({
+      timeoutMs: 10,
+      onState: (state) => {
+        if (state.phase === "cancelled") settled.resolve(undefined)
+      },
+      authorize: () => {
+        started++
+        return authorization.promise
+      },
+      cancel: (id) => {
+        expect(id).toBe(waiting.id)
+        deleting.resolve(undefined)
+        return deletion.promise
+      },
+    })
+    const starting = flow.controller.start()
+    await flow.controller.cancel()
+    expect(flow.states.at(-1)).toEqual({ phase: "error", error: "Cancellation unconfirmed", retryBlocked: true })
+    await starting
+    await flow.controller.start()
+    expect(started).toBe(1)
+    authorization.resolve(waiting)
+    await deleting.promise
+    await flow.controller.start()
+    expect(started).toBe(1)
+    deletion.resolve(undefined)
+    await settled.promise
+    expect(flow.states.at(-1)?.phase).toBe("cancelled")
+    expect(flow.completed).toEqual([])
+    flow.controller.dispose()
+  })
+
+  test("bounds stalled DELETE while blocking retry until its late confirmation", async () => {
+    const deletion = deferred<void>()
+    const settled = deferred<void>()
+    let started = 0
+    const flow = setup({
+      timeoutMs: 10,
+      onState: (state) => {
+        if (state.phase === "cancelled") settled.resolve(undefined)
+      },
+      authorize: async () => {
+        started++
+        return waiting
+      },
+      cancel: () => deletion.promise,
+    })
+    await flow.controller.start()
+    await flow.controller.cancel()
+    expect(flow.states.at(-1)).toEqual({ phase: "error", error: "Cancellation unconfirmed", retryBlocked: true })
+    await flow.controller.start()
+    expect(started).toBe(1)
+    expect(flow.completed).toEqual([])
+    deletion.resolve(undefined)
+    await settled.promise
+    expect(flow.states.at(-1)?.phase).toBe("cancelled")
+    await flow.controller.start()
+    expect(started).toBe(2)
     flow.controller.dispose()
   })
 })

@@ -101,7 +101,15 @@ request. If cancellation cannot be confirmed while the dialog is open, it shows
 an error rather than claiming that the process stopped. Instance disposal also
 interrupts the attempt. Cancellation, failure, timeout, and success terminate the
 runtime and its POSIX process group, then remove the temporary working directory. A failed or cancelled
-attempt can be retried.
+attempt can be retried after confirmed cleanup.
+
+The shared login controller limits each authorization, status, and cancellation
+wait to ten seconds. Authorization timeout starts cancellation, which has its
+own ten-second wait. The App also aborts stalled status and DELETE requests
+after ten seconds. It keeps authorization transport open to receive a late
+attempt ID and cancel that attempt. An unconfirmed cancellation shows an error
+and blocks another attempt in that controller. A late successful cleanup clears
+the block. A client deadline does not prove that the native process stopped.
 
 During a model turn, an explicit browser-authentication instruction from the
 runtime ends that turn with sign-in guidance rather than waiting for browser
