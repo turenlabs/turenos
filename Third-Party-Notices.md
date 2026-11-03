@@ -956,7 +956,7 @@ Each row identifies a resolved package and version, its declared license, and it
 | `ulid` | `3.0.1` | MIT | [source](git+https://github.com/ulid/javascript.git) |
 | `undici` | `6.28.1` | MIT | [source](git+https://github.com/nodejs/undici.git) |
 | `undici` | `7.29.1` | MIT | [source](git+https://github.com/nodejs/undici.git) |
-| `undici` | `8.10.2` | MIT | [source](git+https://github.com/nodejs/undici.git) |
+| `undici` | `8.12.2` | MIT | [source](git+https://github.com/nodejs/undici.git) |
 | `undici-types` | `7.16.0` | MIT | [source](git+https://github.com/nodejs/undici.git) |
 | `unist-util-is` | `6.0.1` | MIT | [source](syntax-tree/unist-util-is) |
 | `unist-util-position` | `5.0.0` | MIT | [source](syntax-tree/unist-util-position) |

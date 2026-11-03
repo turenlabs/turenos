@@ -506,12 +506,19 @@ export function createSessionV2TimelineController(input: {
         ),
       ),
     )
+    // A completed assistant snapshot includes its settled parts, even if live fragments arrived
+    // after this read began. Never replay buffered fragments over that terminal value.
+    const completed = new Set(
+      presentation.messages
+        .filter((message) => message.role === "assistant" && message.time.completed !== undefined)
+        .map((message) => message.id),
+    )
     const pending = sessionV2DeltasForProjection({
       deltas: deltas.get(sessionID) ?? [],
       through,
       snapshotText,
       deltaBases,
-    })
+    }).filter((delta) => !completed.has(delta.messageID))
     const visibleText = new Map<string, string>(
       pending.flatMap((delta) => {
         const part = sync().data.part[delta.messageID]?.find((item) => item.id === delta.partID)
@@ -1061,6 +1068,9 @@ export function createSessionV2TimelineController(input: {
 
   const recordDelta = (value: { sessionID: string; assistantMessageID: string; partID: string; delta: string }) => {
     if (!v2Sessions.accepts(value.sessionID)) return
+    // Global SSE can replay old live-only fragments after the durable stream settled the step.
+    const message = sync().data.message[value.sessionID]?.find((item) => item.id === value.assistantMessageID)
+    if (message?.role === "assistant" && message.time.completed !== undefined) return
     const key = `${value.assistantMessageID}\0${value.partID}`
     if (!deltaBases.has(key)) {
       const part = sync().data.part[value.assistantMessageID]?.find((item) => item.id === value.partID)

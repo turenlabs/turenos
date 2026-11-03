@@ -4,6 +4,8 @@ import type { localFolders } from "../working-folders/local"
 
 export type ConnectionOptions = {
   url: string
+  /** True only when the target shares the client filesystem (never an SSH tunnel). */
+  local?: boolean
   /** The Unix socket a persistent server listens on; requests go there, and `url` only names the origin. */
   socketPath?: string
   directory?: string

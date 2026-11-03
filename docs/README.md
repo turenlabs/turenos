@@ -130,6 +130,7 @@ outputs, ownership, failure behavior, and implementation links. These systems ha
   caching, and scanner rules for Security MCP integrations.
 - [Forge test fixtures](./development/forge-tests.md): temporary directories, Effect test helpers, and waiting on
   concurrent work in `packages/forge` tests.
+- [Session stream replay testing](./development/session-stream-testing.md): completed-message regressions and delayed-event GUI acceptance.
 - [Desktop sidecar profiler](./development/desktop-profiler.md): recording a CPU profile of the local sidecar in
   dev-channel Desktop builds.
 - [TUI development](./development/tui.md): testing `packages/tui`, its size limits, fixture rules and the PTY audit.
