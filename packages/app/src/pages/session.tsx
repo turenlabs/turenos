@@ -1,4 +1,4 @@
-import type { FilePart, Project, UserMessage, VcsFileDiff } from "@turenlabs/sdk/v2"
+import type { Project, UserMessage, VcsFileDiff } from "@turenlabs/sdk/v2"
 import { Swarm } from "@turenlabs/schema/swarm"
 import { getFilename } from "@turenlabs/core/util/path"
 import { useDialog } from "@turenlabs/ui/context/dialog"
@@ -118,6 +118,7 @@ import { formatServerError, isLocalSessionNotFoundError, isSessionNotFoundError 
 import { DestinationLoading } from "@/components/destination-loading"
 import { legacySessionHref, requireServerKey, sessionHref } from "@/utils/session-route"
 import { createSessionOwnership } from "./session/session-ownership"
+import { createSessionAttachmentActions } from "./session/attachment-actions"
 import { applySessionV2Revert, clearSessionV2Revert, stageSessionV2Revert } from "./session/session-v2-revert"
 import { createSessionLineage, nextSessionActivation, SESSION_ACTIVATION_MAX_AGE_MS } from "./session/session-lineage"
 import { createSessionGoalController } from "./session/goal/session-goal-controller"
@@ -2169,30 +2170,12 @@ export default function Page() {
       .map((item) => ({ id: item.id, text: line(item.id) }))
   })
 
-  // attachment bytes are embedded as a data URL, so downloading always works;
-  // revealing requires the on-disk path captured by the client that attached the file
-  const openAttachment = (file: FilePart) => {
-    const download = () => {
-      const anchor = document.createElement("a")
-      anchor.href = file.url
-      anchor.download = getFilename(file.filename) || "attachment"
-      anchor.click()
-    }
-    const path = file.filename ?? ""
-    const absolute = path.startsWith("/") || path.startsWith("\\\\") || /^[a-zA-Z]:[\\/]/.test(path)
-    if (platform.revealPath && absolute) {
-      void platform.revealPath(path).then(
-        (revealed) => {
-          if (!revealed) download()
-        },
-        () => download(),
-      )
-      return
-    }
-    download()
-  }
-
-  const actions = { revert, openAttachment }
+  const attachmentActions = createSessionAttachmentActions({
+    serverSDK,
+    platform,
+    revealFailedTitle: () => language.t("common.requestFailed"),
+  })
+  const actions = { revert, ...attachmentActions }
 
   const liveMessages = createMemo(() => {
     const id = revertMessageID()

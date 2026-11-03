@@ -14,6 +14,7 @@ export function AttachmentCardV2(props: {
   onClick?: () => void
   children: JSX.Element
 }) {
+  const interactive = () => !!props.clickable && !!props.onClick
   return (
     <div
       data-component="attachment-card-v2"
@@ -22,7 +23,22 @@ export function AttachmentCardV2(props: {
       data-wide={props.wide ? "true" : undefined}
       data-surface={props.surface}
       title={props.hover}
-      onClick={() => props.onClick?.()}
+      role={interactive() ? "button" : undefined}
+      tabIndex={interactive() ? 0 : undefined}
+      onClick={() => {
+        if (interactive()) props.onClick?.()
+      }}
+      onKeyDown={(event) => {
+        if (event.target !== event.currentTarget || !interactive()) return
+        if (event.key !== "Enter" && event.key !== " ") return
+        event.preventDefault()
+        if (event.key === "Enter" && !event.repeat) event.currentTarget.click()
+      }}
+      onKeyUp={(event) => {
+        if (event.target !== event.currentTarget || !interactive() || event.key !== " ") return
+        event.preventDefault()
+        event.currentTarget.click()
+      }}
     >
       <span ref={(element) => props.titleRef?.(element)} data-slot="attachment-card-v2-title">
         {props.title}

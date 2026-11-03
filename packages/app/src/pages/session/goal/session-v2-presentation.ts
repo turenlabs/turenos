@@ -93,6 +93,13 @@ export function presentSessionV2Messages(input: {
             mime: file.mime,
             filename: file.name,
             url: file.uri,
+            source: file.source
+              ? {
+                  type: "file",
+                  path: file.name ?? file.uri,
+                  text: { value: file.source.text, start: file.source.start, end: file.source.end },
+                }
+              : undefined,
           }),
         ),
         ...(message.agents ?? []).map((attached, index) => ({
