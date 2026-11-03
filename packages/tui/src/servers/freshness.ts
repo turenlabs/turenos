@@ -23,7 +23,7 @@ export async function writtenSinceStart(pid: number, files: string[]) {
 
 async function startedAt(pid: number) {
   if (process.platform === "linux") return linuxStart(pid)
-  if (process.platform === "darwin") return darwinStart(pid)
+  if (process.platform === "darwin") return darwinStart(pid).catch(() => undefined)
   return undefined
 }
 
@@ -42,7 +42,7 @@ async function linuxStart(pid: number) {
 async function darwinStart(pid: number) {
   // ps prints lstart in the caller's locale ("Di. 20 Okt." under de_DE), which Date.parse cannot read; the C locale
   // prints the English form it can.
-  const child = Bun.spawn(["ps", "-o", "lstart=", "-p", String(pid)], {
+  const child = Bun.spawn(["/bin/ps", "-o", "lstart=", "-p", String(pid)], {
     env: { ...process.env, LC_ALL: "C" },
     stdout: "pipe",
     stderr: "ignore",

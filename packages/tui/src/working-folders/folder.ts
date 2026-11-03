@@ -1,3 +1,4 @@
+import { realpathSync } from "node:fs"
 import { pathKey } from "@turenlabs/client/path-key"
 import type { Connection } from "../server"
 import type { Target } from "../servers/types"
@@ -6,11 +7,11 @@ import type { Target } from "../servers/types"
  * The folder a dashboard shows: the sessions in it, and where new work starts. It stays in this client, as the
  * desktop keeps its project selection; opening and closing folders is what other clients share.
  */
-export type Folder = { directory: string; project?: { id: string; directory: string } }
+export type Folder = { local?: boolean; directory: string; project?: { id: string; directory: string } }
 
-export function folderContains(folder: string, directory: string) {
-  const root = pathKey(folder)
-  const path = pathKey(directory)
+export function folderContains(folder: string, directory: string, local = false) {
+  const root = folderKey(folder, local)
+  const path = folderKey(directory, local)
   return path === root || path.startsWith(root.endsWith("/") ? root : `${root}/`)
 }
 
@@ -19,9 +20,13 @@ export function folderContains(folder: string, directory: string) {
  * project's worktrees, which the server keeps elsewhere (the desktop groups them under the project the same way).
  */
 export function inFolder(folder: Folder, session: { projectID: string; location: { directory: string } }) {
-  if (folderContains(folder.directory, session.location.directory)) return true
+  if (folderContains(folder.directory, session.location.directory, folder.local)) return true
   const project = folder.project
-  return !!project && session.projectID === project.id && pathKey(project.directory) === pathKey(folder.directory)
+  return (
+    !!project &&
+    session.projectID === project.id &&
+    folderKey(project.directory, folder.local) === folderKey(folder.directory, folder.local)
+  )
 }
 
 /** The folder the process was started in; undefined when it was deleted after the shell entered it. */
@@ -49,7 +54,12 @@ export function onThisComputer(target: Target) {
 
 /** The last segment of a folder, for the narrow places that name it. */
 export function folderName(directory: string) {
-  return directory.replace(/[\\/]+$/, "").split(/[\\/]/).at(-1) || directory
+  return (
+    directory
+      .replace(/[\\/]+$/, "")
+      .split(/[\\/]/)
+      .at(-1) || directory
+  )
 }
 
 /**
@@ -72,4 +82,15 @@ export async function folderSessionList(
     .filter((session) => inFolder(folder, session))
     .sort((a, b) => b.time.created - a.time.created)
     .slice(0, query.limit)
+}
+
+/** Resolve aliases only for a known local server; remote paths belong to its filesystem. */
+export function folderKey(directory: string, local = false) {
+  if (!local) return pathKey(directory)
+  try {
+    return pathKey(realpathSync(directory))
+  } catch {
+    // Removed or inaccessible paths must remain distinguishable.
+    return pathKey(directory)
+  }
 }

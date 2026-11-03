@@ -61,6 +61,8 @@ export type OscState = {
 export type Session = {
   options: AttachOptions
   open: (url: string) => WebSocket
+  inputHeld: string
+  inputTimer?: ReturnType<typeof setTimeout>
   decoder: TextDecoder
   osc: OscState
   location: Record<string, string>
