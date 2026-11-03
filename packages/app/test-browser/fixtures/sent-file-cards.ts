@@ -259,10 +259,33 @@ assert.equal(actionCards[0]!.dataset.clickable, "true")
 actionCards[0]!.click()
 await tick()
 assert.deepEqual(revealed, ["/repo/color.png"])
+const activateKey = (card: HTMLElement, key: string) => {
+  card.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }))
+  card.dispatchEvent(new KeyboardEvent("keyup", { key, bubbles: true, cancelable: true }))
+}
+for (const newLayout of [false, true]) {
+  document.body.toggleAttribute("data-new-layout", newLayout)
+  assert.equal(actionCards[0]!.getAttribute("role"), "button")
+  assert.equal(actionCards[0]!.tabIndex, 0)
+  actionCards[0]!.focus()
+  assert.equal(document.activeElement, actionCards[0])
+  for (const key of ["Enter", " "]) {
+    const count = revealed.length
+    activateKey(actionCards[0]!, key)
+    await tick()
+    assert.equal(revealed.length, count + 1, `${key} must reveal exactly once`)
+    assert.equal(revealed.at(-1), "/repo/color.png")
+  }
+}
+revealed.splice(1)
 setRoute(remote)
 setSelected(local)
 assert.equal(selected(), local)
 assert.equal(actionCards[0]!.hasAttribute("data-clickable"), false)
+assert.equal(actionCards[0]!.hasAttribute("role"), false)
+assert.equal(actionCards[0]!.hasAttribute("tabindex"), false)
+activateKey(actionCards[0]!, "Enter")
+activateKey(actionCards[0]!, " ")
 actionCards[0]!.click()
 actions.openAttachment(file)
 await tick()
