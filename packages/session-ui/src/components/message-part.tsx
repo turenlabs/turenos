@@ -179,6 +179,7 @@ export type UserActions = {
   fork?: SessionAction
   revert?: SessionAction
   openAttachment?: (file: FilePart) => void
+  canOpenAttachment?: (file: FilePart) => boolean
 }
 
 export type UserMessageComment = {
@@ -1280,12 +1281,13 @@ export function UserMessageDisplay(props: {
       <div data-slot="user-message-attachments">
         <For each={attachments()}>
           {(file) => {
-            const type = kind(file)
+            const type = file.url.startsWith("data:") ? kind(file) : "file"
             const name = file.filename ?? i18n.t("ui.message.attachment.alt")
+            const canOpen = () => !!props.actions?.openAttachment && (props.actions.canOpenAttachment?.(file) ?? true)
 
             return (
               <Show
-                when={newLayout() && type === "file"}
+                when={(newLayout() || !file.url.startsWith("data:")) && type === "file"}
                 fallback={
                   <div
                     data-slot="user-message-attachment"
@@ -1313,8 +1315,10 @@ export function UserMessageDisplay(props: {
                 <AttachmentCardV2
                   title={getFilename(name)}
                   hover={name}
-                  clickable={!!props.actions?.openAttachment}
-                  onClick={() => props.actions?.openAttachment?.(file)}
+                  clickable={canOpen()}
+                  onClick={() => {
+                    if (canOpen()) props.actions?.openAttachment?.(file)
+                  }}
                 >
                   {typeLabel(name, file.mime)}
                 </AttachmentCardV2>
