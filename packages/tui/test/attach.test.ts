@@ -236,6 +236,33 @@ test.each(["\x1b[93;5u", "\x1b[27;5;93~"])("Ctrl+] detaches in its %j encoding t
   await until(() => server.received.join("") === "ls")
 })
 
+test.each(["\x1b[93;5u", "\x1b[27;5;93~"])("fragmented %j detaches at every boundary", async (sequence) => {
+  for (let split = 1; split < sequence.length; split++) {
+    const server = pty()
+    const terminal = io()
+    const attached = attach(server, terminal)
+    await until(() => terminal.stdout.text.includes("$ hello"))
+    terminal.stdin.emit("data", `ls${sequence.slice(0, split)}`)
+    terminal.stdin.emit("data", `${sequence.slice(split)}ignored`)
+    expect((await attached).reason).toBe("detached")
+    await until(() => server.received.join("") === "ls")
+  }
+})
+
+test("a lone escape and a non-detach escape sequence reach the PTY", async () => {
+  const server = pty()
+  const terminal = io()
+  const attached = attach(server, terminal)
+  await until(() => terminal.stdout.text.includes("$ hello"))
+  terminal.stdin.emit("data", "\x1b")
+  await until(() => server.received.join("") === "\x1b")
+  terminal.stdin.emit("data", "\x1b[")
+  terminal.stdin.emit("data", "A")
+  await until(() => server.received.join("") === "\x1b\x1b[A")
+  terminal.stdin.emit("data", Buffer.from([DETACH]))
+  await attached
+})
+
 test("the attachment ends with a terminal reset, so a PTY program's modes do not outlive it", async () => {
   const server = pty()
   const terminal = io()
