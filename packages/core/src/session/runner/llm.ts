@@ -78,6 +78,7 @@ import { makeLocationNode } from "../../effect/app-node"
 import { llmClient } from "../../effect/app-node-platform"
 import { isWithReplicas } from "@turenlabs/effect-drizzle-sqlite"
 import { and, eq } from "drizzle-orm"
+import { AntigravityAcpCLI } from "../../provider/antigravity-acp"
 import { ClaudeCodeCLI } from "../../provider/claude-code"
 import { MuseCodeCLI } from "../../provider/muse-code"
 
@@ -915,7 +916,9 @@ const layer = Layer.effect(
       )
       const providerTurnID = SessionMessage.ID.create()
       const claudeTools =
-        modelRef.providerID === ClaudeCodeCLI.ID || modelRef.providerID === MuseCodeCLI.ID
+        modelRef.providerID === ClaudeCodeCLI.ID ||
+        modelRef.providerID === MuseCodeCLI.ID ||
+        modelRef.providerID === AntigravityAcpCLI.ID
           ? (toolMaterialization?.definitions ?? [])
           : []
       type ClaudeToolCall = { readonly id: string; readonly name: string; readonly input: unknown }
@@ -1976,6 +1979,7 @@ const layer = Layer.effect(
             todoPrompt !== "done" &&
             todoToolAvailable &&
             modelRef.providerID !== ClaudeCodeCLI.ID &&
+            modelRef.providerID !== AntigravityAcpCLI.ID &&
             substantiveWork &&
             !todoUpdated &&
             (todoPrompt === "initial" || SessionTodoGuidance.hasOpenItems(yield* todos.get(session.id)))

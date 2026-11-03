@@ -132,6 +132,11 @@ const SettingsLocalProvidersContent: Component<{ onBack?: () => void }> = (props
                       when={removing() === item.id}
                       fallback={
                         <div class="flex items-center gap-2">
+                          <Show when={item.id === "antigravity-acp"}>
+                            <ButtonV2 size="normal" variant="neutral" onClick={() => connect(item.id)}>
+                              {language.t("provider.connect.antigravity.signIn")}
+                            </ButtonV2>
+                          </Show>
                           <ButtonV2
                             size="normal"
                             variant="ghost-muted"

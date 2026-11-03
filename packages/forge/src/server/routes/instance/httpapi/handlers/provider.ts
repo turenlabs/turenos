@@ -5,12 +5,13 @@ import * as InstanceState from "@/effect/instance-state"
 import { markInstanceForDisposal } from "../lifecycle"
 import { ProviderQuota } from "@/provider/quota"
 import { Provider } from "@/provider/provider"
+import { AntigravityAcpAuth } from "@/provider/antigravity-acp-auth"
 
 import { Duration, Effect, Schema } from "effect"
-import { HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
+import { HttpEffect, HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { InstanceHttpApi } from "../api"
-import { ProviderAuthApiError } from "../groups/provider"
+import { ProviderAuthApiError, AcpAuthApiError } from "../groups/provider"
 import { ProviderV2 } from "@turenlabs/core/provider"
 import { Catalog } from "@turenlabs/core/catalog"
 import { Integration } from "@turenlabs/core/integration"
@@ -21,6 +22,15 @@ import { and, gte, lte, sql } from "drizzle-orm"
 import { ProviderUsageTable } from "@turenlabs/core/session/sql"
 
 const USAGE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
+
+function acpResponse<A, E, R>(effect: Effect.Effect<A, E, R>) {
+  return Effect.gen(function* () {
+    yield* HttpEffect.appendPreResponseHandler((_request, response) =>
+      Effect.succeed(HttpServerResponse.setHeader(response, "cache-control", "no-store")),
+    )
+    return yield* effect
+  })
+}
 
 function mapProviderAuthError<A, R>(self: Effect.Effect<A, ProviderAuth.Error, R>) {
   return self.pipe(
@@ -46,6 +56,7 @@ export const providerHandlers = HttpApiBuilder.group(InstanceHttpApi, "provider"
   Effect.gen(function* () {
     const provider = yield* Provider.Service
     const svc = yield* ProviderAuth.Service
+    const acp = yield* AntigravityAcpAuth.Service
     const credentials = yield* Auth.Service
     const configSvc = yield* Config.Service
     const { db } = yield* Database.Service
@@ -209,9 +220,7 @@ export const providerHandlers = HttpApiBuilder.group(InstanceHttpApi, "provider"
       return true
     })
 
-    const remove = Effect.fn("ProviderHttpApi.remove")(function* (ctx: {
-      params: { providerID: ProviderV2.ID }
-    }) {
+    const remove = Effect.fn("ProviderHttpApi.remove")(function* (ctx: { params: { providerID: ProviderV2.ID } }) {
       const providerID = ctx.params.providerID
       yield* credentials.remove(providerID).pipe(Effect.orDie)
       // Config-defined providers need their entry dropped from the global file; providers that a
@@ -227,6 +236,21 @@ export const providerHandlers = HttpApiBuilder.group(InstanceHttpApi, "provider"
     })
 
     return handlers
+      .handle("acpAuthorize", () => acpResponse(acp.authorize()))
+      .handle("acpStatus", (ctx) =>
+        acpResponse(acp.status(ctx.params.id)).pipe(
+          Effect.mapError(
+            () => new AcpAuthApiError({ message: "This sign-in attempt is no longer active. Start sign-in again." }),
+          ),
+        ),
+      )
+      .handle("acpCancel", (ctx) =>
+        acpResponse(acp.cancel(ctx.params.id)).pipe(
+          Effect.mapError(
+            () => new AcpAuthApiError({ message: "This sign-in attempt is no longer active. Start sign-in again." }),
+          ),
+        ),
+      )
       .handle("list", list)
       .handle("auth", auth)
       .handle("usage", usage)

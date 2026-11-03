@@ -33,6 +33,7 @@ import { LLMDisclosure } from "./disclosure"
 import { SecretOutput } from "@turenlabs/core/secret-output"
 import { LLMClaudeCodeDirect } from "./llm/claude-code-direct"
 import { ClaudeCodeProvider } from "@/provider/claude-code"
+import { AntigravityAcpCLI } from "@turenlabs/core/provider/antigravity-acp"
 import { ClaudeCodeCLI } from "@turenlabs/core/provider/claude-code"
 import { MuseCodeCLI } from "@turenlabs/core/provider/muse-code"
 import { InstanceState } from "@/effect/instance-state"
@@ -106,15 +107,16 @@ const live: Layer.Layer<
 
       const isClaudeCode = input.model.providerID === ClaudeCodeProvider.ID
       const isMuseCode = input.model.providerID === MuseCodeCLI.ID
-      if ((isClaudeCode || isMuseCode) && input.connectionPolicy)
+      const isAntigravityAcp = input.model.providerID === AntigravityAcpCLI.ID
+      const isLocalCli = isClaudeCode || isMuseCode || isAntigravityAcp
+      if (isLocalCli && input.connectionPolicy)
         throw new Error("Connection policies are unavailable for CLI-backed models")
       const [cfg, item, info] = yield* Effect.all(
         [config.get(), provider.getProvider(input.model.providerID), auth.get(input.model.providerID)],
         { concurrency: "unbounded" },
       )
 
-      const language =
-        isClaudeCode || isMuseCode ? undefined : yield* provider.getLanguage(input.model, input.connectionPolicy)
+      const language = isLocalCli ? undefined : yield* provider.getLanguage(input.model, input.connectionPolicy)
       const isWorkflow = language instanceof GitLabWorkflowLanguageModel
       const draft = yield* LLMRequestPrep.prepare({
         ...input,
@@ -136,16 +138,28 @@ const live: Layer.Layer<
       // from the workflow service are executed via opencode's tool system
       // and results sent back over the WebSocket.
       const bridge = yield* EffectBridge.make()
-      if (isClaudeCode || isMuseCode) {
+      if (isLocalCli) {
         const ctx = yield* InstanceState.context
         const executable =
           typeof item.options.executable === "string"
             ? item.options.executable
             : isMuseCode
               ? MuseCodeCLI.DEFAULT_EXECUTABLE
-              : ClaudeCodeProvider.DEFAULT_EXECUTABLE
+              : isAntigravityAcp
+                ? AntigravityAcpCLI.DEFAULT_EXECUTABLE
+                : ClaudeCodeProvider.DEFAULT_EXECUTABLE
+        const runtimeName = isMuseCode
+          ? "muse-code-cli"
+          : isAntigravityAcp
+            ? "antigravity-acp-cli"
+            : "claude-code-cli"
+        const effortCheck = isMuseCode
+          ? MuseCodeCLI.isEffortLevel
+          : isAntigravityAcp
+            ? AntigravityAcpCLI.isEffortLevel
+            : ClaudeCodeCLI.isEffortLevel
         yield* Effect.logInfo("llm runtime selected", {
-          "llm.runtime": isMuseCode ? "muse-code-cli" : "claude-code-cli",
+          "llm.runtime": runtimeName,
           "llm.provider": input.model.providerID,
           "llm.model": input.model.id,
         })
@@ -157,11 +171,7 @@ const live: Layer.Layer<
             llmClient,
             directory: ctx.directory,
             executable,
-            effort: (isMuseCode ? MuseCodeCLI.isEffortLevel : ClaudeCodeCLI.isEffortLevel)(
-              prepared.params.options.effort,
-            )
-              ? prepared.params.options.effort
-              : undefined,
+            effort: effortCheck(prepared.params.options.effort) ? prepared.params.options.effort : undefined,
             toolChoice: input.toolChoice,
             abort: input.abort,
           }),

@@ -9,5 +9,7 @@ policy, and limits. Provider resolution internals belong to the "Model and provi
   - [Tool routing](./claude-code/tool-routing.md): routing `claude -p` tools through TurenOS policy and settlement
     boundaries.
 - [Muse Code](./muse-code.md): using the signed-in local Muse CLI with host-routed tools.
+- [Antigravity ACP](./antigravity-acp.md): driving the official local `agy_acp_server` binary over ACP v1 with
+  host-routed MCP tools and `oauth-personal` sign-in.
 - [Local models](./local-models.md): background discovery of local Ollama and llama.cpp servers, and running Bonsai 2
   with its supported local runtime and connecting the loopback API.

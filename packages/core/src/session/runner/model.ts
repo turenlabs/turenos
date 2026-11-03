@@ -22,6 +22,7 @@ import { AmazonBedrockModel } from "../../plugin/provider/amazon-bedrock-model"
 import { OpenAICodex } from "../../plugin/provider/openai-codex"
 import { ProviderV2 } from "../../provider"
 import { AISDKBridge } from "./aisdk-bridge"
+import { AntigravityAcpBridge } from "./antigravity-acp-bridge"
 import { ClaudeCodeBridge } from "./claude-code-bridge"
 import { MuseCodeBridge } from "./muse-code-bridge"
 import { SessionSchema } from "../schema"
@@ -1066,6 +1067,8 @@ export const fromCatalogModel = (
   if (ClaudeCodeBridge.isClaudeCode(model)) return Effect.succeed(claudeCodeModel(model))
   if (MuseCodeBridge.isMuseCode(model))
     return Effect.succeed(MuseCodeBridge.model({ model, defaults: defaults(model) }))
+  if (AntigravityAcpBridge.isAntigravityAcp(model))
+    return Effect.succeed(AntigravityAcpBridge.model({ model, defaults: defaults(model) }))
   if (
     model.providerID === ProviderV2.ID.openai &&
     model.api.id === "gpt-5.3-codex-spark" &&
@@ -1109,6 +1112,8 @@ export const fromCatalogModelWithAISDK = (
   if (ClaudeCodeBridge.isClaudeCode(model)) return Effect.succeed(claudeCodeModel(model))
   if (MuseCodeBridge.isMuseCode(model))
     return Effect.succeed(MuseCodeBridge.model({ model, defaults: defaults(model) }))
+  if (AntigravityAcpBridge.isAntigravityAcp(model))
+    return Effect.succeed(AntigravityAcpBridge.model({ model, defaults: defaults(model) }))
   if (credential?.type === "oauth" && model.providerID === ProviderV2.ID.openai) return chatGPTOAuth(model, credential)
   if (
     model.api.type === "aisdk" &&
@@ -1215,6 +1220,7 @@ export const resolve = (
 export const supported = (model: ModelV2.Info) =>
   ClaudeCodeBridge.isClaudeCode(model) ||
   MuseCodeBridge.isMuseCode(model) ||
+  AntigravityAcpBridge.isAntigravityAcp(model) ||
   (model.api.type === "aisdk" &&
     ((adapterFor(model.api.package) !== undefined && nativeQualified(model)) || bridgeQualified(model)))
 
