@@ -124,6 +124,8 @@ outputs, ownership, failure behavior, and implementation links. These systems ha
 
 ## Development
 
+- [Session attachment testing](./development/session-attachment-testing.md): persisted file cards, inline mentions,
+  image previews, and safe native actions.
 - [Security MCP integration conventions](./development/security-integrations.md): the contract, handlers, output,
   caching, and scanner rules for Security MCP integrations.
 - [Forge test fixtures](./development/forge-tests.md): temporary directories, Effect test helpers, and waiting on

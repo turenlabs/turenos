@@ -3,7 +3,9 @@ import { getFilename } from "@turenlabs/core/util/path"
 import type { FilePart } from "@turenlabs/sdk/v2"
 
 export function attached(part: FilePart) {
-  return part.url.startsWith("data:")
+  if (part.url.startsWith("data:")) return true
+  if (!part.url.startsWith("file:")) return false
+  return part.source?.text?.start === undefined || part.source?.text?.end === undefined
 }
 
 export function inline(part: FilePart) {
