@@ -591,6 +591,12 @@ export function createServerSession(client: ForgeClient) {
         void resolve(eventID).catch(() => {})
       const transition = sessionNextStatusTransition(event.type)
       if (transition === "busy") {
+        if (event.type === "session.next.step.started") {
+          const properties = event.properties as { assistantMessageID?: unknown } | undefined
+          const message = data.message[eventID]?.find((item) => item.id === properties?.assistantMessageID)
+          // A replayed global start must not revive an assistant already settled by the durable stream.
+          if (message?.role === "assistant" && message.time.completed !== undefined) return
+        }
         markStatus(eventID, directory)
         statusSettlePending.delete(eventID)
         if (data.session_status[eventID]?.type !== "busy") setData("session_status", eventID, { type: "busy" })
