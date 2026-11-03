@@ -58,6 +58,7 @@ export const authenticate = Effect.fn("AntigravityAcpAuth.authenticate")(functio
   readonly executable: string
   readonly onWaiting: (url: string) => void
 }) {
+  yield* AntigravityAcpBridge.acquireTurnPermit
   const initialized = yield* Deferred.make<void, AuthError>()
   const authenticated = yield* Deferred.make<void, AuthError>()
   const verified = yield* Deferred.make<void, AuthError>()

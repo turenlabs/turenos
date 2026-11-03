@@ -674,7 +674,7 @@ rl.on("line", (line) => {
       expect(events.map((event) => event.type)).toEqual(["step-start", "provider-error"])
       expect(events.at(-1)).toMatchObject({
         type: "provider-error",
-        message: expect.stringContaining("Settings > Local Providers > Antigravity ACP"),
+        message: expect.stringContaining("Connect Antigravity ACP and select Sign in with Google"),
         retryable: false,
       })
     }),
@@ -775,6 +775,228 @@ rl.on("line", (line) => {
       }).pipe(Effect.exit)
       expect(failureText(oversizedExit)).toContain("4 MiB limit")
       expect(existsSync(cli.capture)).toBe(false)
+    }),
+  )
+
+  it.effect("trims older multi-turn history to fit the 4 MiB prompt limit and formats content tool results", () =>
+    Effect.sync(() => {
+      const trimmed = AntigravityAcpBridge.prompt(
+        LLM.request({
+          model: SessionRunnerModel.fromCatalogModel(catalogModel("agy_acp_server.par")).pipe(Effect.runSync),
+          system: "system context",
+          messages: [
+            { role: "user", content: [{ type: "text", text: "a".repeat(3 * 1024 * 1024) }] },
+            {
+              role: "tool",
+              content: [
+                {
+                  type: "tool-result",
+                  id: "tc-1",
+                  name: "read",
+                  result: {
+                    type: "content",
+                    value: [
+                      { type: "text", text: "tool text output" },
+                      { type: "file", uri: "data:image/png;base64,aGVsbG8=", mime: "image/png" },
+                    ],
+                  },
+                },
+              ],
+            },
+            { role: "user", content: [{ type: "text", text: "b".repeat(2 * 1024 * 1024) }] },
+          ],
+        }),
+      )
+      expect(Buffer.byteLength(trimmed)).toBeLessThanOrEqual(4 * 1024 * 1024)
+      expect(trimmed).toContain("[Earlier transcript omitted by TurenOS: it exceeded the prompt limit.]")
+      expect(trimmed).toContain("tool text output")
+      expect(trimmed).toContain("[image from read omitted: Antigravity ACP bridge supports text only]")
+      expect(trimmed).not.toContain("aGVsbG8=")
+    }),
+  )
+
+  it.effect("closes open text and reasoning segments before tool calls and assigns distinct IDs to post-tool segments", () =>
+    Effect.sync(() => {
+      const state = AntigravityAcpBridge.adapterState({
+        modelID: "gemini-3.8-flash",
+        cwd: "/unused",
+        promptText: "hello",
+        mcp: { url: "http://127.0.0.1/unused", authorization: "Bearer test" },
+      })
+      state.phase = "prompt"
+      state.sessionId = "active-session"
+
+      const thought1 = AntigravityAcpBridge.stepLine(
+        state,
+        JSON.stringify({
+          jsonrpc: "2.0",
+          method: "session/update",
+          params: {
+            sessionId: "active-session",
+            update: { sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "plan 1" } },
+          },
+        }),
+      )
+      expect(thought1.ok && thought1.events.map((e) => [e.type, "id" in e ? e.id : undefined])).toEqual([
+        ["reasoning-start", "antigravity-reasoning"],
+        ["reasoning-delta", "antigravity-reasoning"],
+      ])
+
+      const msg1 = AntigravityAcpBridge.stepLine(
+        state,
+        JSON.stringify({
+          jsonrpc: "2.0",
+          method: "session/update",
+          params: {
+            sessionId: "active-session",
+            update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "calling tool" } },
+          },
+        }),
+      )
+      expect(msg1.ok && msg1.events.map((e) => [e.type, "id" in e ? e.id : undefined])).toEqual([
+        ["reasoning-end", "antigravity-reasoning"],
+        ["text-start", "antigravity-text"],
+        ["text-delta", "antigravity-text"],
+      ])
+
+      const perm = AntigravityAcpBridge.stepLine(
+        state,
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: 99,
+          method: "session/request_permission",
+          params: {
+            sessionId: "active-session",
+            toolCall: { toolCallId: "tc-1", name: "mcp__forge__read" },
+            options: [{ optionId: "allow_once", kind: "allow_once" }],
+          },
+        }),
+      )
+      expect(perm.ok && perm.events.map((e) => [e.type, "id" in e ? e.id : undefined])).toEqual([
+        ["text-end", "antigravity-text"],
+      ])
+
+      const thought2 = AntigravityAcpBridge.stepLine(
+        state,
+        JSON.stringify({
+          jsonrpc: "2.0",
+          method: "session/update",
+          params: {
+            sessionId: "active-session",
+            update: { sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "plan 2" } },
+          },
+        }),
+      )
+      expect(thought2.ok && thought2.events.map((e) => [e.type, "id" in e ? e.id : undefined])).toEqual([
+        ["reasoning-start", "antigravity-reasoning-2"],
+        ["reasoning-delta", "antigravity-reasoning-2"],
+      ])
+
+      const msg2 = AntigravityAcpBridge.stepLine(
+        state,
+        JSON.stringify({
+          jsonrpc: "2.0",
+          method: "session/update",
+          params: {
+            sessionId: "active-session",
+            update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "final answer" } },
+          },
+        }),
+      )
+      expect(msg2.ok && msg2.events.map((e) => [e.type, "id" in e ? e.id : undefined])).toEqual([
+        ["reasoning-end", "antigravity-reasoning-2"],
+        ["text-start", "antigravity-text-2"],
+        ["text-delta", "antigravity-text-2"],
+      ])
+    }),
+  )
+
+  it.effect("maps quota/rate-limit (429) and plan/permission (403) failures to non-retryable guidance", () =>
+    Effect.sync(() => {
+      const quota = AntigravityAcpBridge.safeProviderError(new Error("429 RESOURCE_EXHAUSTED: quota exceeded"))
+      expect(quota).toMatchObject({
+        type: "provider-error",
+        message: expect.stringContaining("quota or rate limit"),
+        retryable: false,
+      })
+      const denied = AntigravityAcpBridge.safeProviderError(new Error("403 PERMISSION_DENIED: not supported on your plan"))
+      expect(denied).toMatchObject({
+        type: "provider-error",
+        message: expect.stringContaining("access was denied by Google"),
+        retryable: false,
+      })
+    }),
+  )
+
+  it.live("serializes concurrent ACP turns through a single-flight gate so subprocesses never overlap", () =>
+    Effect.gen(function* () {
+      const firstCli = yield* fakeAcpServer(standardServerBody({ waitOnPrompt: true }))
+      const secondCli = yield* fakeAcpServer(standardServerBody())
+      const firstStarted = yield* Deferred.make<void>()
+      const firstModel = yield* SessionRunnerModel.fromCatalogModel(catalogModel(firstCli.executable))
+      const secondModel = yield* SessionRunnerModel.fromCatalogModel(catalogModel(secondCli.executable))
+
+      const firstFiber = yield* LLM.stream(LLM.request({ model: firstModel, prompt: "first" })).pipe(
+        Stream.tap((event) => (event.type === "text-delta" ? Deferred.succeed(firstStarted, undefined) : Effect.void)),
+        Stream.runCollect,
+        Effect.provide(layer),
+        Effect.forkChild,
+      )
+      yield* Deferred.await(firstStarted)
+
+      const secondFiber = yield* LLM.stream(LLM.request({ model: secondModel, prompt: "second" })).pipe(
+        Stream.runCollect,
+        Effect.provide(layer),
+        Effect.forkChild,
+      )
+      yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 100)))
+      expect(existsSync(secondCli.capture)).toBe(false)
+
+      yield* Fiber.interrupt(firstFiber)
+      const secondEvents = Array.from(yield* Fiber.join(secondFiber))
+      expect(secondEvents.at(-1)).toMatchObject({ type: "finish", reason: "stop" })
+      expect(existsSync(secondCli.capture)).toBe(true)
+    }),
+  )
+
+  it.live("interrupts a queued turn waiting on the single-flight gate promptly without leaking the permit", () =>
+    Effect.gen(function* () {
+      const firstCli = yield* fakeAcpServer(standardServerBody({ waitOnPrompt: true }))
+      const secondCli = yield* fakeAcpServer(standardServerBody())
+      const thirdCli = yield* fakeAcpServer(standardServerBody())
+      const firstStarted = yield* Deferred.make<void>()
+      const firstModel = yield* SessionRunnerModel.fromCatalogModel(catalogModel(firstCli.executable))
+      const secondModel = yield* SessionRunnerModel.fromCatalogModel(catalogModel(secondCli.executable))
+      const thirdModel = yield* SessionRunnerModel.fromCatalogModel(catalogModel(thirdCli.executable))
+
+      const firstFiber = yield* LLM.stream(LLM.request({ model: firstModel, prompt: "first" })).pipe(
+        Stream.tap((event) => (event.type === "text-delta" ? Deferred.succeed(firstStarted, undefined) : Effect.void)),
+        Stream.runCollect,
+        Effect.provide(layer),
+        Effect.forkChild,
+      )
+      yield* Deferred.await(firstStarted)
+
+      const secondFiber = yield* LLM.stream(LLM.request({ model: secondModel, prompt: "second" })).pipe(
+        Stream.runCollect,
+        Effect.provide(layer),
+        Effect.forkChild,
+      )
+      yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 50)))
+
+      // Cancellation of the queued turn must complete while the first turn is still holding the permit.
+      yield* Fiber.interrupt(secondFiber).pipe(Effect.timeout("500 millis"))
+      expect(existsSync(secondCli.capture)).toBe(false)
+
+      yield* Fiber.interrupt(firstFiber)
+      const thirdEvents = Array.from(
+        yield* LLM.stream(LLM.request({ model: thirdModel, prompt: "third" })).pipe(
+          Stream.runCollect,
+          Effect.provide(layer),
+          Effect.timeout("5 seconds"),
+        ),
+      )
+      expect(thirdEvents.at(-1)).toMatchObject({ type: "finish", reason: "stop" })
     }),
   )
 

@@ -12,6 +12,10 @@ import { LoopRunTable, LoopTable } from "./loop/sql"
 import { TeamDutyRunTable, TeamDutyTable, TeamRoomTable, TeamTeammateTable } from "./team/workspace.sql"
 import { AgentV2 } from "./agent"
 import { ModelV2 } from "./model"
+import { AntigravityAcpCLI } from "./provider/antigravity-acp"
+
+const ACP_AUTOMATION_MESSAGE =
+  "Antigravity ACP supports interactive single-user sessions only; choose an authorized API or enterprise model for Automations"
 
 export const MIN_INTERVAL_SECONDS = 60
 export const MAX_ACTIVE = 50
@@ -334,6 +338,8 @@ const layer = Layer.effect(
         return yield* new InvalidInputError({ message: "A project directory is required" })
       const invalidWorkflow = input.workflow ? validateWorkflow(input.workflow) : undefined
       if (invalidWorkflow) return yield* invalidWorkflow
+      if (input.model?.providerID === AntigravityAcpCLI.ID)
+        return yield* new InvalidInputError({ message: ACP_AUTOMATION_MESSAGE })
       if (!input.prompt.trim() && !input.skill && !input.workflow)
         return yield* new InvalidInputError({ message: "A custom prompt or skill is required" })
       const now = Date.now()
@@ -386,6 +392,7 @@ const layer = Layer.effect(
               if (input.factoryRoomID && !factoryConfig) return { type: "factory-config" } as const
               if (input.factoryRoomID && !coordinator) return { type: "factory-coordinator" } as const
               const dutyOwner = coordinator ?? teammate
+              if (dutyOwner?.model?.providerID === AntigravityAcpCLI.ID) return { type: "acp-model" } as const
               const dutyStatus = dutyOwner?.status === "paused" ? "paused" : status
               if (dutyStatus === "active" && !(yield* hasCapacity(tx, location, now))) return { type: "limit" } as const
               const created = yield* tx
@@ -449,6 +456,7 @@ const layer = Layer.effect(
         return yield* new InvalidInputError({ message: "Factory room is not configured" })
       if (row.type === "factory-coordinator")
         return yield* new InvalidInputError({ message: "Factory coordinator not found" })
+      if (row.type === "acp-model") return yield* new InvalidInputError({ message: ACP_AUTOMATION_MESSAGE })
       return toInfo(row.row!)
     })
 
@@ -485,6 +493,8 @@ const layer = Layer.effect(
         return yield* new InvalidInputError({ message: "A name is required" })
       const invalidWorkflow = input.workflow ? validateWorkflow(input.workflow) : undefined
       if (invalidWorkflow) return yield* invalidWorkflow
+      if (!input.resetModel && input.model?.providerID === AntigravityAcpCLI.ID)
+        return yield* new InvalidInputError({ message: ACP_AUTOMATION_MESSAGE })
       const now = Date.now()
       const result = yield* db
         .transaction(
@@ -2004,6 +2014,8 @@ function validateWorkflow(workflow: Workflow) {
   if (invalid)
     return new InvalidInputError({ message: "Every Automation step requires an expression-safe ID, name, and task" })
   for (const step of workflow.steps) {
+    if (step.model?.providerID === AntigravityAcpCLI.ID)
+      return new InvalidInputError({ message: ACP_AUTOMATION_MESSAGE })
     if (step.onFailure !== undefined && step.onFailure !== "stop" && step.onFailure !== "continue")
       return new InvalidInputError({ message: `Automation step ${step.id} has an unsupported onFailure policy` })
     if (step.when !== undefined && step.when.length > 2_000)

@@ -1,12 +1,18 @@
 import { describe, expect, test } from "bun:test"
-import { DateTime, Deferred, Effect, Fiber } from "effect"
+import { DateTime, Deferred, Effect, Fiber, Layer, LayerMap, Option, Stream } from "effect"
 import { TestClock } from "effect/testing"
 import { Loop } from "@turenlabs/core/loop"
 import { ModelV2 } from "@turenlabs/core/model"
 import { ProviderV2 } from "@turenlabs/core/provider"
 import { SessionMessage } from "@turenlabs/core/session/message"
 import { RelativePath } from "@turenlabs/core/schema"
-import { extractStepOutput, pollDue, renderWorkflowStep, toLoopRelativePath } from "../../src/loop/scheduler"
+import { EventV2 } from "@turenlabs/core/event"
+import { LocationServiceMap } from "@turenlabs/core/location-service-map"
+import type { LocationServices } from "@turenlabs/core/location-services"
+import { SessionV2 } from "@turenlabs/core/session"
+import { SessionRunnerModel } from "@turenlabs/core/session/runner/model"
+import { TeamWorkspace } from "@turenlabs/core/team/workspace"
+import { LoopScheduler, extractStepOutput, pollDue, renderWorkflowStep, toLoopRelativePath } from "../../src/loop/scheduler"
 import { Database } from "@turenlabs/core/database/database"
 import { AppNodeBuilder } from "@turenlabs/core/effect/app-node-builder"
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
@@ -470,6 +476,95 @@ describe("LoopScheduler wake with the Loop service", () => {
         "lop_idle_wake",
       ])
       yield* Fiber.interrupt(fiber)
+    }),
+  )
+
+  live.live("fails an unpinned loop run when only antigravity-acp is available", () =>
+    Effect.gen(function* () {
+      const loops = yield* Loop.Service
+      const directory = "/work/acp-only-loop"
+      const created = yield* loops.create({
+        id: "lop_acp_only",
+        name: "acp only loop",
+        prompt: "run unattended check",
+        location: { directory },
+        intervalSeconds: Loop.MIN_INTERVAL_SECONDS,
+      })
+
+      let prompted = false
+      const acpRef = ModelV2.Ref.make({
+        providerID: ProviderV2.ID.make("antigravity-acp"),
+        id: ModelV2.ID.make("gemini-3-flash"),
+      })
+      const resolveOptions: Array<{ excludeProviderID?: string } | undefined> = []
+      const unexpected = () => Effect.die("Unexpected service call")
+      const dependencies = Layer.mergeAll(
+        Layer.succeed(Loop.Service, loops),
+        Layer.mock(TeamWorkspace.Service, {
+          recordDutyRun: () => Effect.succeed(undefined),
+        }),
+        Layer.mock(SessionV2.Service, {
+          goal: { get: unexpected, set: unexpected, edit: unexpected, status: unexpected, clear: unexpected },
+          revert: { stage: unexpected, clear: unexpected, commit: unexpected },
+          get: (id) => Effect.fail(new SessionV2.NotFoundError({ sessionID: id })),
+          create: (input) =>
+            Effect.succeed({
+              id: input.id ?? SessionV2.ID.make("ses_loop_acp_only"),
+              location: input.location,
+              agent: input.agent ?? "build",
+              model: input.model,
+            } as SessionV2.Info),
+          prompt: () => {
+            prompted = true
+            return Effect.die("Unexpected prompt")
+          },
+          interrupt: () => Effect.void,
+        }),
+        Layer.effect(
+          LocationServiceMap.Service,
+          LayerMap.make(
+            (): Layer.Layer<LocationServices> =>
+              Layer.mock(SessionRunnerModel.Service, {
+                resolve: (session, _selection, options) => {
+                  resolveOptions.push(options)
+                  if (options?.excludeProviderID === "antigravity-acp") {
+                    return Effect.fail(new SessionRunnerModel.ModelNotSelectedError({ sessionID: session.id }))
+                  }
+                  return Effect.succeed({ ref: acpRef } as SessionRunnerModel.Resolved)
+                },
+              }) as unknown as Layer.Layer<LocationServices>,
+          ),
+        ),
+        Layer.mock(EventV2.Service, {
+          subscribe: (() => Stream.never) as EventV2.Interface["subscribe"],
+        }),
+      )
+
+      yield* Layer.build(
+        (
+          LoopScheduler.node.implementation as Layer.Layer<
+            LoopScheduler.Service,
+            never,
+            Loop.Service | TeamWorkspace.Service | SessionV2.Service | LocationServiceMap.Service | EventV2.Service
+          >
+        ).pipe(Layer.provide(dependencies)),
+      )
+
+      const settled = yield* awaitWithTimeout(
+        Effect.gen(function* () {
+          while (true) {
+            const runs = yield* loops.listRuns(created.id)
+            if (runs[0]?.status === "failed" || runs[0]?.status === "succeeded") return runs[0]
+            yield* Effect.sleep("20 millis")
+          }
+        }),
+        "loop run did not finish",
+      )
+
+      expect(settled.status).toBe("failed")
+      expect(settled.error).toContain("Antigravity ACP supports interactive single-user sessions only")
+      expect(prompted).toBe(false)
+      expect(resolveOptions[0]?.excludeProviderID).toBe("antigravity-acp")
     }),
   )
 })

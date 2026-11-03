@@ -179,6 +179,44 @@ describe("Antigravity ACP host MCP transport", () => {
     }),
   )
 
+  it.live("rejects nested Antigravity ACP turns invoked from inside an active MCP tool call instead of deadlocking", () =>
+    Effect.gen(function* () {
+      const child = yield* fakeAcpServer(mcpRoundtrip)
+      const resolved = yield* model(child.executable)
+      const token = yield* ClaudeCodeMcp.register({
+        definitions,
+        execute: () =>
+          LLM.stream(
+            LLM.request({
+              model: resolved,
+              prompt: "nested turn",
+            }),
+          ).pipe(
+            Stream.runCollect,
+            Effect.provide(layer),
+            Effect.match({
+              onFailure: (error) => ({ type: "text" as const, value: `rejected:${error.message}` }),
+              onSuccess: () => ({ type: "text" as const, value: "unexpected-success" }),
+            }),
+          ),
+      })
+      const events = yield* LLM.stream(
+        LLM.request({
+          model: resolved,
+          prompt: "outer turn",
+          tools: definitions,
+          metadata: ClaudeCodeMcp.requestMetadata(token),
+        }),
+      ).pipe(Stream.runCollect, Effect.provide(layer), Effect.timeout("10 seconds"))
+      expect(
+        events
+          .filter((event) => event.type === "text-delta")
+          .map((event) => event.text)
+          .join(""),
+      ).toContain("Antigravity ACP does not support nested turns")
+    }),
+  )
+
   for (const [name, body] of [
     ["per-line", `rl.on("line", () => process.stdout.write(Buffer.alloc(8 * 1024 * 1024 + 1, 97)))`],
     [

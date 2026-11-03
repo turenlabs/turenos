@@ -238,6 +238,11 @@ export type ResolveOptions = {
   readonly defaultVariant?: boolean
   /** The `oauthExpires` of a resolution whose token the provider rejected: refresh it first. */
   readonly refreshOAuth?: number
+  /**
+   * When resolving an unpinned background call, prefer any connected provider other than this one
+   * before falling back to it.
+   */
+  readonly excludeProviderID?: ProviderV2.ID
 }
 
 export interface Interface {
@@ -1366,13 +1371,18 @@ export const locationLayer = Layer.effect(
           candidates = yield* availableModels(catalog, integrations)
           defaultModel = yield* catalog.model.default()
         }
+        const filtered =
+          options?.excludeProviderID === undefined
+            ? candidates
+            : candidates.filter((candidate) => candidate.model.providerID !== options.excludeProviderID)
+        const usable = filtered.length > 0 ? filtered : candidates
         const selected =
-          candidates.find(
+          usable.find(
             (candidate) =>
               defaultModel !== undefined &&
               candidate.model.providerID === defaultModel.providerID &&
               candidate.model.id === defaultModel.id,
-          ) ?? candidates[0]
+          ) ?? usable[0]
         if (!selected) return yield* new ModelNotSelectedError({ sessionID: session.id })
         const credential =
           options?.refreshOAuth === undefined

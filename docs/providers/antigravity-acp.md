@@ -5,17 +5,19 @@ TurenOS can drive an installed Google Antigravity ACP server
 standard Agent Client Protocol (ACP v1 JSON-RPC 2.0 over stdio). Select
 `Antigravity ACP (local)` and one of its Gemini models in the model picker after
 installing the official `agy_acp_server` runtime and using **Sign in with Google**
-in TurenOS to complete the runtime's `oauth-personal` sign-in. Installation
-discovery does not verify authentication or account access to a model.
+in TurenOS to complete the runtime's `oauth-personal` sign-in. The provider is
+restricted to top-level interactive single-user sessions; installation discovery
+does not verify authentication or account access to a model.
 
 ## Transport and model scope
 
 Supply the official, unmodified runtime from the
 [ACP Registry](https://github.com/agentclientprotocol/registry/tree/main/antigravity-acp).
 Executable discovery checks that a command is available; it does not verify the
-binary's publisher or checksum. Google's [extension setup guidance](https://antigravity.google/docs/ide/extensions/zed/)
+binary's publisher or checksum. Google's [extension setup guidance](https://antigravity.google/docs/ide/extensions/zed/),
+[ACP subscription-access clarification](https://discuss.ai.google.dev/t/supported-gemini-subscription-access-for-a-third-party-vs-code-extension/189889/7),
 and [Antigravity terms](https://antigravity.google/terms) describe the upstream
-service and its conditions of use.
+service, its interactive single-user ACP allowance, and its conditions of use.
 
 - TurenOS launches the configured ACP executable and uses JSON-RPC 2.0
   (`initialize`, `authenticate`, `session/new`, `session/set_config_option`,
@@ -143,8 +145,40 @@ During the ACP handshake:
 - Calls through the authenticated `forge` MCP endpoint enter TurenOS's normal
   `PermissionV2` and tool-execution pipeline.
 
-ACP completes its own tool loop inside a provider turn. TurenOS does not start
-an extra todo-reconciliation turn after that loop completes.
+ACP completes its own tool loop inside a provider turn. When `session/request_permission`
+or a `tool_call` / `tool_call_update` notification arrives during a prompt, the
+bridge closes any open text or reasoning segment before the tool executes and
+assigns sequential IDs (`antigravity-text-2`, `antigravity-reasoning-2`, and so
+on) to subsequent segments in the same turn. TurenOS does not start an extra
+todo-reconciliation turn after that loop completes.
+
+All `agy_acp_server` launches in a backend process—both model turns and
+interactive sign-in—share an interruptible single-flight semaphore
+(`acquireTurnPermit` / `withTurnPermit`), so concurrent interactive sessions
+run their ACP turns one at a time without racing on
+`~/.gemini/antigravity-acp/acp_token.json` or firing parallel request bursts,
+while queued turns waiting for the permit can be cancelled immediately. Nested
+ACP execution is disabled: `SubagentTool.forExecution` omits the subagent,
+swarm-room, and agent-improvement session tools (`spawn_agent`, `spawn_agents`,
+`send_agent`, `wait_agents`, `interrupt_agent`, `list_agents`, `peek_agent`,
+`agent_doc`, `notify_parent`, `room_read`, `room_post`, `room_claim`,
+`room_wait`, `propose_agent_improvement`, `adjudicate_agent_improvement`, and
+`apply_agent_improvement`) on `antigravity-acp` turns, child subagent sessions
+and `spawn_agent` / `spawn_agents` / legacy `task` calls reject
+`antigravity-acp`, and any nested `AntigravityAcpBridge` turn invoked from
+inside an active MCP tool callback (`ClaudeCodeMcp.ActiveMcpToken`) is rejected
+before acquiring the permit.
+
+Unattended execution—scheduled/cron/event Automations (`Loop` and
+`LoopScheduler`), Factory room runs, and background `TeamRuntime` tasks—rejects
+`antigravity-acp` models and resolves a non-ACP default model when unpinned.
+Background housekeeping (session title generation, next-prompt prediction,
+compaction summarization, and the automatic Harness reviewer) also resolves a
+non-ACP model with `excludeProviderID: "antigravity-acp"` rather than
+inheriting `antigravity-acp`; if `antigravity-acp` is the only available
+provider, session titling falls back to the redacted opening prompt,
+next-prompt prediction returns empty text, and automatic Harness review is
+skipped without spawning an ACP subprocess.
 
 Interrupting a turn sends `session/cancel` over stdio when an ACP session has
 been created, closes stdin, terminates the runtime (`SIGTERM` then `SIGKILL`,
@@ -161,7 +195,9 @@ Run from the repository root:
   test/session-runner-antigravity-acp-mcp.test.ts \
   test/plugin/antigravity-acp.test.ts \
   test/plugin/provider-local-e2e.test.ts)
-(cd packages/forge && bun test test/provider/antigravity-acp.test.ts)
+(cd packages/forge && bun test \
+  test/provider/antigravity-acp.test.ts \
+  test/provider/antigravity-acp-auth.test.ts)
 (cd packages/client && bun test test/acp-login.test.ts)
 (cd packages/tui && bun test test/model-connections-acp.test.ts test/providers-acp.test.ts --timeout 30000)
 ```
@@ -171,10 +207,17 @@ not establish signed-in Google model availability or successful live inference.
 
 ## Limits
 
+- Interactive single-user sessions only: subagent orchestration, child subagent
+  sessions, scheduled/cron/event Automations (`Loop` and `LoopScheduler`),
+  Factory room runs, and background `TeamRuntime` tasks reject
+  `antigravity-acp`.
 - Text-only prompts and responses; media attachments fail explicitly before the
-  ACP server subprocess starts.
+  ACP server subprocess starts, and image blocks inside historical MCP
+  `tool-result` content are replaced with a text placeholder.
 - Prompts are bounded to 4 MiB, individual stdout lines to 8 MiB, and total
-  stdout per turn to 32 MiB.
+  stdout per turn to 32 MiB. When a multi-message transcript exceeds 4 MiB, the
+  bridge drops the oldest messages and prepends an omission notice; a single
+  message that exceeds 4 MiB fails before the ACP server starts.
 - Initialization, session creation, and model configuration must reach the
   prompt phase within 60 seconds. A timeout ends the turn with setup guidance
   and subprocess cleanup; this deadline does not limit an active prompt.

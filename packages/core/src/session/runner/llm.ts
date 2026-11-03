@@ -380,11 +380,17 @@ const layer = Layer.effect(
       const session = yield* store.get(sessionID)
       // Resolved even without an override: the turn's model carries the model's default reasoning
       // level, which would spend the summary's small output cap on thinking.
+      const avoidAcp = !override && (session?.model === undefined || session.model.providerID === AntigravityAcpCLI.ID)
       const resolved = session
         ? yield* models
-            .resolve(override ? { ...session, model: override } : session, selection.info?.request, {
-              defaultVariant: false,
-            })
+            .resolve(
+              override ? { ...session, model: override } : avoidAcp ? { ...session, model: undefined } : session,
+              selection.info?.request,
+              {
+                defaultVariant: false,
+                ...(avoidAcp ? { excludeProviderID: AntigravityAcpCLI.ID } : {}),
+              },
+            )
             .pipe(
               Effect.catch((error) =>
                 Effect.logWarning("Compaction model is unavailable; summarising with the session model").pipe(
@@ -801,12 +807,18 @@ const layer = Layer.effect(
       }
       const isLastStep = agent.info?.steps !== undefined && currentStep >= agent.info.steps
       const toolsDisabled = agent.info?.tools === false || isLastStep
+      const disallowAcp =
+        session.parentID !== undefined || session.id.startsWith("ses_loop_") || session.id.startsWith("ses_team_")
       const [system, resolvedModel] = yield* Effect.all(
         [
           initialized
             ? Effect.succeed(initialized)
             : SessionContextEpoch.prepare(db, events, loadSystemContext(agent, session.id), session.id),
-          models.resolve(session, agent.info?.request),
+          models.resolve(
+            session,
+            agent.info?.request,
+            disallowAcp ? { excludeProviderID: AntigravityAcpCLI.ID } : undefined,
+          ),
         ] as const,
         { concurrency: "unbounded" },
       )
@@ -849,6 +861,16 @@ const layer = Layer.effect(
             { concurrency: "unbounded" },
           )
         : [undefined, undefined]
+      if (disallowAcp && modelRef.providerID === AntigravityAcpCLI.ID) {
+        return yield* new SessionRunnerModel.ModelUnavailableError({
+          providerID: modelRef.providerID,
+          modelID: modelRef.id,
+          reason:
+            session.parentID !== undefined
+              ? "Antigravity ACP does not support subagent or child sessions"
+              : "Antigravity ACP supports interactive single-user sessions only; configure an authorized API or enterprise model for unattended Automations",
+        })
+      }
       const currentTask =
         latestHumanInput &&
         (followsRoomRead === true ||

@@ -14,6 +14,7 @@ import { Effect, Exit, Schema, Scope } from "effect"
 import { EffectBridge } from "@/effect/bridge"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { Database } from "@turenlabs/core/database/database"
+import { AntigravityAcpCLI } from "@turenlabs/core/provider/antigravity-acp"
 
 export interface TaskPromptOps {
   cancel(sessionID: SessionID): Effect.Effect<void>
@@ -181,6 +182,11 @@ export const TaskTool = Tool.define(
       const model = next.model ?? {
         modelID: msg.info.modelID,
         providerID: msg.info.providerID,
+      }
+      if (msg.info.providerID === AntigravityAcpCLI.ID || model.providerID === AntigravityAcpCLI.ID) {
+        return yield* Effect.fail(
+          new Error("Antigravity ACP does not support subagent execution; choose a non-ACP model for subagents"),
+        )
       }
       const metadata = {
         parentSessionId: ctx.sessionID,

@@ -7,7 +7,7 @@ import { join } from "node:path"
 import type { Writable } from "node:stream"
 import { isContextOverflow, LLMError, LLMEvent, LLMRequest, TransportReason } from "@turenlabs/llm"
 import { Endpoint, Protocol, Route, type RouteDefaultsInput, type TransportDef } from "@turenlabs/llm/route"
-import { Cause, Effect, Option, Queue, Schema, Stream } from "effect"
+import { Cause, Effect, Option, Queue, Schema, Semaphore, Stream } from "effect"
 import { ModelV2 } from "../../model"
 import { AntigravityAcpCLI } from "../../provider/antigravity-acp"
 import { ClaudeCodeMcp } from "./claude-code-mcp-namespace"
@@ -18,11 +18,27 @@ export const PROTOCOL_VERSION = 1
 const TEXT_ID = "antigravity-text"
 const REASONING_ID = "antigravity-reasoning"
 const CHROMIUM_BROWSER_NOISE = "Opening in existing browser session."
+const OMITTED = "[Earlier transcript omitted by TurenOS: it exceeded the prompt limit.]"
 const PROMPT_LIMIT = 4 * 1024 * 1024
 const LINE_LIMIT = 8 * 1024 * 1024
 const OUTPUT_LIMIT = 32 * 1024 * 1024
 const STDERR_LIMIT = 8 * 1024
 const HANDSHAKE_TIMEOUT = 60_000
+
+/**
+ * Single-flight gate for all `agy_acp_server` subprocess launches in this process.
+ *
+ * `antigravity-acp` is a single-user personal OAuth client (`oauth-personal`) that reads and
+ * refreshes shared credentials (`~/.gemini/antigravity-acp/acp_token.json` / OS keychain).
+ * Serializing turns and interactive sign-in prevents concurrent subprocesses from racing on token
+ * refresh or firing parallel request bursts when subagents, timers, or Factory rooms fan out.
+ */
+const turnGate = Semaphore.makeUnsafe(1)
+const activeTurnTokens = new Set<string>()
+export const withTurnPermit = <A, E, R>(effect: Effect.Effect<A, E, R>) => turnGate.withPermits(1)(effect)
+export const acquireTurnPermit = Effect.uninterruptibleMask((restore) =>
+  restore(turnGate.take(1)).pipe(Effect.tap(() => Effect.addFinalizer(() => turnGate.release(1)))),
+)
 
 const record = (value: unknown): Record<string, unknown> | undefined =>
   typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined
@@ -122,6 +138,29 @@ export function mcpServers(mcp?: { url: string; authorization: string }): McpSer
   ]
 }
 
+function formatMessage(message: LLMRequest["messages"][number]): string {
+  const body = message.content
+    .map((part) => {
+      if (part.type === "text") return part.text
+      if (part.type === "reasoning") return `[reasoning]\n${part.text}`
+      if (part.type === "tool-call") return `[tool call ${part.name}] ${JSON.stringify(part.input)}`
+      if (part.type === "tool-result") {
+        if (part.result.type !== "content") return `[tool result ${part.name}] ${JSON.stringify(part.result.value)}`
+        const lines = ClaudeCodeMcp.toCallToolResult(part.result).content.flatMap((item) => {
+          if (item.type === "text") return [item.text]
+          if (item.type === "image") {
+            return [`[image from ${part.name} omitted: Antigravity ACP bridge supports text only]`]
+          }
+          return []
+        })
+        return lines.length > 0 ? `[tool result ${part.name}]\n${lines.join("\n")}` : `[tool result ${part.name}]`
+      }
+      throw new Error("Antigravity ACP bridge currently supports text only")
+    })
+    .join("\n")
+  return `${message.role.toUpperCase()}:\n${body}`
+}
+
 export function prompt(request: LLMRequest) {
   const systemParts = [
     "You are running inside TurenOS. TurenOS owns the session, permissions, workspace, tools, and conversation history.",
@@ -132,26 +171,19 @@ export function prompt(request: LLMRequest) {
       : []),
     ...request.system.map((part) => part.text).filter((text) => text.trim().length > 0),
   ]
-  const transcript =
-    request.messages
-      .map(
-        (message) =>
-          `${message.role.toUpperCase()}:\n${message.content
-            .map((part) => {
-              if (part.type === "text") return part.text
-              if (part.type === "reasoning") return `[reasoning]\n${part.text}`
-              if (part.type === "tool-call") return `[tool call ${part.name}] ${JSON.stringify(part.input)}`
-              if (part.type === "tool-result") return `[tool result ${part.name}] ${JSON.stringify(part.result.value)}`
-              throw new Error("Antigravity ACP bridge currently supports text only")
-            })
-            .join("\n")}`,
-      )
-      .join("\n\n") || "Continue."
-  const text = `${systemParts.join("\n\n")}\n\n${transcript}`
-  if (Buffer.byteLength(text) > PROMPT_LIMIT) {
-    throw new Error("Antigravity ACP prompt exceeds the bridge's 4 MiB limit")
+  const rendered = request.messages
+    .filter((message) => record(message.metadata?.forge)?.internalContext !== "runtime")
+    .map(formatMessage)
+  const prefix = systemParts.join("\n\n")
+  const transcript = rendered.join("\n\n") || "Continue."
+  const full = `${prefix}\n\n${transcript}`
+  if (Buffer.byteLength(full) <= PROMPT_LIMIT) return full
+
+  for (let start = 1; start < rendered.length; start += 1) {
+    const trimmed = `${prefix}\n\n${OMITTED}\n\n${rendered.slice(start).join("\n\n")}`
+    if (Buffer.byteLength(trimmed) <= PROMPT_LIMIT) return trimmed
   }
-  return text
+  throw new Error("Antigravity ACP prompt exceeds the bridge's 4 MiB limit")
 }
 
 export type OutboundMessage = {
@@ -190,6 +222,10 @@ export type AdapterState = {
   readonly promptText: string
   textOpen: boolean
   reasoningOpen: boolean
+  textId: string
+  reasoningId: string
+  textSeq: number
+  reasoningSeq: number
   completed: boolean
 }
 
@@ -208,8 +244,25 @@ export const adapterState = (input: AdapterInput): AdapterState => ({
   promptText: input.promptText,
   textOpen: false,
   reasoningOpen: false,
+  textId: TEXT_ID,
+  reasoningId: REASONING_ID,
+  textSeq: 0,
+  reasoningSeq: 0,
   completed: false,
 })
+
+function closeOpenSegments(state: AdapterState): LLMEvent[] {
+  const events: LLMEvent[] = []
+  if (state.reasoningOpen) {
+    state.reasoningOpen = false
+    events.push(LLMEvent.reasoningEnd({ id: state.reasoningId }))
+  }
+  if (state.textOpen) {
+    state.textOpen = false
+    events.push(LLMEvent.textEnd({ id: state.textId }))
+  }
+  return events
+}
 
 export function startHandshake(state: AdapterState): OutboundMessage {
   const id = state.nextId++
@@ -274,9 +327,14 @@ export function stepLine(state: AdapterState, rawLine: string): StepOutcome {
 
   if (hasMethod && hasId) {
     if (envelope.method === "session/request_permission") {
+      const params = record(envelope.params)
+      const events =
+        state.phase === "prompt" && state.sessionId !== undefined && params?.sessionId === state.sessionId
+          ? closeOpenSegments(state)
+          : []
       return {
         ok: true,
-        events: [],
+        events,
         outbound: [
           {
             jsonrpc: "2.0",
@@ -414,17 +472,11 @@ function handleResponse(
       }
     }
     const finishReason = stopReason === "max_tokens" ? "length" : "stop"
-    const events: LLMEvent[] = []
-    if (state.reasoningOpen) {
-      state.reasoningOpen = false
-      events.push(LLMEvent.reasoningEnd({ id: REASONING_ID }))
-    }
-    if (state.textOpen) {
-      state.textOpen = false
-      events.push(LLMEvent.textEnd({ id: TEXT_ID }))
-    }
-    events.push(LLMEvent.stepFinish({ index: 0, reason: finishReason }))
-    events.push(LLMEvent.finish({ reason: finishReason }))
+    const events = [
+      ...closeOpenSegments(state),
+      LLMEvent.stepFinish({ index: 0, reason: finishReason }),
+      LLMEvent.finish({ reason: finishReason }),
+    ]
     state.phase = "done"
     state.completed = true
     state.pendingRequestId = undefined
@@ -496,6 +548,12 @@ function handleSessionUpdate(state: AdapterState, paramsValue: unknown): StepOut
     return { ok: false, error: new Error("Antigravity ACP returned malformed JSONL") }
   }
   const kind = update.sessionUpdate
+  if (kind === "tool_call" || kind === "tool_call_update") {
+    if (state.phase === "prompt" && state.sessionId && params.sessionId === state.sessionId) {
+      return { ok: true, events: closeOpenSegments(state), outbound: [] }
+    }
+    return { ok: true, events: [], outbound: [] }
+  }
   if (kind !== "agent_thought_chunk" && kind !== "agent_message_chunk") {
     return { ok: true, events: [], outbound: [] }
   }
@@ -508,13 +566,15 @@ function handleSessionUpdate(state: AdapterState, paramsValue: unknown): StepOut
     const events: LLMEvent[] = []
     if (state.textOpen) {
       state.textOpen = false
-      events.push(LLMEvent.textEnd({ id: TEXT_ID }))
+      events.push(LLMEvent.textEnd({ id: state.textId }))
     }
     if (!state.reasoningOpen) {
+      state.reasoningSeq += 1
+      state.reasoningId = state.reasoningSeq === 1 ? REASONING_ID : `${REASONING_ID}-${state.reasoningSeq}`
       state.reasoningOpen = true
-      events.push(LLMEvent.reasoningStart({ id: REASONING_ID }))
+      events.push(LLMEvent.reasoningStart({ id: state.reasoningId }))
     }
-    events.push(LLMEvent.reasoningDelta({ id: REASONING_ID, text }))
+    events.push(LLMEvent.reasoningDelta({ id: state.reasoningId, text }))
     return { ok: true, events, outbound: [] }
   }
   if (kind === "agent_message_chunk") {
@@ -523,13 +583,15 @@ function handleSessionUpdate(state: AdapterState, paramsValue: unknown): StepOut
     const events: LLMEvent[] = []
     if (state.reasoningOpen) {
       state.reasoningOpen = false
-      events.push(LLMEvent.reasoningEnd({ id: REASONING_ID }))
+      events.push(LLMEvent.reasoningEnd({ id: state.reasoningId }))
     }
     if (!state.textOpen) {
+      state.textSeq += 1
+      state.textId = state.textSeq === 1 ? TEXT_ID : `${TEXT_ID}-${state.textSeq}`
       state.textOpen = true
-      events.push(LLMEvent.textStart({ id: TEXT_ID }))
+      events.push(LLMEvent.textStart({ id: state.textId }))
     }
-    events.push(LLMEvent.textDelta({ id: TEXT_ID, text }))
+    events.push(LLMEvent.textDelta({ id: state.textId, text }))
     return { ok: true, events, outbound: [] }
   }
   return { ok: true, events: [], outbound: [] }
@@ -631,18 +693,22 @@ function formatRpcError(errorValue: unknown): string {
 export function safeProviderError(cause: unknown): LLMEvent {
   const text = cause instanceof Error ? cause.message : String(cause)
   const message = /credential|auth|login|oauth|token/i.test(text)
-    ? "Antigravity ACP needs Google sign-in. Open Settings > Local Providers > Antigravity ACP and select Sign in with Google, then retry."
-    : /handshake timed out/i.test(text)
-      ? "Antigravity ACP setup timed out. Use Sign in with Google under Settings > Local Providers > Antigravity ACP and check the installed server and selected model, then retry."
-      : /ENOENT|not found/i.test(text)
-        ? "Antigravity ACP was not found. Install `agy_acp_server` or configure its executable path."
-        : /malformed|JSON|protocolVersion|unexpected response|sessionId|unsupported client method/i.test(text)
-          ? "Antigravity ACP returned malformed JSONL. The installed ACP server may be incompatible."
-          : /limit|exceed/i.test(text)
-            ? "Antigravity ACP exceeded a bridge safety limit. Reduce the context or output and try again."
-            : /supports text only|attachment/i.test(text)
-              ? "Antigravity ACP bridge currently supports text only."
-              : "Antigravity ACP stopped before completing the turn. Check the ACP login and model availability."
+    ? "Antigravity ACP needs Google sign-in. Connect Antigravity ACP and select Sign in with Google, then retry."
+    : /429|resource_exhausted|rate[ _-]?limit|quota|too many requests/i.test(text)
+      ? "Antigravity ACP hit a Google quota or rate limit. Wait before sending another request or switch models."
+      : /403|permission_denied|not supported on your plan/i.test(text)
+        ? "Antigravity ACP access was denied by Google. Check your Google AI subscription plan and Antigravity ACP sign-in."
+        : /handshake timed out/i.test(text)
+          ? "Antigravity ACP setup timed out. Check your Antigravity ACP sign-in, installed server, and selected model, then retry."
+          : /ENOENT|not found/i.test(text)
+            ? "Antigravity ACP was not found. Install `agy_acp_server` or configure its executable path."
+            : /malformed|JSON|protocolVersion|unexpected response|sessionId|unsupported client method/i.test(text)
+              ? "Antigravity ACP returned malformed JSONL. The installed ACP server may be incompatible."
+              : /limit|exceed/i.test(text)
+                ? "Antigravity ACP exceeded a bridge safety limit. Reduce the context or output and try again."
+                : /supports text only|attachment/i.test(text)
+                  ? "Antigravity ACP bridge currently supports text only."
+                  : "Antigravity ACP stopped before completing the turn. Check the ACP login and model availability."
   return LLMEvent.providerError({
     message,
     retryable: false,
@@ -675,31 +741,56 @@ const transport = (input: {
   frames: (request) =>
     Stream.callback<LLMEvent, LLMError>((queue) =>
       Effect.gen(function* () {
+        const token = ClaudeCodeMcp.requestToken(request.metadata)
+        if (request.tools.length > 0 && !token) {
+          return yield* Effect.fail(error("Antigravity ACP requires the host MCP tool bridge"))
+        }
+        const promptText = yield* Effect.try({
+          try: () => prompt(request),
+          catch: (cause) => error(cause instanceof Error ? cause.message : "Could not prepare Antigravity ACP prompt"),
+        })
+
+        const activeMcpToken = yield* ClaudeCodeMcp.ActiveMcpToken
+        if (activeMcpToken !== undefined && activeTurnTokens.has(activeMcpToken)) {
+          return yield* Effect.fail(
+            error("Antigravity ACP does not support nested turns inside an active ACP tool call"),
+          )
+        }
+
+        // Hold the process-wide single-flight permit for the entire subprocess turn so concurrent
+        // sessions execute sequentially without racing on `~/.gemini/antigravity-acp/acp_token.json`
+        // or firing parallel bursts. Waiting on the permit stays interruptible so queued turns can
+        // be cancelled immediately without waiting for the active turn to finish.
+        yield* acquireTurnPermit
+        if (token) {
+          yield* Effect.acquireRelease(
+            Effect.sync(() => {
+              activeTurnTokens.add(token)
+            }),
+            () =>
+              Effect.sync(() => {
+                activeTurnTokens.delete(token)
+              }),
+          )
+        }
+
         const directory = yield* Effect.acquireRelease(
           Effect.try({
-            try: () => mkdtempSync(join(tmpdir(), "turen-antigravity-acp-")),
+            try: () => {
+              const dir = mkdtempSync(join(tmpdir(), "turen-antigravity-acp-"))
+              mkdirSync(join(dir, "config"), { recursive: true })
+              mkdirSync(join(dir, "data"), { recursive: true })
+              mkdirSync(join(dir, "workspace"), { recursive: true })
+              return dir
+            },
             catch: () => error("Could not create Antigravity ACP transport directory"),
           }),
           (dir) => Effect.sync(() => rmSync(dir, { recursive: true, force: true })),
         )
         const env = environment(directory)
-        const token = ClaudeCodeMcp.requestToken(request.metadata)
-        if (request.tools.length > 0 && !token) {
-          return yield* Effect.fail(error("Antigravity ACP requires the host MCP tool bridge"))
-        }
         const mcp = token
           ? yield* ClaudeCodeMcp.serve(token).pipe(Effect.mapError((cause) => error(cause.message)))
           : undefined
-
-        const promptText = yield* Effect.try({
-          try: () => {
-            mkdirSync(join(directory, "config"), { recursive: true })
-            mkdirSync(join(directory, "data"), { recursive: true })
-            mkdirSync(join(directory, "workspace"), { recursive: true })
-            return prompt(request)
-          },
-          catch: (cause) => error(cause instanceof Error ? cause.message : "Could not prepare Antigravity ACP prompt"),
-        })
 
         const workspaceDir = join(directory, "workspace")
         const state = adapterState({
@@ -739,8 +830,8 @@ const transport = (input: {
                 done(step.error)
                 return
               }
-              step.outbound.forEach((msg) => writeJsonLine(proc.stdin, msg))
               step.events.forEach((event) => Queue.offerUnsafe(queue, event))
+              step.outbound.forEach((msg) => writeJsonLine(proc.stdin, msg))
               if (state.completed) {
                 if (!proc.stdin.destroyed) proc.stdin.end()
                 done()
