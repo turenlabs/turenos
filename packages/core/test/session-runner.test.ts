@@ -186,6 +186,12 @@ const testDirectory = AbsolutePath.make(process.cwd())
 // provider rule, so they all resolve to the shipped fallback; the assertions below spell it out
 // rather than slicing it off, so losing the provider prompt is a failure and not a silent pass.
 const defaultPrompt = ProviderPrompt.fallback
+const defaultIdentity = expect.stringContaining(
+  'Runtime model identity for this turn: {"providerID":"fake","modelID":"fake-model","upstreamModelID":"fake-model"}',
+)
+const replacementIdentity = expect.stringContaining(
+  'Runtime model identity for this turn: {"providerID":"fake","modelID":"replacement","upstreamModelID":"replacement"}',
+)
 const compactModel = Model.make({
   id: "compact",
   provider: "fake",
@@ -1858,8 +1864,8 @@ describe("SessionRunnerLLM", () => {
       yield* session.resume(sessionID)
 
       expect(requests.map((request) => request.system.map((part) => part.text))).toEqual([
-        [defaultPrompt, "Initial context"],
-        [defaultPrompt, "Initial context"],
+        [defaultPrompt, "Initial context", defaultIdentity],
+        [defaultPrompt, "Initial context", defaultIdentity],
       ])
       expect(requests[1]?.messages.map((message) => message.role)).toEqual(["user", "user", "system"])
       expect(requests[1]?.messages.at(-1)?.content).toEqual([{ type: "text", text: "Changed context" }])
@@ -1895,7 +1901,7 @@ describe("SessionRunnerLLM", () => {
       }
 
       const request = requests.at(-1)!
-      expect(request.system.map((part) => part.text)).toEqual([defaultPrompt, "Context revision 34"])
+      expect(request.system.map((part) => part.text)).toEqual([defaultPrompt, "Context revision 34", defaultIdentity])
       expect(request.messages.filter((message) => message.role === "system")).toHaveLength(0)
       expect(request.messages.filter((message) => message.role === "user")).toHaveLength(35)
       expect(request.messages.find((message) => message.role === "assistant")?.content).toContainEqual({
@@ -1912,7 +1918,11 @@ describe("SessionRunnerLLM", () => {
       expect(yield* session.messages({ sessionID })).toEqual(messages)
       yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "After replay" }), resume: false })
       yield* session.resume(sessionID)
-      expect(requests.at(-1)?.system.map((part) => part.text)).toEqual([defaultPrompt, "Context revision 34"])
+      expect(requests.at(-1)?.system.map((part) => part.text)).toEqual([
+        defaultPrompt,
+        "Context revision 34",
+        defaultIdentity,
+      ])
       expect(requests.at(-1)?.messages.filter((message) => message.role === "system")).toHaveLength(0)
     }),
   )
@@ -1937,6 +1947,7 @@ describe("SessionRunnerLLM", () => {
       expect(requests.at(-1)?.system.map((part) => part.text)).toEqual([
         defaultPrompt,
         "Initial context\n\nInitial skills",
+        defaultIdentity,
       ])
       expect(systemTexts(requests.at(-1)!)).toContain("Context revision 16")
       expect(systemTexts(requests.at(-1)!)).toContain("Changed skills")
@@ -1945,8 +1956,82 @@ describe("SessionRunnerLLM", () => {
       skillBaselines.clear()
       yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Recovered" }), resume: false })
       yield* session.resume(sessionID)
-      expect(requests.at(-1)?.system.map((part) => part.text)).toEqual([defaultPrompt, "Context revision 16"])
+      expect(requests.at(-1)?.system.map((part) => part.text)).toEqual([
+        defaultPrompt,
+        "Context revision 16",
+        defaultIdentity,
+      ])
       expect(requests.at(-1)?.messages.filter((message) => message.role === "system")).toHaveLength(0)
+    }),
+  )
+
+  it.effect("updates runtime model identity after a switch even with a custom agent system", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const agent = yield* AgentV2.Service
+      yield* agent.transform((editor) =>
+        editor.update(AgentV2.ID.make("build"), (agent) => {
+          agent.system = "Custom agent instructions"
+          agent.mode = "primary"
+        }),
+      )
+      const session = yield* SessionV2.Service
+      currentModel = Model.make({ id: "gpt-5.6", provider: "openai", route: OpenAIResponses.route })
+      response = fragmentFixture("text", "old-identity", ["I am GPT-5.6."]).completeEvents
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Which model are you?" }), resume: false })
+      yield* session.resume(sessionID)
+
+      currentModel = Model.make({ id: "gpt-6-astra", provider: "openai", route: OpenAIResponses.route })
+      yield* session.switchModel({
+        sessionID,
+        model: { id: ModelV2.ID.make("gpt-6-astra"), providerID: ProviderV2.ID.openai },
+      })
+      response = []
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "And now?" }), resume: false })
+      yield* session.resume(sessionID)
+
+      expect(requests.map((request) => String(request.model.id))).toEqual(["gpt-5.6", "gpt-6-astra"])
+      expect(
+        requests.map(
+          (request) =>
+            request.system.find((part) => part.text.startsWith("Runtime model identity"))?.text.split("\n")[0],
+        ),
+      ).toEqual([
+        'Runtime model identity for this turn: {"providerID":"openai","modelID":"gpt-5.6","upstreamModelID":"gpt-5.6"}',
+        'Runtime model identity for this turn: {"providerID":"openai","modelID":"gpt-6-astra","upstreamModelID":"gpt-6-astra"}',
+      ])
+      expect(requests[1]?.system[0]?.text).toBe("Custom agent instructions")
+      expect(requests[1]?.system.map((part) => part.text).join("\n")).not.toContain("gpt-5.6")
+      expect(
+        requests[1]?.messages.some(
+          (message) =>
+            message.role === "assistant" &&
+            message.content.some((part) => part.type === "text" && part.text === "I am GPT-5.6."),
+        ),
+      ).toBe(true)
+    }),
+  )
+
+  it.effect("distinguishes the catalog model identity from the upstream model ID", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      currentModel = Model.make({ id: "gpt-6-astra", provider: "openai", route: OpenAIResponses.route })
+      catalogID = "astra-high"
+      response = []
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Which model are you?" }), resume: false })
+      yield* session.resume(sessionID)
+
+      expect(requests).toHaveLength(1)
+      expect(String(requests[0]?.model.id)).toBe("gpt-6-astra")
+      expect(requests[0]?.system.map((part) => part.text)).toContainEqual(
+        expect.stringContaining(
+          'Runtime model identity for this turn: {"providerID":"openai","modelID":"astra-high","upstreamModelID":"gpt-6-astra"}',
+        ),
+      )
+      expect(requests[0]?.system.map((part) => part.text)).toContainEqual(
+        expect.stringContaining("This identifies the requested model, not an independently verified provider backend."),
+      )
     }),
   )
 
@@ -1967,7 +2052,11 @@ describe("SessionRunnerLLM", () => {
       response = fragmentFixture("text", "text-build", ["Done"]).completeEvents
       yield* session.resume(sessionID)
 
-      expect(requests.at(-1)?.system.map((part) => part.text)).toEqual(["Build agent instructions", "Initial context"])
+      expect(requests.at(-1)?.system.map((part) => part.text)).toEqual([
+        "Build agent instructions",
+        "Initial context",
+        defaultIdentity,
+      ])
     }),
   )
 
@@ -1995,7 +2084,13 @@ describe("SessionRunnerLLM", () => {
 
         const parts = requests.at(-1)?.system.map((part) => part.text)
         expect(parts?.[0]).toBe(shippedPrompt(file))
-        expect(parts).toEqual([shippedPrompt(file), "Initial context"])
+        expect(parts).toEqual([
+          shippedPrompt(file),
+          "Initial context",
+          expect.stringContaining(
+            `Runtime model identity for this turn: {"providerID":"${providerID}","modelID":"${modelID}","upstreamModelID":"${modelID}"}`,
+          ),
+        ])
       }),
     )
   }
@@ -2022,7 +2117,11 @@ describe("SessionRunnerLLM", () => {
       response = fragmentFixture("text", "text-reviewer", ["Done"]).completeEvents
       yield* session.resume(sessionID)
 
-      expect(requests.at(-1)?.system.map((part) => part.text)).toEqual(["Reviewer instructions", "Initial context"])
+      expect(requests.at(-1)?.system.map((part) => part.text)).toEqual([
+        "Reviewer instructions",
+        "Initial context",
+        defaultIdentity,
+      ])
       expect((yield* session.messages({ sessionID }))[0]).toMatchObject({ type: "assistant", agent: "reviewer" })
     }),
   )
@@ -2051,7 +2150,11 @@ describe("SessionRunnerLLM", () => {
       response = fragmentFixture("text", "text-selected", ["Done"]).completeEvents
       yield* session.resume(sessionID)
 
-      expect(requests.at(-1)?.system.map((part) => part.text)).toEqual(["Reviewer instructions", "Initial context"])
+      expect(requests.at(-1)?.system.map((part) => part.text)).toEqual([
+        "Reviewer instructions",
+        "Initial context",
+        defaultIdentity,
+      ])
       expect((yield* session.messages({ sessionID }))[0]).toMatchObject({ type: "assistant", agent: "reviewer" })
     }),
   )
@@ -2078,8 +2181,8 @@ describe("SessionRunnerLLM", () => {
       yield* session.resume(sessionID)
 
       expect(requests.map((request) => request.system.map((part) => part.text))).toEqual([
-        [defaultPrompt, "Initial context\n\nBuild skills"],
-        [defaultPrompt, "Initial context\n\nBuild skills"],
+        [defaultPrompt, "Initial context\n\nBuild skills", defaultIdentity],
+        [defaultPrompt, "Initial context\n\nBuild skills", defaultIdentity],
       ])
       expect(systemTexts(requests[1]!)).toContainEqual(expect.stringContaining("Reviewer skills"))
     }),
@@ -2112,7 +2215,7 @@ describe("SessionRunnerLLM", () => {
       yield* session.resume(sessionID)
 
       expect(requests.map((request) => request.system.map((part) => part.text))).toEqual([
-        [defaultPrompt, "Initial context\n\nBuild skills"],
+        [defaultPrompt, "Initial context\n\nBuild skills", defaultIdentity],
       ])
     }),
   )
@@ -2142,7 +2245,7 @@ describe("SessionRunnerLLM", () => {
       yield* session.resume(sessionID)
       expect(requests.map((request) => request.model)).toEqual([model])
       expect(requests.map((request) => request.system.map((part) => part.text))).toEqual([
-        [defaultPrompt, "Initial context"],
+        [defaultPrompt, "Initial context", defaultIdentity],
       ])
     }),
   )
@@ -2192,9 +2295,9 @@ describe("SessionRunnerLLM", () => {
       yield* session.resume(sessionID)
 
       expect(requests.map((request) => request.system.map((part) => part.text))).toEqual([
-        [defaultPrompt, "Initial context"],
-        [defaultPrompt, "Initial context"],
-        [defaultPrompt, "Initial context"],
+        [defaultPrompt, "Initial context", defaultIdentity],
+        [defaultPrompt, "Initial context", defaultIdentity],
+        [defaultPrompt, "Initial context", replacementIdentity],
       ])
       expect(requests[1]?.messages.map((message) => message.role)).toEqual(["user", "user", "system"])
       expect(requests[2]?.messages.filter((message) => message.role === "system")).toHaveLength(2)
@@ -2238,9 +2341,9 @@ describe("SessionRunnerLLM", () => {
       yield* session.resume(sessionID)
 
       expect(requests.map((request) => request.system.map((part) => part.text))).toEqual([
-        [defaultPrompt, "Initial context"],
-        [defaultPrompt, "Initial context"],
-        [defaultPrompt, "Initial context"],
+        [defaultPrompt, "Initial context", defaultIdentity],
+        [defaultPrompt, "Initial context", replacementIdentity],
+        [defaultPrompt, "Initial context", replacementIdentity],
       ])
     }),
   )
@@ -2275,8 +2378,8 @@ describe("SessionRunnerLLM", () => {
       yield* session.resume(sessionID)
 
       expect(requests.map((request) => request.system.map((part) => part.text))).toEqual([
-        [defaultPrompt, "Initial context"],
-        [defaultPrompt, "Replacement context"],
+        [defaultPrompt, "Initial context", defaultIdentity],
+        [defaultPrompt, "Replacement context", defaultIdentity],
       ])
       yield* replaySessionProjection(sessionID)
       yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Third" }), resume: false })
@@ -2909,7 +3012,11 @@ describe("SessionRunnerLLM", () => {
       yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Third" }), resume: false })
       yield* session.resume(sessionID)
 
-      expect(requests.at(-1)?.system.map((part) => part.text)).toEqual([defaultPrompt, "Initial context"])
+      expect(requests.at(-1)?.system.map((part) => part.text)).toEqual([
+        defaultPrompt,
+        "Initial context",
+        defaultIdentity,
+      ])
       expect(systemTexts(requests.at(-1)!)).toContain("Changed context")
     }),
   )
@@ -3242,8 +3349,8 @@ describe("SessionRunnerLLM", () => {
 
       expect(requests.map((request) => request.model)).toEqual([model, replacementModel])
       expect(requests.map((request) => request.system.map((part) => part.text))).toEqual([
-        [defaultPrompt, "Initial context"],
-        [defaultPrompt, "Initial context"],
+        [defaultPrompt, "Initial context", defaultIdentity],
+        [defaultPrompt, "Initial context", replacementIdentity],
       ])
       expect(systemTexts(requests[1]!)).toContain("Replacement context")
     }),
