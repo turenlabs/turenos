@@ -131,6 +131,8 @@ outputs, ownership, failure behavior, and implementation links. These systems ha
 - [Desktop sidecar profiler](./development/desktop-profiler.md): recording a CPU profile of the local sidecar in
   dev-channel Desktop builds.
 - [TUI development](./development/tui.md): testing `packages/tui`, its size limits, fixture rules and the PTY audit.
+- [Session removal testing](./development/session-removal-testing.md): conversation archive/delete cache checks and
+  desktop acceptance while global events are delayed.
 
 ## Experimental
 
