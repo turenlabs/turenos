@@ -114,6 +114,7 @@ async function connectDashboard(
 function open(endpoint: Endpoint, directory: string | undefined) {
   try {
     return connect({
+      local: onThisComputer(endpoint.target),
       url: endpoint.url,
       socketPath: endpoint.socketPath,
       username: endpoint.username,

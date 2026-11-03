@@ -19,6 +19,7 @@ export async function openServer(values: Values, io: Io) {
   const address = serverAddress(values, io.env)
   const endpoint = address ? await explicit(address, values, io) : await local(values, io)
   const connection = connect({
+    local: endpoint.here,
     url: endpoint.url,
     socketPath: endpoint.socketPath,
     username: endpoint.username,
