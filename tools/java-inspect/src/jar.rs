@@ -61,7 +61,15 @@ pub(crate) fn run(bytes: &[u8], options: &JarOptions) -> OpResult {
             }
         };
         scanned += 1;
-        let name = clean(entry.name(), MAX_STRING_CHARS);
+        let name = match entry.name() {
+            Ok(name) => clean(&name, MAX_STRING_CHARS),
+            Err(error) => {
+                if warnings.len() < MAX_WARNINGS {
+                    warnings.push(format!("entry {index} unreadable: {}", clean(&error.to_string(), 160)));
+                }
+                continue;
+            }
+        };
         let lower = name.to_ascii_lowercase();
         let is_dir = entry.is_dir();
         if is_dir {
@@ -173,7 +181,12 @@ fn read_entry(
     let entry = archive
         .by_index(index)
         .map_err(|e| Fail::new("bad_zip_entry").with("detail", clean(&e.to_string(), 200)))?;
-    let name = clean(entry.name(), MAX_STRING_CHARS);
+    let name = clean(
+        &entry
+            .name()
+            .map_err(|e| Fail::new("bad_zip_entry").with("detail", clean(&e.to_string(), 200)))?,
+        MAX_STRING_CHARS,
+    );
     let mut buffer = Vec::new();
     let mut limited = entry.take(cap + 1);
     limited
@@ -327,4 +340,3 @@ fn select_entry(
     }
     Ok(object)
 }
-
