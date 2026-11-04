@@ -139,7 +139,7 @@ test("the picker opened from a dashboard says why a running desktop is not liste
   await mkdir(directory, { recursive: true })
   await symlink(`${hostname()}-${process.pid}`, join(directory, "SingletonLock"))
   view.mockInput.pressKey("s")
-  await screen("TurenOS Beta is running but does not publish its server", 2500)
+  await screen("TurenOS Beta is running, but its local server isn't available", 2500)
 })
 
 test("without a local server the picker explains why and q quits", async () => {
