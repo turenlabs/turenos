@@ -1,5 +1,6 @@
 import { ProviderAuth } from "@/provider/auth"
 import { Provider } from "@/provider/provider"
+import { AntigravityAcpAuth } from "@/provider/antigravity-acp-auth"
 
 import { Schema } from "effect"
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, OpenApi } from "effect/unstable/httpapi"
@@ -11,6 +12,11 @@ import { described } from "./metadata"
 import { ProviderV2 } from "@turenlabs/core/provider"
 
 const root = "/provider"
+
+export class AcpAuthApiError extends Schema.ErrorClass<AcpAuthApiError>("AcpAuthApiError")(
+  { message: Schema.String },
+  { httpApiStatus: 404 },
+) {}
 
 const ProviderAuthErrorName = Schema.Union([
   Schema.Literal("BadRequest"),
@@ -36,6 +42,41 @@ export const ProviderApi = HttpApi.make("provider")
   .add(
     HttpApiGroup.make("provider")
       .add(
+        HttpApiEndpoint.post("acpAuthorize", `${root}/antigravity-acp/auth`, {
+          query: WorkspaceRoutingQuery,
+          success: described(AntigravityAcpAuth.State, "Antigravity ACP sign-in attempt"),
+        })
+          .middleware(LocationMiddleware)
+          .annotateMerge(
+            OpenApi.annotations({
+              identifier: "provider.acp.authorize",
+              summary: "Sign in to Antigravity ACP",
+              description:
+                "Start or join the local runtime's Google sign-in flow. Credentials stay in the official runtime.",
+            }),
+          ),
+        HttpApiEndpoint.get("acpStatus", `${root}/antigravity-acp/auth/:id`, {
+          params: { id: Schema.String.check(Schema.isMaxLength(64)) },
+          query: WorkspaceRoutingQuery,
+          success: described(AntigravityAcpAuth.State, "Antigravity ACP sign-in progress"),
+          error: AcpAuthApiError,
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "provider.acp.status",
+            summary: "Get Antigravity ACP sign-in progress",
+          }),
+        ),
+        HttpApiEndpoint.delete("acpCancel", `${root}/antigravity-acp/auth/:id`, {
+          params: { id: Schema.String.check(Schema.isMaxLength(64)) },
+          query: WorkspaceRoutingQuery,
+          success: described(AntigravityAcpAuth.State, "Antigravity ACP sign-in cancelled"),
+          error: AcpAuthApiError,
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "provider.acp.cancel",
+            summary: "Cancel Antigravity ACP sign-in",
+          }),
+        ),
         HttpApiEndpoint.get("list", root, {
           query: WorkspaceRoutingQuery,
           success: described(Provider.ListResult, "List of providers"),

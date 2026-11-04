@@ -7,6 +7,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./effect": "./src/effect.ts",
+    "./acp-login": "./src/acp-login.ts",
     "./models": "./src/models.ts",
     "./automation-schedule": "./src/automation-schedule.ts",
     "./context": "./src/context.ts",

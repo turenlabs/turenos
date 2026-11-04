@@ -21,7 +21,8 @@ An Automation contains:
 - **Workflow steps**: one to twelve ordered Agent or Skill steps. Steps can be added, removed, and reordered in the builder.
 - **Project**: the selected server's project and permission boundary used by every step.
 - **Agent, model, and effort**: workflow-level execution choices. A model that advertises reasoning
-  tiers also offers an **Effort** selector.
+  tiers also offers an **Effort** selector. Unattended Automations reject `antigravity-acp` models at
+  the workflow, step, and owning-teammate levels, and unpinned runs resolve a non-ACP default model.
 - **Per-step execution**: any step may override the agent, model, or effort in its inspector under
   **Execution**. A step that selects nothing inherits the Automation's own choices.
 - **TurenOS delivery**: every run is a Session whose transcript contains each step and its final result.
@@ -153,6 +154,7 @@ Automation definitions and runs are stored in SQLite. Existing installations ret
 - Maximum active Automations: 50 overall, and 10 per project directory.
 - Maximum lifetime: seven days from creation. An expiry can be set earlier but never extended past that. When it passes, the Automation's status becomes `expired`: it stops firing, and edits are rejected with "Loop has expired". To keep the workflow running, create a new Automation from it.
 - Overlap policy: skip.
+- `antigravity-acp` models are rejected on Automation create, edit, and scheduled/event execution; unpinned runs fail if `antigravity-acp` is the only available provider.
 
 ## Server selection
 

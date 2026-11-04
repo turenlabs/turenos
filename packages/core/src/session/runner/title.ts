@@ -4,6 +4,7 @@ import { LLM, Message, type LLMClientShape } from "@turenlabs/llm"
 import { Cause, DateTime, Duration, Effect } from "effect"
 import { AgentV2 } from "../../agent"
 import { EventV2 } from "../../event"
+import { AntigravityAcpCLI } from "../../provider/antigravity-acp"
 import { ToolVisibleError } from "../../tool/visible-error"
 import { SessionCreation } from "../creation"
 import { SessionEvent } from "../event"
@@ -98,23 +99,50 @@ export const make = (dependencies: Dependencies): Interface => {
     // other agent. No system prompt means no registry, which means no titling.
     const selection = yield* dependencies.agents.select(AgentV2.ID.make("title"))
     if (!selection.info?.system) return
-    const override = selection.info.model
-    const titleSession = override
-      ? { ...session, model: override }
-      : session.model
-        ? {
-            ...session,
-            // A title is background bookkeeping. Do not inherit the primary turn's expensive
-            // reasoning variant, which can consume the whole title timeout before one line lands.
-            model: { id: session.model.id, providerID: session.model.providerID },
-          }
-        : session
-    const resolved = yield* dependencies.models.resolve(titleSession, selection.info.request, { defaultVariant: false })
     // Protect the whole prompt before trimming it: a credential cut at the budget boundary would
     // no longer be recognizable. An unprotectable prompt simply leaves the Session untitled.
     const guard = yield* dependencies.disclosure
     const safe = yield* Effect.try({ try: () => guard.text(prompt), catch: () => "unprotectable" }).pipe(Effect.option)
     if (safe._tag === "None") return
+    const override = selection.info.model
+    const avoidAcp = !override && (session.model === undefined || session.model.providerID === AntigravityAcpCLI.ID)
+    const titleSession = override
+      ? { ...session, model: override }
+      : avoidAcp
+        ? { ...session, model: undefined }
+        : session.model
+          ? {
+              ...session,
+              // A title is background bookkeeping. Do not inherit the primary turn's expensive
+              // reasoning variant, which can consume the whole title timeout before one line lands.
+              model: { id: session.model.id, providerID: session.model.providerID },
+            }
+          : session
+    const resolved = avoidAcp
+      ? yield* dependencies.models
+          .resolve(titleSession, selection.info.request, {
+            defaultVariant: false,
+            excludeProviderID: AntigravityAcpCLI.ID,
+          })
+          .pipe(
+            Effect.option,
+            Effect.map((option) =>
+              option._tag === "Some" && option.value.ref.providerID !== AntigravityAcpCLI.ID ? option.value : undefined,
+            ),
+          )
+      : yield* dependencies.models.resolve(titleSession, selection.info.request, { defaultVariant: false })
+    if (!resolved) {
+      const fallback = clean(safe.value)
+      if (!fallback) return
+      const current = yield* dependencies.store.get(sessionID)
+      if (!current || !eligible(current)) return
+      yield* dependencies.events.publish(
+        SessionEvent.TitleUpdated,
+        { sessionID, timestamp: yield* DateTime.now, title: fallback },
+        { location: session.location },
+      )
+      return
+    }
     // `generate`, not `stream`: nobody is watching a title arrive, and one awaited response is one
     // fewer thing that can stall half-consumed. No tools are offered, which matches the agent's
     // ruleset and removes any chance of this turning into a loop.

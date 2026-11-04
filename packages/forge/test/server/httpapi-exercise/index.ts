@@ -785,6 +785,35 @@ const scenarios: Scenario[] = [
     }))
     .status(204, undefined, "status"),
   http.protected.get("/provider", "provider.list").json(),
+  http.protected
+    .post("/provider/antigravity-acp/auth", "provider.acp.authorize.unavailable")
+    .mutating()
+    .json(
+      200,
+      (body) => {
+        object(body)
+        check(typeof body.id === "string" && body.id.length > 0, "ACP authorization should identify the attempt")
+        check(body.status === "error", "ACP authorization should report the unavailable runtime")
+        check(typeof body.message === "string", "ACP authorization should explain the failure")
+        check(body.url === undefined, "Unavailable ACP runtime should not return a sign-in URL")
+      },
+      "status",
+    ),
+  http.protected
+    .get("/provider/antigravity-acp/auth/{id}", "provider.acp.status.missing")
+    .at((ctx) => ({ path: "/provider/antigravity-acp/auth/missing-attempt", headers: ctx.headers() }))
+    .json(404, (body) => {
+      object(body)
+      check(typeof body.message === "string", "Missing ACP attempt should return a declared error")
+    }),
+  http.protected
+    .delete("/provider/antigravity-acp/auth/{id}", "provider.acp.cancel.missing")
+    .mutating()
+    .at((ctx) => ({ path: "/provider/antigravity-acp/auth/missing-attempt", headers: ctx.headers() }))
+    .json(404, (body) => {
+      object(body)
+      check(typeof body.message === "string", "Missing ACP cancellation should return a declared error")
+    }),
   http.protected.get("/provider/auth", "provider.auth").json(200, (body) => {
     isRecord(body)
   }),

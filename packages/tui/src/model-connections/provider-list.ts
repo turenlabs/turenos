@@ -1,4 +1,5 @@
 import { label } from "../state"
+import { acp } from "./acp"
 import { choose } from "./choose"
 import { custom } from "./custom"
 import { show, stepBack, wait, type Flow } from "./flow"
@@ -36,6 +37,7 @@ export function load(flow: Flow) {
 }
 
 function authMethods(flow: Flow, provider: { id: string; name: string }) {
+  if (provider.id === "antigravity-acp") return acp(flow, stepBack(flow, load))
   wait(
     flow,
     "Loading authentication methods",

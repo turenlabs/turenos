@@ -7,6 +7,7 @@ import { TeamWorkspace } from "@turenlabs/core/team/workspace"
 import { Location } from "@turenlabs/core/location"
 import { LocationServiceMap } from "@turenlabs/core/location-service-map"
 import { AbsolutePath } from "@turenlabs/core/schema"
+import { AntigravityAcpCLI } from "@turenlabs/core/provider/antigravity-acp"
 import { SessionV2 } from "@turenlabs/core/session"
 import { SessionMessage } from "@turenlabs/core/session/message"
 
@@ -201,21 +202,28 @@ const layer = Layer.effect(
 
       const exit = yield* Effect.raceFirst(
         Effect.gen(function* () {
+          const failBeforePrompt = (error: string) =>
+            Effect.gen(function* () {
+              const started = yield* team
+                .startTask({ id: task.id, owner })
+                .pipe(Effect.mapError((reason) => new LeaseLostError(reason)))
+              if (started.status !== "running") return
+              return yield* team.finishTask({ id: task.id, owner, status: "failed", error })
+            })
+          const acpTaskError =
+            "Antigravity ACP supports interactive single-user sessions only; configure an authorized API or enterprise model for Team tasks"
+          if (task.execution.model?.providerID === AntigravityAcpCLI.ID) {
+            return yield* failBeforePrompt(acpTaskError)
+          }
           if (task.execution.agent) {
             const agent = yield* AgentV2.Service.use((service) =>
               service.get(AgentV2.ID.make(task.execution.agent!)),
             ).pipe(Effect.provide(locations.get(location)))
             if (!agent) {
-              const started = yield* team
-                .startTask({ id: task.id, owner })
-                .pipe(Effect.mapError((reason) => new LeaseLostError(reason)))
-              if (started.status !== "running") return
-              return yield* team.finishTask({
-                id: task.id,
-                owner,
-                status: "failed",
-                error: `Agent '${task.execution.agent}' not found in workspace`,
-              })
+              return yield* failBeforePrompt(`Agent '${task.execution.agent}' not found in workspace`)
+            }
+            if (agent.model?.providerID === AntigravityAcpCLI.ID) {
+              return yield* failBeforePrompt(acpTaskError)
             }
           }
 

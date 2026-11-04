@@ -33,6 +33,7 @@ describe("public import boundaries", () => {
   // The terminal client loads these without depending on `effect`.
   test("keeps the shared client rules free of effect", async () => {
     for (const rules of [
+      "acp-login",
       "models",
       "context",
       "paths",

@@ -246,9 +246,9 @@ function errorLine(message: string, raw: boolean, rich: boolean) {
   return styled("ERROR:", display(raw ? message : providerError(message)), bold)
 }
 
-// A refused key is the one provider failure whose next step is always the same.
+// A refused key or missing provider sign-in is the one provider failure whose next step is always the same.
 const KEY_REFUSED =
-  /\bHTTP (?:401|403)\b|\bunauthori[sz]ed\b|\bkey\b.{0,40}\b(?:refused|rejected|invalid|incorrect|revoked|expired)\b/i
+  /\bHTTP (?:401|403)\b|\bunauthori[sz]ed\b|\bneeds Google sign-in\b|\bkey\b.{0,40}\b(?:refused|rejected|invalid|incorrect|revoked|expired)\b/i
 
 function keyHint(message: string) {
   if (TurnInterruption.isTurnInterrupted(message) || !KEY_REFUSED.test(message.slice(0, 2000))) return ""

@@ -136,7 +136,8 @@ advertises `question` only to the app, CLI, and Desktop clients or when the ques
 never advertises `edit` and `apply_patch` to the same model; see [Shell tool routing](./shell-tool-routing.md).
 
 `packages/core/src/tool/team-board.ts` defines `board_post` and `board_read`, but no runtime registers them; agents
-coordinate through the swarm room tools.
+coordinate through the swarm room tools. `SubagentTool.forExecution` returns no subagent, swarm-room, or
+agent-improvement tools on `antigravity-acp` turns; see [Antigravity ACP](../providers/antigravity-acp.md#tool-routing-and-isolation).
 
 ## Filesystem search permissions
 

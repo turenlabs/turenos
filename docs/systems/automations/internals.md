@@ -14,7 +14,7 @@ Each claimed run keeps a snapshot of its workflow. Edits to the Automation do no
 
 ## Session execution
 
-The scheduler uses `ses_loop_${run.id}` as the run's Session ID, recording it on the run before execution. It creates or retrieves that Session at the run's stored Location. A one-step run admits `msg_loop_${run.id}`; a workflow step admits `msg_loop_${run.id}_${step.id}` with `resume: false`, then calls `resumePending`. The Session runner owns provider turns and tool execution; the scheduler reads the completed output and updates the run.
+The scheduler uses `ses_loop_${run.id}` as the run's Session ID, recording it on the run before execution. It creates or retrieves that Session at the run's stored Location. Before admitting work, the scheduler rejects `antigravity-acp` models on the run snapshot, duty-owning teammate, Factory room teammates, resolved agent, Session, or workflow steps, and resolves unpinned models with `excludeProviderID: "antigravity-acp"`, failing the run if no non-ACP model is available. A one-step run admits `msg_loop_${run.id}`; a workflow step admits `msg_loop_${run.id}_${step.id}` with `resume: false`, then calls `resumePending`. The Session runner owns provider turns and tool execution; the scheduler reads the completed output and updates the run.
 
 Stable prompt IDs reconcile an exact retry of admission if a claimed run is picked up again before execution crosses the provider boundary. They are not sent to the provider as an idempotency guarantee, and they do not suppress a provider request or external tool effect after that work has started.
 

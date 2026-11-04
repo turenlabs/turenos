@@ -17,6 +17,9 @@ import { Config } from "../config"
 import { LocationServiceMap } from "../location-service-map"
 import { FSUtil } from "../fs-util"
 import { Global } from "../global"
+import { ModelV2 } from "../model"
+import { AntigravityAcpCLI } from "../provider/antigravity-acp"
+import { SessionRunnerModel } from "./runner/model"
 import path from "node:path"
 
 const REVIEWER_AGENT = AgentV2.ID.make("harness-reviewer")
@@ -165,7 +168,35 @@ const layer = Layer.effect(
       return harnessSelfModificationEnabled(yield* entries)
     })
 
-    const findReviewer = Effect.fn("SessionReviewer.findReviewer")(function* (parent: SessionSchema.Info) {
+    const resolveReviewerModel = Effect.fn("SessionReviewer.resolveModel")(function* (parent: SessionSchema.Info) {
+      return yield* Effect.gen(function* () {
+        const models = yield* Effect.serviceOption(SessionRunnerModel.Service)
+        if (Option.isNone(models)) {
+          return parent.model?.providerID === AntigravityAcpCLI.ID ? ("skip" as const) : parent.model
+        }
+        const agents = yield* Effect.serviceOption(AgentV2.Service)
+        const selection = Option.isSome(agents) ? yield* agents.value.select(REVIEWER_AGENT) : undefined
+        const candidate = selection?.info?.model ?? parent.model
+        const resolved = yield* models.value
+          .resolve(
+            {
+              ...parent,
+              agent: REVIEWER_AGENT,
+              model: candidate?.providerID === AntigravityAcpCLI.ID ? undefined : candidate,
+            },
+            selection?.info?.request,
+            { defaultVariant: false, excludeProviderID: AntigravityAcpCLI.ID },
+          )
+          .pipe(Effect.option)
+        if (Option.isNone(resolved) || resolved.value.ref.providerID === AntigravityAcpCLI.ID) return "skip" as const
+        return resolved.value.ref
+      }).pipe(Effect.provide(locations.get(parent.location)))
+    })
+
+    const findReviewer = Effect.fn("SessionReviewer.findReviewer")(function* (
+      parent: SessionSchema.Info,
+      model: ModelV2.Ref | undefined,
+    ) {
       const cached = reviewerSessions.get(parent.id)
       if (cached) {
         const existing = yield* sessions
@@ -173,7 +204,12 @@ const layer = Layer.effect(
           .pipe(Effect.catchTag("Session.NotFoundError", () => Effect.succeed(undefined)))
         // Retire the child once it has accumulated enough prompts. Every review is self-contained,
         // so a fresh child costs nothing and keeps per-review input from growing to the context window.
-        if (existing && existing.agent === REVIEWER_AGENT && (reviewerUses.get(cached) ?? 0) < REVIEWS_PER_REVIEWER)
+        if (
+          existing &&
+          existing.agent === REVIEWER_AGENT &&
+          existing.model?.providerID !== AntigravityAcpCLI.ID &&
+          (reviewerUses.get(cached) ?? 0) < REVIEWS_PER_REVIEWER
+        )
           return existing
         reviewerSessions.delete(parent.id)
         reviewerUses.delete(cached)
@@ -185,7 +221,7 @@ const layer = Layer.effect(
         parentID: parent.id,
         title: REVIEWER_TITLE,
         agent: REVIEWER_AGENT,
-        model: parent.model,
+        model,
         location: parent.location,
       })
       const reviewer = yield* sessions.get(created.id)
@@ -203,12 +239,14 @@ const layer = Layer.effect(
       const digest = createHash("sha256").update(prompt).digest("hex")
       const generation = enabledGeneration
       if (!retry && lastReviewed.get(parent.id) === `${generation}:${digest}`) return
+      const model = yield* resolveReviewerModel(parent)
+      if (model === "skip") return
       // Recorded before the model call, not after it, so a review that timed out or failed does not
       // re-run byte-identical input on the next session end. A session that was worked on changes
       // its prompt, so it is still reviewed.
       lastReviewed.set(parent.id, `${generation}:${digest}`)
 
-      const reviewer = yield* findReviewer(parent)
+      const reviewer = yield* findReviewer(parent, model)
       // Every exit below records why it ended. A background loop that returns silently is
       // indistinguishable from a broken one, which is exactly how the Harness tab looked empty.
       const record = (outcome: SessionHarness.ReviewerRunOutcome, detail?: string) =>
@@ -224,6 +262,7 @@ const layer = Layer.effect(
         id: messageID,
         sessionID: reviewer.id,
         prompt: { text: prompt },
+        ...(model ? { model } : {}),
         resume: false,
       })
       yield* sessions.resumePending(reviewer.id)

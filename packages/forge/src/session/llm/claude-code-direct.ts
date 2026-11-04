@@ -1,3 +1,5 @@
+import { AntigravityAcpCLI } from "@turenlabs/core/provider/antigravity-acp"
+import { AntigravityAcpBridge } from "@turenlabs/core/session/runner/antigravity-acp-bridge"
 import { ClaudeCodeBridge } from "@turenlabs/core/session/runner/claude-code-bridge"
 import { ClaudeCodeMcp } from "@turenlabs/core/session/runner/claude-code-mcp-namespace"
 import { ClaudeCodeCLI } from "@turenlabs/core/provider/claude-code"
@@ -17,7 +19,7 @@ type StreamInput = {
   readonly llmClient: LLMClientShape
   readonly directory: string
   readonly executable: string
-  readonly effort?: ClaudeCodeCLI.EffortLevel | MuseCodeCLI.EffortLevel
+  readonly effort?: ClaudeCodeCLI.EffortLevel | MuseCodeCLI.EffortLevel | AntigravityAcpCLI.EffortLevel
   readonly toolChoice?: "auto" | "required" | "none"
   readonly abort: AbortSignal
 }
@@ -68,14 +70,22 @@ export function stream(input: StreamInput) {
                 effort: MuseCodeCLI.isEffortLevel(input.effort) ? input.effort : undefined,
                 defaults: {},
               })
-            : ClaudeCodeBridge.routeModel({
-                providerID: input.model.providerID,
-                modelID: input.model.api.id,
-                executable: input.executable,
-                directory: input.directory,
-                effort: ClaudeCodeCLI.isEffortLevel(input.effort) ? input.effort : undefined,
-                defaults: {},
-              })
+            : input.model.providerID === AntigravityAcpCLI.ID
+              ? AntigravityAcpBridge.routeModel({
+                  providerID: input.model.providerID,
+                  modelID: input.model.api.id,
+                  executable: input.executable,
+                  effort: AntigravityAcpCLI.isEffortLevel(input.effort) ? input.effort : undefined,
+                  defaults: {},
+                })
+              : ClaudeCodeBridge.routeModel({
+                  providerID: input.model.providerID,
+                  modelID: input.model.api.id,
+                  executable: input.executable,
+                  directory: input.directory,
+                  effort: ClaudeCodeCLI.isEffortLevel(input.effort) ? input.effort : undefined,
+                  defaults: {},
+                })
         const request = LLMRequest.update(
           LLMNative.request({
             model: input.model,

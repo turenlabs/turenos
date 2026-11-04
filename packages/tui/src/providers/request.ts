@@ -3,7 +3,7 @@ import { readBounded } from "../response-validation/body"
 import { bypassLoopbackProxy, dial } from "../server/proxy"
 
 export type RequestInput = {
-  method?: "PUT" | "PATCH" | "POST"
+  method?: "PUT" | "PATCH" | "POST" | "DELETE"
   body?: object
   directory?: string
   secret?: boolean

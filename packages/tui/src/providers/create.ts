@@ -1,5 +1,6 @@
 import { checkDirectory } from "../response-validation"
 import { addCustom, auth, authorize, complete, connectKey } from "./auth"
+import { acp } from "./acp"
 import { catalog } from "./catalog"
 import { providerConnection } from "./request"
 import type { AuthMethod } from "./validation"
@@ -7,6 +8,7 @@ import type { AuthMethod } from "./validation"
 export function createProviders(options: { url: URL; headers: Headers; signal: AbortSignal; socketPath?: string }) {
   const { request, secure } = providerConnection(options)
   return {
+    acp: acp(request),
     async list(selected: string) {
       checkDirectory(selected)
       return catalog(request, selected)

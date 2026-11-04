@@ -19,7 +19,7 @@ The app setting controls automatic requests, not access to the endpoint.
 
 ## Suggestion behavior
 
-The server uses the session model through `SessionRunnerModel`. It does not invoke agent tools for prediction.
+The server resolves the session model through `SessionRunnerModel` (or a non-ACP connected model when the session uses `antigravity-acp`, returning an empty suggestion if none is available). It does not invoke agent tools for prediction.
 It reads up to 40 recent context messages, then selects at most 12 user and assistant text messages.
 It excludes synthetic inputs, machine-origin user inputs, reasoning, and tool output.
 User text is limited to its first 2,000 characters; assistant text is limited to its last 4,000 characters.

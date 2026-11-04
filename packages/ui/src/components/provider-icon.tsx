@@ -10,6 +10,7 @@ export type ProviderIconProps = JSX.SVGElementTags["svg"] & {
 // Provider IDs without their own sprite glyph resolve to the closest brand mark.
 const aliases: Record<string, IconName> = {
   "claude-code": "anthropic",
+  "antigravity-acp": "google",
   ollama: "ollama-cloud",
   "llama-cpp": "llama",
 }

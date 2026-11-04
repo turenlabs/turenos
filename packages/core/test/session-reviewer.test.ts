@@ -10,11 +10,15 @@ import { Global } from "@turenlabs/core/global"
 import { Location } from "@turenlabs/core/location"
 import { LocationServiceMap } from "@turenlabs/core/location-service-map"
 import type { LocationServices } from "@turenlabs/core/location-services"
+import { ModelV2 } from "@turenlabs/core/model"
 import { ProjectV2 } from "@turenlabs/core/project"
+import { ProviderV2 } from "@turenlabs/core/provider"
+import { AntigravityAcpCLI } from "@turenlabs/core/provider/antigravity-acp"
 import { AbsolutePath } from "@turenlabs/core/schema"
 import { SessionV2 } from "@turenlabs/core/session"
 import { SessionCreation } from "@turenlabs/core/session/creation"
 import { SessionHarness } from "@turenlabs/core/session/harness"
+import { SessionRunnerModel } from "@turenlabs/core/session/runner/model"
 import {
   harnessSelfModificationEnabled,
   harnessSelfModificationGloballyEnabled,
@@ -775,6 +779,165 @@ describe("automatic Harness reviewer cadence", () => {
       const prompt = t.state.prompts[0] ?? ""
       expect(prompt).toContain("Last user prompt: final request")
       expect(prompt.length).toBeLessThan(10_000)
+    }),
+  )
+
+  it.effect("resolves a non-ACP model for review and skips review when only Antigravity ACP is available", () =>
+    Effect.gen(function* () {
+      const acpRef = ModelV2.Ref.make({
+        providerID: AntigravityAcpCLI.ID,
+        id: ModelV2.ID.make("gemini-3.8-flash"),
+      })
+      const nonAcpRef = ModelV2.Ref.make({
+        providerID: ProviderV2.ID.make("anthropic"),
+        id: ModelV2.ID.make("claude-sonnet-4-6"),
+      })
+      let resolvedRef = acpRef
+      const seenExcludeProviderIDs: (ProviderV2.ID | undefined)[] = []
+      const createdModels: (ModelV2.Ref | undefined)[] = []
+      const promptedModels: (ModelV2.Ref | undefined)[] = []
+      const dir = yield* Effect.acquireRelease(
+        Effect.promise(() => fs.mkdtemp(path.join(os.tmpdir(), "turen-reviewer-acp-"))),
+        (target) => Effect.promise(() => fs.rm(target, { recursive: true, force: true })),
+      )
+      yield* Effect.promise(() =>
+        fs.writeFile(path.join(dir, "forge.json"), JSON.stringify({ experimental: { harness_self_modification: true } })),
+      )
+      const location = Location.Ref.make({ directory: AbsolutePath.make("/project") })
+      const parent = SessionV2.Info.make({
+        id: SessionV2.ID.make("ses_acp_parent"),
+        projectID: ProjectV2.ID.global,
+        agent: AgentV2.ID.make("build"),
+        title: "ACP parent",
+        model: acpRef,
+        cost: 0,
+        tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+        time: { created: DateTime.makeUnsafe(0), updated: DateTime.makeUnsafe(Date.now()) },
+        location,
+      })
+      const reviewerInfo = SessionV2.Info.make({
+        ...parent,
+        id: SessionV2.ID.make("ses_acp_reviewer"),
+        parentID: parent.id,
+        title: "Automatic Harness reviewer",
+        agent: AgentV2.ID.make("harness-reviewer"),
+        model: undefined,
+      })
+      let listener: ((event: never) => Effect.Effect<void>) | undefined
+      const unused = () => Effect.die("unused SessionV2 test method")
+      const layer = AppNodeBuilder.build(SessionReviewer.node, [
+        [
+          EventV2.node,
+          Layer.mock(
+            EventV2.Service,
+            partial({
+              subscribe: () => Stream.empty,
+              listen: (next: (event: never) => Effect.Effect<void>) =>
+                Effect.sync(() => {
+                  listener = next
+                  return Effect.void
+                }),
+            }),
+          ),
+        ],
+        [
+          LocationServiceMap.node,
+          Layer.effect(
+            LocationServiceMap.Service,
+            LayerMap.make(
+              () =>
+                Layer.mergeAll(
+                  Layer.mock(Config.Service, {
+                    entries: () =>
+                      Effect.succeed([
+                        Config.decodeDocument(JSON.stringify({ experimental: { harness_self_modification: true } }))!,
+                      ]),
+                  }),
+                  Layer.mock(
+                    SessionRunnerModel.Service,
+                    partial({
+                      resolve: (_session: unknown, _request: unknown, options?: SessionRunnerModel.ResolveOptions) =>
+                        Effect.sync(() => {
+                          seenExcludeProviderIDs.push(options?.excludeProviderID)
+                          return partial({ ref: resolvedRef, cost: [] })
+                        }),
+                    }),
+                  ),
+                ) as Layer.Layer<LocationServices>,
+            ),
+          ),
+        ],
+        [
+          SessionCreation.node,
+          Layer.mock(
+            SessionCreation.Service,
+            partial({
+              create: (input: { readonly model?: ModelV2.Ref }) =>
+                Effect.sync(() => {
+                  createdModels.push(input.model)
+                  return reviewerInfo
+                }),
+            }),
+          ),
+        ],
+        [
+          SessionV2.node,
+          Layer.mock(
+            SessionV2.Service,
+            partial({
+              list: () => Effect.succeed([]),
+              get: (id: string) => Effect.succeed(id === parent.id ? parent : reviewerInfo),
+              context: () => Effect.succeed([]),
+              active: Effect.succeed(new Set()),
+              pendingInputs: () => Effect.succeed([]),
+              prompt: (input: { readonly model?: ModelV2.Ref }) =>
+                Effect.sync(() => {
+                  promptedModels.push(input.model)
+                }),
+              resumePending: () => Effect.void,
+              messages: () => Effect.succeed([]),
+              interrupt: () => Effect.void,
+              goal: { get: unused, set: unused, edit: unused, status: unused, clear: unused },
+              revert: { stage: unused, clear: unused, commit: unused },
+            }),
+          ),
+        ],
+        [
+          SessionHarness.node,
+          Layer.mock(
+            SessionHarness.Service,
+            partial({
+              get: () => Effect.succeed(partial({ snapshot: null, proposals: [], reviewerRequests: [], reviewerRuns: [] })),
+              recordRun: () => Effect.void,
+            }),
+          ),
+        ],
+        [Global.node, Global.layerWith({ config: dir })],
+      ])
+      const built = yield* Layer.build(layer)
+      yield* Effect.gen(function* () {
+        return yield* SessionReviewer.Service
+      }).pipe(Effect.provide(built))
+      const settle = Effect.forEach(Array.from({ length: 50 }), () => Effect.yieldNow, { discard: true })
+
+      // 1. Only ACP available -> skip review without creating or prompting a reviewer session.
+      yield* listener!(partial({ type: SessionEvent.Step.Ended.type, data: { sessionID: parent.id } })).pipe(
+        Effect.andThen(TestClock.adjust("3 minutes")),
+        Effect.andThen(settle),
+      )
+      expect(seenExcludeProviderIDs).toEqual([AntigravityAcpCLI.ID])
+      expect(createdModels).toEqual([])
+      expect(promptedModels).toEqual([])
+
+      // 2. Non-ACP provider available -> resolve and pin the non-ACP model for the reviewer.
+      resolvedRef = nonAcpRef
+      yield* listener!(partial({ type: SessionEvent.Step.Ended.type, data: { sessionID: parent.id } })).pipe(
+        Effect.andThen(TestClock.adjust("3 minutes")),
+        Effect.andThen(settle),
+      )
+      expect(seenExcludeProviderIDs).toEqual([AntigravityAcpCLI.ID, AntigravityAcpCLI.ID])
+      expect(createdModels).toEqual([nonAcpRef])
+      expect(promptedModels).toEqual([nonAcpRef])
     }),
   )
 })

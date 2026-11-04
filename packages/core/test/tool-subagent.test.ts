@@ -14,6 +14,7 @@ import { ModelV2 } from "@turenlabs/core/model"
 import { PermissionV2 } from "@turenlabs/core/permission"
 import { ProjectV2 } from "@turenlabs/core/project"
 import { ProviderV2 } from "@turenlabs/core/provider"
+import { AntigravityAcpCLI } from "@turenlabs/core/provider/antigravity-acp"
 import { AbsolutePath, RelativePath } from "@turenlabs/core/schema"
 import { SessionCreation } from "@turenlabs/core/session/creation"
 import { SessionEvent } from "@turenlabs/core/session/event"
@@ -1724,6 +1725,40 @@ describe("SubagentTool", () => {
           tasks: [{ task_id: task.id, status: "completed", result: report, result_truncated: false }],
         })
       expect(yield* tasks.get(task.id)).toMatchObject({ status: "completed", result: report })
+    }),
+  )
+
+  it.effect("disables subagent tools for Antigravity ACP sessions and rejects ACP subagent models", () =>
+    Effect.gen(function* () {
+      const acpModel = ModelV2.Ref.make({
+        providerID: AntigravityAcpCLI.ID,
+        id: ModelV2.ID.make("gemini-3.8-flash"),
+      })
+      const acpSession = yield* setup("acp_parent", acpModel)
+      const acpTools = yield* (yield* SubagentTool.Service).forExecution({
+        sessionID: acpSession.id,
+        control: SessionExecutionControl.noop,
+        model: acpModel,
+      })
+      expect(Object.keys(acpTools)).toEqual([])
+
+      const nonAcpSession = yield* setup("non_acp_parent", model)
+      const nonAcpTools = yield* materialize(nonAcpSession.id, SessionExecutionControl.noop, model)
+      const settled = yield* callTool(nonAcpTools, {
+        sessionID: nonAcpSession.id,
+        suffix: "reject_acp_child",
+        name: SubagentTool.spawnName,
+        value: {
+          agent: "explore",
+          description: "ACP child attempt",
+          prompt: "Inspect repo",
+          model: { providerID: AntigravityAcpCLI.ID, id: "gemini-3.8-flash" },
+        },
+      })
+      expect(settled.result).toEqual({
+        type: "error",
+        value: "Antigravity ACP does not support subagent execution; choose a non-ACP model for subagents",
+      })
     }),
   )
 })

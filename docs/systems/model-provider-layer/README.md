@@ -2,8 +2,8 @@
 
 Core Session V2 resolves a catalog model to an `@turenlabs/llm` route and streams
 one provider turn through `LLMClient`. The legacy Forge session processor has a
-separate runtime selection: a CLI-direct path for Claude Code and Muse Code
-models, an AI SDK default, and an experimental native adapter. The native flag
+separate runtime selection: a CLI-direct path for Claude Code, Muse Code, and
+Antigravity ACP models, an AI SDK default, and an experimental native adapter. The native flag
 does not select the V2 runtime.
 
 ## Model catalog
@@ -65,7 +65,7 @@ See [LLM package architecture](./llm-package.md) for route construction and
 
 `packages/forge/src/session/llm.ts` picks one of three runtimes per request:
 
-1. **CLI direct.** Claude Code and Muse Code models always go through
+1. **CLI direct.** Claude Code, Muse Code, and Antigravity ACP models always go through
    `LLMClaudeCodeDirect.stream` (`packages/forge/src/session/llm/claude-code-direct.ts`).
    It lowers the request to an `LLMRequest` routed to the local CLI bridge,
    exposes session tools to the CLI through a private MCP namespace, and
@@ -78,8 +78,9 @@ See [LLM package architecture](./llm-package.md) for route construction and
 
 All three produce `LLMEvent`s for the legacy session processor. Tool execution
 remains session-owned. The CLIs themselves are covered in
-[Claude Code](../../providers/claude-code/README.md) and
-[Muse Code](../../providers/muse-code.md).
+[Claude Code](../../providers/claude-code/README.md),
+[Muse Code](../../providers/muse-code.md), and
+[Antigravity ACP](../../providers/antigravity-acp.md).
 
 ## Configuration
 
