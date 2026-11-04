@@ -16,9 +16,10 @@ function file(part: Partial<FilePart> = {}): FilePart {
 }
 
 describe("message-file", () => {
-  test("treats data URLs as attachments", () => {
+  test("treats data URLs and non-inline file references as attachments", () => {
     expect(attached(file({ url: "data:text/plain;base64,SGVsbG8=" }))).toBe(true)
-    expect(attached(file())).toBe(false)
+    expect(attached(file())).toBe(true)
+    expect(attached(file({ url: "https://example.test/file" }))).toBe(false)
   })
 
   test("treats only non-attachment source ranges as inline references", () => {

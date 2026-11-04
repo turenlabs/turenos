@@ -75,6 +75,9 @@ import { useSDK } from "@/context/sdk"
 import { PromptAdmissionStatus } from "@/components/prompt-input/prompt-admission-status"
 import { useFile } from "@/context/file"
 import { useSync } from "@/context/sync"
+import { useServerSync } from "@/context/server-sync"
+import { removedHomeSessionEvent } from "@/context/global-sync/home-session-index"
+import { archivedHomeSessionEvent } from "@/pages/home-session-archive"
 import { notifySessionTabsRemoved } from "@/components/titlebar-session-events"
 import {
   expandSessionV2ToolBody,
@@ -407,6 +410,7 @@ export function MessageTimeline(props: {
   const serverSDK = useServerSDK()
   const sdk = useSDK()
   const sync = useSync()
+  const serverSync = useServerSync()
   const settings = useSettings()
   const tabs = useTabs()
   const dialog = useDialog()
@@ -991,14 +995,17 @@ export function MessageTimeline(props: {
   const archiveSession = async (sessionID: string) => {
     const session = sync().session.get(sessionID)
     if (!session) return
+    const homeSessions = serverSync().homeSessions
+    const archived = Date.now()
 
     const sessions = sync().data.session ?? []
     const index = sessions.findIndex((s) => s.id === sessionID)
     const nextSession = index === -1 ? undefined : (sessions[index + 1] ?? sessions[index - 1])
 
     await sdk()
-      .client.session.update({ sessionID, time: { archived: Date.now() } })
+      .client.session.update({ sessionID, time: { archived } })
       .then(() => {
+        homeSessions.apply(archivedHomeSessionEvent(session, archived))
         sync().set(
           produce((draft) => {
             const index = draft.session.findIndex((s) => s.id === sessionID)
@@ -1024,6 +1031,7 @@ export function MessageTimeline(props: {
   const deleteSession = async (sessionID: string) => {
     const session = sync().session.get(sessionID)
     if (!session) return false
+    const homeSessions = serverSync().homeSessions
 
     const sessions = (sync().data.session ?? []).filter((s) => !s.parentID && !s.time?.archived)
     const index = sessions.findIndex((s) => s.id === sessionID)
@@ -1080,6 +1088,7 @@ export function MessageTimeline(props: {
 
     for (const id of removed) {
       sync().session.evict(id)
+      homeSessions.apply(removedHomeSessionEvent(id))
     }
     notifySessionTabsRemoved({
       server: ServerConnection.key(serverSDK().server),

@@ -966,6 +966,11 @@ const layer = Layer.effect(
       const base = [
         agent.info?.system ?? ProviderPrompt.forModel(model.id),
         system.baseline,
+        // Resolve per turn, not from the durable context baseline that survives model switches.
+        [
+          `Runtime model identity for this turn: ${JSON.stringify({ providerID: modelRef.providerID, modelID: modelRef.id, upstreamModelID: model.id })}`,
+          "When asked which model you are, report this configured identity instead of model identities from earlier replies. This identifies the requested model, not an independently verified provider backend.",
+        ].join("\n"),
         toolSnapshot?.snapshot.broker.visible.includes(ToolBroker.SEARCH_TOOL_NAME)
           ? ToolBroker.DISCOVERY_SYSTEM_PROMPT
           : undefined,

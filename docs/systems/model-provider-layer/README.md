@@ -38,6 +38,13 @@ entry, or a local CLI bridge. `SessionRunner` constructs a canonical
 the resulting events, then owns tool execution and continuation. Provider
 streaming does not delegate to the legacy Forge prompt loop.
 
+Each provider turn includes runtime model identity in the system prompt: the
+resolved provider ID, catalog model ID, and upstream model ID. This guidance
+remains present with custom agent prompts and updates when a later turn resolves
+a different model. It tells the assistant to use these configured identifiers
+instead of model identities from earlier replies. The identifiers describe the
+requested model; they do not independently verify the provider's backend.
+
 If OpenAI rejects a ChatGPT OAuth token with HTTP 401, Session V2 can refresh it once and retry the same request.
 This recovery applies only before text or tool input starts. A second 401 or a failed refresh ends the attempt.
 API-key authentication failures do not use this recovery.

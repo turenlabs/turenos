@@ -34,13 +34,14 @@ export async function scan(ctx: Context, state: State): Promise<Entry[]> {
   ]
 }
 
-/**
- * The local server to open without asking: desktop first, then this host's own servers. Port 4096 is
- * chosen for the user only where its listener's owner can be checked (Linux); elsewhere the user picks it.
- */
 /** This host's persistent server, which `--server persistent` also names. */
 export const PERSISTENT = { kind: "persistent", id: "persistent", name: "Persistent server" } as const
 
+/**
+ * The local server to open without asking: on Linux the persistent server first, then the desktop, then this
+ * host's other servers. Port 4096 is chosen for the user only where its listener's owner can be checked (Linux);
+ * elsewhere the user picks it.
+ */
 export async function preferred(ctx: Context, state: State) {
   return (await scan(ctx, state)).find(
     (entry) =>
@@ -54,6 +55,16 @@ async function localEntries(ctx: Context, state: State) {
   const local: Entry[] = []
   const root = appData(ctx)
   state.notes = []
+  // The desktop always runs its own sidecar, with its own database, even beside the host's persistent server. The
+  // persistent server stays the default, as it was before the desktop published a record on Linux.
+  const persistent = ctx.platform === "linux" ? await persistentRecord(ctx).catch(() => undefined) : undefined
+  if (persistent)
+    local.push({
+      target: PERSISTENT,
+      group: "This computer",
+      detail: `turenos.service · ${persistent.socketPath ?? "/etc/turenos/attach.json"}`,
+      url: persistent.url,
+    })
   for (const [appId, name] of APPS) {
     const record = root ? join(root, appId, "attach.json") : undefined
     const found = record ? await desktopRecord(ctx, record) : undefined
@@ -65,18 +76,12 @@ async function localEntries(ctx: Context, state: State) {
         url: found.url,
       })
     else if (await desktopRunning(ctx, appId))
-      state.notes.push(`${name} is running but does not publish its server. Update it to connect from here.`)
+      state.notes.push(
+        `${name} is running, but its local server isn't available. If it just started, try again; otherwise update ${name}.`,
+      )
   }
-  // The host's persistent server comes before a quick-connect server: the desktop attaches to it over SSH instead
+  // The persistent server also comes before a quick-connect server: the desktop attaches to it over SSH instead
   // of starting one, so a quick-connect server beside it is left from an older desktop or a manual start.
-  const persistent = ctx.platform === "linux" ? await persistentRecord(ctx).catch(() => undefined) : undefined
-  if (persistent)
-    local.push({
-      target: PERSISTENT,
-      group: "This computer",
-      detail: `turenos.service · ${persistent.socketPath ?? "/etc/turenos/attach.json"}`,
-      url: persistent.url,
-    })
   const shim = await shimRecord(ctx)
   if (shim)
     local.push({

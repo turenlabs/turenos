@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test"
 import { chmod, mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { PasswordRequired } from "../src/servers"
+// The desktop's own writer, so this test reads exactly what a running desktop publishes.
+import { createDesktopAttach } from "../../desktop/src/main/desktop-attach"
 import { scratch, server, desktop, local, open, healthy, persistent } from "./servers-fixture"
 
 describe("local discovery", () => {
@@ -82,6 +84,18 @@ describe("local discovery", () => {
     const target = await servers.preferred()
     expect(target?.kind).toBe("persistent")
     expect(await open(servers, target!)).toMatchObject({ url: "http://localhost", socketPath: socket })
+  })
+
+  test("on Linux the persistent server is preferred over the desktop's own sidecar", async () => {
+    const home = await scratch()
+    const servers = await persistent(home, join(home, "server.sock"))
+    const directory = join(home, ".config", "com.turenlabs.forge")
+    await mkdir(directory, { recursive: true })
+    createDesktopAttach(directory, (message) => {
+      throw new Error(message)
+    }).publish({ url: server("secret").url.origin, username: "forge", password: "secret" })
+    expect((await servers.scan()).map((entry) => entry.target.kind).slice(0, 2)).toEqual(["persistent", "desktop"])
+    expect((await servers.preferred())?.kind).toBe("persistent")
   })
 
   test("the persistent server comes before a quick-connect server, and --server persistent names it", async () => {

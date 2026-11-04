@@ -31,6 +31,11 @@
     cursor: pointer;
   }
 
+  &[role="button"]:focus-visible {
+    outline: 2px solid var(--v2-border-border-strong);
+    outline-offset: 2px;
+  }
+
   [data-slot="attachment-card-v2-title"],
   [data-slot="attachment-card-v2-subtitle"] {
     max-width: 100%;
