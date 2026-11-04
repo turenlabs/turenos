@@ -5,6 +5,7 @@ import { SessionV2 } from "@turenlabs/core/session"
 import { Loop } from "@turenlabs/core/loop"
 import { SessionStore } from "@turenlabs/core/session/store"
 import { SessionRunnerModel } from "@turenlabs/core/session/runner/model"
+import { AntigravityAcpCLI } from "@turenlabs/core/provider/antigravity-acp"
 import { cleanPrediction, predictionConversation } from "@turenlabs/core/session/prediction"
 import { SecretOutput } from "@turenlabs/core/secret-output"
 import { SessionDisclosure } from "@turenlabs/core/session/disclosure"
@@ -609,10 +610,13 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
             }
             const models = yield* SessionRunnerModel.Service
             const resolved = yield* models.resolve(
-              info.model ? { ...info, model: { id: info.model.id, providerID: info.model.providerID } } : info,
+              info.model && info.model.providerID !== AntigravityAcpCLI.ID
+                ? { ...info, model: { id: info.model.id, providerID: info.model.providerID } }
+                : { ...info, model: undefined },
               undefined,
-              { defaultVariant: false },
+              { defaultVariant: false, excludeProviderID: AntigravityAcpCLI.ID },
             )
+            if (resolved.ref.providerID === AntigravityAcpCLI.ID) return { text: "" }
             const response = yield* LLM.generate(
               SessionDisclosure.request(
                 LLM.request({

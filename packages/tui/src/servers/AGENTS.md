@@ -11,7 +11,7 @@
 - An endpoint with `socketPath` is reached through that socket by every request path (see `src/server/AGENTS.md`).
 - An SSH endpoint is the tunnel's loopback end and carries no socket path: the forward ends at the host's socket or port.
 - `ssh` runs from argument lists with `sshEnvironment` (no `FORGE_*` variables), `BatchMode=yes` and `ControlMaster=no`. Secrets never go in argv; over SSH they go on stdin. The only child given a password in its environment is the local headless server (`headless.ts`), which is how forge reads it.
-- Discovery order (`localEntries`) is the desktop app, then the persistent server, then the quick-connect server, then port 4096. `--server persistent` names the persistent server on Linux (`servers.find`), after any saved server of that name.
+- Discovery order (`localEntries`) is the persistent server (Linux), then the desktop app, then the quick-connect server, then port 4096. The persistent server leads because the desktop runs its own sidecar beside it, with a different database. `--server persistent` names the persistent server on Linux (`servers.find`), after any saved server of that name.
 
 ## Tests
 

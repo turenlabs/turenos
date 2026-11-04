@@ -186,6 +186,7 @@ The default room cannot be deleted.
 
 Create a teammate with a name, handle, role, and mission.
 Execution settings use the existing Agent and model configuration.
+Unattended Team tasks (`TeamRuntime`) and Factory runs reject `antigravity-acp` models.
 An execution directory selects where work runs. It is not a pentesting scope definition.
 Existing tool permissions remain in force.
 

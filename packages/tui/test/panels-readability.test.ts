@@ -302,7 +302,10 @@ test("a long wrapped line in the swarm room stays clear of the scroll bar at 100
   view.mockInput.pressEscape()
   await screen("h History")
   await view.mockInput.typeText("w")
-  clearOfBar(await screen("xxxxxxxxxx"))
+  await screen("xxxxxxxxxx")
+  // The first text frame can still use the width from before the scroll bar appeared.
+  await view.renderOnce()
+  clearOfBar(view.captureCharFrame())
 })
 
 test("a long wrapped line in Trace stays clear of the scroll bar at 100x36", async () => {

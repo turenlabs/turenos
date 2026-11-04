@@ -70,7 +70,7 @@ setTimeout(() => process.exit(0), 1500)
     const entries = await servers.scan()
     expect(entries.map((entry) => entry.target.kind)).toEqual(["headless"])
     expect(servers.problems()).toEqual([
-      "TurenOS is running but does not publish its server. Update it to connect from here.",
+      "TurenOS is running, but its local server isn't available. If it just started, try again; otherwise update TurenOS.",
     ])
     await expect(servers.resolve(entries[0]!.target)).rejects.toThrow("TurenOS is running and owns your local data")
     // A CLI pointed at other data does not share the desktop's database.

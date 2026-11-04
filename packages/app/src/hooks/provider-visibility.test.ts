@@ -19,6 +19,7 @@ describe("isLocalProvider", () => {
     }
     expect(isLocalProviderID("claude-code")).toBe(true)
     expect(isLocalProviderID("muse-code")).toBe(true)
+    expect(isLocalProviderID("antigravity-acp")).toBe(true)
     expect(isLocalProviderID("ollama")).toBe(true)
     expect(isLocalProviderID("llama-cpp")).toBe(true)
   })
@@ -26,6 +27,7 @@ describe("isLocalProvider", () => {
   test("classifies local:// sentinel providers", () => {
     expect(isLocalProviderEndpoint("local://claude-code")).toBe(true)
     expect(isLocalProvider(provider("anything", "local://muse-code"))).toBe(true)
+    expect(isLocalProvider(provider("anything", "local://antigravity-acp"))).toBe(true)
   })
 
   test("classifies loopback endpoints, including schemeless and IPv6", () => {

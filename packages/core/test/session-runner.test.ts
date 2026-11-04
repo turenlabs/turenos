@@ -7091,6 +7091,48 @@ describe("SessionRunnerLLM provider retry", () => {
     }),
   )
 
+  it.live("does not restart a completed Antigravity ACP agent loop for todo reconciliation", () =>
+    Effect.gen(function* () {
+      yield* setup
+      executions.length = 0
+      currentModel = Model.make({ id: "gemini-3.8-flash", provider: "antigravity-acp", route: OpenAIChat.route })
+      const tools = yield* ToolRegistry.Service
+      yield* tools.register({
+        todowrite: Tool.make({
+          description: "Update the current todo list",
+          input: Schema.Struct({ todos: Schema.Array(SessionTodo.Info) }),
+          output: Schema.Struct({ updated: Schema.Boolean }),
+          execute: () => Effect.succeed({ updated: true }),
+        }),
+      })
+      responseStream = Stream.unwrap(
+        Effect.gen(function* () {
+          const server = yield* ClaudeCodeMcp.serve(ClaudeCodeMcp.requestToken(requests.at(-1)?.metadata)!).pipe(
+            Effect.orDie,
+          )
+          const client = new Client({ name: "acp-test", version: "1" })
+          yield* Effect.acquireRelease(
+            Effect.promise(() =>
+              client.connect(
+                new StreamableHTTPClientTransport(new URL(server.url), {
+                  requestInit: { headers: { Authorization: server.authorization } },
+                }),
+              ),
+            ),
+            () => Effect.promise(() => client.close()),
+          )
+          yield* Effect.promise(() => client.callTool({ name: "echo", arguments: { text: "work" } }))
+          return Stream.fromIterable(fragmentFixture("text", "acp-answer", ["Work is complete"]).completeEvents)
+        }),
+      )
+      const session = yield* SessionV2.Service
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Do the work" }), resume: false })
+      yield* session.resume(sessionID)
+      expect(executions).toEqual(["work"])
+      expect(requests).toHaveLength(1)
+    }),
+  )
+
   it.effect("forces one bounded todo reconciliation turn after work leaves open items stale", () =>
     Effect.gen(function* () {
       yield* setup

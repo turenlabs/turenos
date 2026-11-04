@@ -6,6 +6,7 @@ import { Config } from "../../config"
 import { ModelV2 } from "../../model"
 import { ProviderV2 } from "../../provider"
 import { REQUEST_CONTROL_KEYS } from "../../session/runner/model"
+import { AntigravityAcpCLI } from "../../provider/antigravity-acp"
 import { ClaudeCodeCLI } from "../../provider/claude-code"
 import { MuseCodeCLI } from "../../provider/muse-code"
 
@@ -160,5 +161,10 @@ function requestBody(file: { readonly global: boolean }, body: Readonly<Record<s
   )
 }
 
-// The Claude Code and Muse Code bridges spawn `executable` from the request body in `directory`.
-const CLI_LAUNCH_KEYS = new Set([ClaudeCodeCLI.EXECUTABLE_KEY, ClaudeCodeCLI.DIRECTORY_KEY, MuseCodeCLI.EXECUTABLE_KEY])
+// The Claude Code, Muse Code, and Antigravity ACP bridges spawn `executable` from the request body in `directory`.
+const CLI_LAUNCH_KEYS = new Set([
+  AntigravityAcpCLI.EXECUTABLE_KEY,
+  ClaudeCodeCLI.EXECUTABLE_KEY,
+  ClaudeCodeCLI.DIRECTORY_KEY,
+  MuseCodeCLI.EXECUTABLE_KEY,
+])
