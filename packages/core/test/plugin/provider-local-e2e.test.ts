@@ -13,12 +13,14 @@ import { ConfigProviderPlugin } from "@turenlabs/core/config/plugin/provider"
 import { ModelV2 } from "@turenlabs/core/model"
 import { PluginV2 } from "@turenlabs/core/plugin"
 import { PluginHost } from "@turenlabs/core/plugin/host"
+import { AntigravityAcpPlugin } from "@turenlabs/core/plugin/provider/antigravity-acp"
 import { ClaudeCodePlugin, overrideProbe, resetProbeCache } from "@turenlabs/core/plugin/provider/claude-code"
 import { LlamaCppPlugin } from "@turenlabs/core/plugin/provider/llama-cpp"
 import { MuseCodePlugin } from "@turenlabs/core/plugin/provider/muse-code"
 import { OllamaPlugin } from "@turenlabs/core/plugin/provider/ollama"
 import { ProjectV2 } from "@turenlabs/core/project"
 import { ProviderV2 } from "@turenlabs/core/provider"
+import { AntigravityAcpCLI } from "@turenlabs/core/provider/antigravity-acp"
 import { ClaudeCodeCLI } from "@turenlabs/core/provider/claude-code"
 import { MuseCodeCLI } from "@turenlabs/core/provider/muse-code"
 import { AbsolutePath } from "@turenlabs/core/schema"
@@ -1120,6 +1122,25 @@ describe("local providers e2e", () => {
       expect(provider?.api).toMatchObject({ type: "native", url: "local://muse-code" })
       expect(provider?.request.body[MuseCodeCLI.EXECUTABLE_KEY]).toBe(bin)
       const model = yield* catalog.model.get(MuseCodeCLI.ID, ModelV2.ID.make("muse-spark-1.3"))
+      expect(model?.enabled).toBe(true)
+      expect(SessionRunnerModel.selectable(model!)).toBe(true)
+    }),
+  )
+
+  it.effect("registers antigravity-acp when a real agy_acp_server.par binary is on PATH", () =>
+    Effect.gen(function* () {
+      const catalog = yield* Catalog.Service
+      const { bin, write } = yield* withPathBin("agy_acp_server.par")
+      write(`#!/bin/sh\nexit 0\n`)
+      yield* AntigravityAcpPlugin.effect(yield* host).pipe(
+        Effect.provideService(Config.Service, Config.Service.of({ entries: () => Effect.succeed([]) })),
+      )
+
+      const provider = yield* catalog.provider.get(AntigravityAcpCLI.ID)
+      expect(provider?.disabled).toBe(false)
+      expect(provider?.api).toMatchObject({ type: "native", url: "local://antigravity-acp" })
+      expect(provider?.request.body[AntigravityAcpCLI.EXECUTABLE_KEY]).toBe(bin)
+      const model = yield* catalog.model.get(AntigravityAcpCLI.ID, ModelV2.ID.make("gemini-3.8-flash"))
       expect(model?.enabled).toBe(true)
       expect(SessionRunnerModel.selectable(model!)).toBe(true)
     }),

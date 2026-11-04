@@ -1,6 +1,7 @@
 import { AlibabaPlugin } from "./provider/alibaba"
 import { AmazonBedrockPlugin } from "./provider/amazon-bedrock"
 import { AnthropicPlugin } from "./provider/anthropic"
+import { AntigravityAcpPlugin } from "./provider/antigravity-acp"
 import { AzureCognitiveServicesPlugin, AzurePlugin } from "./provider/azure"
 import { CerebrasPlugin } from "./provider/cerebras"
 import { ClaudeCodePlugin } from "./provider/claude-code"
@@ -42,6 +43,7 @@ export const ProviderPlugins: PluginInternal.Plugin<PluginInternal.Requirements 
   AlibabaPlugin,
   AmazonBedrockPlugin,
   AnthropicPlugin,
+  AntigravityAcpPlugin,
   AzureCognitiveServicesPlugin,
   AzurePlugin,
   CerebrasPlugin,

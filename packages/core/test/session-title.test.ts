@@ -13,6 +13,7 @@ import { Location } from "@turenlabs/core/location"
 import { ModelV2 } from "@turenlabs/core/model"
 import { ProjectV2 } from "@turenlabs/core/project"
 import { ProviderV2 } from "@turenlabs/core/provider"
+import { AntigravityAcpCLI } from "@turenlabs/core/provider/antigravity-acp"
 import { AgentPlugin } from "@turenlabs/core/plugin/agent"
 import { AbsolutePath } from "@turenlabs/core/schema"
 import { SessionCreation } from "@turenlabs/core/session/creation"
@@ -395,6 +396,48 @@ describe("SessionRunnerTitle", () => {
       yield* Deferred.succeed(release, undefined)
       yield* Fiber.join(first)
       expect(yield* titleOf(session.id)).toBe("Only once")
+    }),
+  )
+
+  it.effect("titles Antigravity ACP sessions from the redacted prompt when no non-ACP model is available", () =>
+    Effect.gen(function* () {
+      const agents = yield* bootAgents()
+      const requests: LLMRequest[] = []
+      const titler = SessionRunnerTitle.make({
+        disclosure: Effect.succeed(SecretRedaction),
+        agents,
+        events: yield* EventV2.Service,
+        llm: {
+          generate: (request: LLMRequest) => {
+            requests.push(request)
+            return Effect.succeed(answer("Should not be called"))
+          },
+        },
+        models: SessionRunnerModel.Service.of({
+          resolve: () =>
+            Effect.succeed({
+              model,
+              ref: ModelV2.Ref.make({
+                id: ModelV2.ID.make("gemini-3.8-flash"),
+                providerID: AntigravityAcpCLI.ID,
+              }),
+              cost: [],
+            }),
+        }),
+        store: yield* SessionStore.Service,
+      })
+      const session = yield* seed({
+        text: "Investigate ACP handshake ordering\nextra details",
+        model: ModelV2.Ref.make({
+          id: ModelV2.ID.make("gemini-3.8-flash"),
+          providerID: AntigravityAcpCLI.ID,
+        }),
+      })
+
+      yield* titler.ensure(session.id)
+
+      expect(requests).toHaveLength(0)
+      expect(yield* titleOf(session.id)).toBe("Investigate ACP handshake ordering")
     }),
   )
 })

@@ -52,6 +52,7 @@ import { EventV2Bridge } from "@/event-v2-bridge"
 import { Database } from "@turenlabs/core/database/database"
 import { ModelV2 } from "@turenlabs/core/model"
 import { ProviderV2 } from "@turenlabs/core/provider"
+import { AntigravityAcpCLI } from "@turenlabs/core/provider/antigravity-acp"
 import { ClaudeCodeCLI } from "@turenlabs/core/provider/claude-code"
 import { eq } from "drizzle-orm"
 import { SessionTable } from "@turenlabs/core/session/sql"
@@ -1316,7 +1317,8 @@ const layer = Layer.effect(
             const todoToolAvailable =
               Object.hasOwn(tools, "todowrite") &&
               Permission.evaluate("todowrite", "*", agent.permission, session.permission ?? []).action !== "deny" &&
-              model.providerID !== ClaudeCodeCLI.ID
+              model.providerID !== ClaudeCodeCLI.ID &&
+              model.providerID !== AntigravityAcpCLI.ID
             const previousTodoUpdate =
               lastAssistantMsg?.parts.some(
                 (part) => part.type === "tool" && part.tool === "todowrite" && part.state.status === "completed",

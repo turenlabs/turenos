@@ -70,7 +70,12 @@ test("an unrecognised spawn_agent result is shown literally", () => {
 })
 
 test("a refused key points at provider setup in the dashboard only", () => {
-  for (const message of ["HTTP 401: sandbox provider refused the key", "HTTP 403: forbidden", "Your key was revoked"]) {
+  for (const message of [
+    "HTTP 401: sandbox provider refused the key",
+    "HTTP 403: forbidden",
+    "Your key was revoked",
+    "Antigravity ACP needs Google sign-in. Connect Antigravity ACP and select Sign in with Google, then retry.",
+  ]) {
     const rich = transcript([step([], message)], false, true)
     expect(rich).toContain("Check the provider's key: Models (m), then F2 for provider setup, or Settings › Providers.")
     expect(transcript([step([], message)])).not.toContain("Check the provider's key")

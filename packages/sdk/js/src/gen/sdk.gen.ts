@@ -139,6 +139,12 @@ import type {
   ProjectUpdateErrors,
   ProjectUpdateResponses,
   PromptInput,
+  ProviderAcpAuthorizeErrors,
+  ProviderAcpAuthorizeResponses,
+  ProviderAcpCancelErrors,
+  ProviderAcpCancelResponses,
+  ProviderAcpStatusErrors,
+  ProviderAcpStatusResponses,
   ProviderAuthErrors,
   ProviderAuthResponses,
   ProviderListErrors,
@@ -3509,6 +3515,102 @@ export class Permission extends HeyApiClient {
   }
 }
 
+export class Acp extends HeyApiClient {
+  /**
+   * Sign in to Antigravity ACP
+   *
+   * Start or join the local runtime's Google sign-in flow. Credentials stay in the official runtime.
+   */
+  public authorize<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      ProviderAcpAuthorizeResponses,
+      ProviderAcpAuthorizeErrors,
+      ThrowOnError
+    >({
+      url: "/provider/antigravity-acp/auth",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Cancel Antigravity ACP sign-in
+   */
+  public cancel<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<ProviderAcpCancelResponses, ProviderAcpCancelErrors, ThrowOnError>({
+      url: "/provider/antigravity-acp/auth/{id}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get Antigravity ACP sign-in progress
+   */
+  public status<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<ProviderAcpStatusResponses, ProviderAcpStatusErrors, ThrowOnError>({
+      url: "/provider/antigravity-acp/auth/{id}",
+      ...options,
+      ...params,
+    })
+  }
+}
+
 export class Oauth extends HeyApiClient {
   /**
    * Start OAuth authorization
@@ -3724,6 +3826,11 @@ export class Provider extends HeyApiClient {
       ...options,
       ...params,
     })
+  }
+
+  private _acp?: Acp
+  get acp(): Acp {
+    return (this._acp ??= new Acp({ client: this.client }))
   }
 
   private _oauth?: Oauth

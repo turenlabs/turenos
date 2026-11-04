@@ -84,7 +84,8 @@ calling them.
 Admits one bounded child assignment and returns a durable task ID, child
 Session ID, and current task view, whose status is `starting` or `queued`.
 `model` is optional: an omitted model uses the child agent's configured
-default, then the parent Session's model. `write_roots` (up to 16 existing
+default, then the parent Session's model (`antigravity-acp` models are rejected
+for subagents). `write_roots` (up to 16 existing
 directories inside the active workspace) and `commands` (up to 32 exact,
 complete shell strings) grant edit and shell authority; omitting both makes the
 child read-only. `wave` (1 to 64 characters) tags the task so `wait_agents`,
@@ -226,7 +227,10 @@ authoritative: a tool absent from it cannot be called. `spawn_agent` and
 `spawn_agents` reach a top-level Session and a running orchestrator at depth 1;
 a child without the `orchestrate` grant, and every depth-2 worker, never gets
 them. Those Sessions still get the permitted room tools, `list_agents` and
-`send_agent` for reaching siblings, and `notify_parent`.
+`send_agent` for reaching siblings, and `notify_parent`. Turns running on
+`antigravity-acp` omit the entire `SubagentTool` session tool set (subagent
+task tools, swarm room tools, and agent improvement tools), and child Sessions
+and the legacy `task` tool also reject `antigravity-acp` models.
 
 ## Verification
 

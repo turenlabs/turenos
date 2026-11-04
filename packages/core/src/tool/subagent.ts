@@ -12,6 +12,7 @@ import { FSUtil } from "../fs-util"
 import { Location } from "../location"
 import { ModelV2 } from "../model"
 import { PermissionV2 } from "../permission"
+import { AntigravityAcpCLI } from "../provider/antigravity-acp"
 import { AbsolutePath, NonNegativeInt, PositiveInt } from "../schema"
 import { SessionExecutionControl } from "../session/execution-control"
 import { SessionMessage } from "../session/message"
@@ -272,6 +273,9 @@ const layer = Layer.effect(
       readonly control: SessionExecutionControl.Interface
       readonly model: ModelV2.Ref
     }) {
+      // `antigravity-acp` holds its process-wide single-flight permit for the entire subprocess
+      // turn, including MCP tool calls, and is restricted to single-user interactive turns.
+      if (input.model.providerID === AntigravityAcpCLI.ID) return {}
       const owner = yield* tasks.owner(input.sessionID)
       const spawnable =
         (!owner || (owner.depth < SessionTaskV2.MAX_DEPTH && owner.authority.orchestrate === true)) &&
@@ -344,11 +348,16 @@ const layer = Layer.effect(
                         { action: "edit", resource: `${root.resource}/*`, effect: "allow" },
                       ],
               )
+              const selectedModel = input.model ?? child.model ?? resolvedModel
+              if (selectedModel.providerID === AntigravityAcpCLI.ID)
+                return yield* new ToolFailure({
+                  message: "Antigravity ACP does not support subagent execution; choose a non-ACP model for subagents",
+                })
               const prepared = yield* tasks
                 .spawn({
                   actor: actor(context, item),
                   agent: child.id,
-                  model: input.model ?? child.model ?? resolvedModel,
+                  model: selectedModel,
                   // Orchestrator workers hold a slot until released; parking
                   // them in the room starves queued siblings, so the fleet
                   // protocol is finish-and-report instead.

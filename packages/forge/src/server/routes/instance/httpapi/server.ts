@@ -141,6 +141,7 @@ import { fenceLayer } from "./middleware/fence"
 import { schemaErrorLayer } from "./middleware/schema-error"
 import { Auth } from "@/auth"
 import { ProviderAuth } from "@/provider/auth"
+import { AntigravityAcpAuth } from "@/provider/antigravity-acp-auth"
 import { SecurityProxyRuntime } from "@turenlabs/core/security-proxy-runtime"
 import type { SecurityProxy } from "@turenlabs/schema/security-proxy"
 
@@ -251,6 +252,7 @@ const app = LayerNode.group([
   ModelsDev.node,
   Provider.node,
   ProviderAuth.node,
+  AntigravityAcpAuth.node,
   Agent.node,
   Skill.node,
   Discovery.node,

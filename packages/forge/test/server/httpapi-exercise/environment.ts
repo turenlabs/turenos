@@ -13,6 +13,8 @@ process.env.XDG_STATE_HOME = path.join(exerciseGlobalRoot, "state")
 process.env.XDG_CACHE_HOME = path.join(exerciseGlobalRoot, "cache")
 export const exerciseConfigDirectory = path.join(exerciseGlobalRoot, "config", "forge")
 export const exerciseDataDirectory = path.join(exerciseGlobalRoot, "data", "forge")
+// Exercise unavailable-runtime responses without launching an installed ACP runtime.
+process.env.AGY_ACP_BIN = path.join(exerciseGlobalRoot, "missing-acp-runtime")
 
 /**
  * Project directory for auth-mode probes. Auth mode never builds a scenario context, so

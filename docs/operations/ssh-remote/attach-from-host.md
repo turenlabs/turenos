@@ -35,8 +35,9 @@ Because it is one process over one SQLite database, a local client and the deskt
 tunnel) observe the same Sessions live.
 
 The example uses an environment variable to keep the password out of command arguments. The
-remote account and administrators remain trusted. No client discovers a desktop-managed server on
-its own; a host-side client must read the port and password as shown.
+remote account and administrators remain trusted. The [TUI](../../systems/tui/README.md#server-discovery-and-switching)
+automatically reads the quick-connect server's local state files; other host-side clients can read the port and password
+as shown.
 
 A quick-connect server uses the first desktop's vault key. A second desktop with a different key
 cannot independently restart and unlock that database; do not replace the key or delete stored
