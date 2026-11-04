@@ -11,6 +11,11 @@ foreground call fails if the process has not ended within the timeout plus a
 10-second termination grace (`TERMINATION_GRACE_MS`); the error names the job
 so it can still be observed.
 
+If cancellation finishes while `bash` is waiting, the call reports an error
+that the command was cancelled before completion and may have partially run.
+Any output available from the job is included; interrupted process collection
+may not retain output produced before cancellation.
+
 Use `shell_job` to inspect work owned by the current session. It checks the
 `bash` permission action, so a whole-tool `bash` deny also hides it.
 

@@ -166,6 +166,40 @@ const it = testEffect(Layer.empty)
 
 describe("BashTool", () => {
   if (process.platform !== "win32")
+    for (const foreground of [true, false])
+      it.live(`reports session-cancelled ${foreground ? "foreground" : "inline"} commands as errors`, () =>
+        Effect.acquireUseRelease(
+          Effect.promise(() => tmpdir()),
+          (tmp) =>
+            withTool(
+              tmp.path,
+              (registry) =>
+                Effect.gen(function* () {
+                  reset()
+                  const jobs = yield* ShellJob.Service
+                  const fiber = yield* settleTool(
+                    registry,
+                    call({ command: "sleep 45", foreground }, `cancel-${foreground}`),
+                  ).pipe(Effect.forkChild)
+                  yield* Effect.gen(function* () {
+                    while (!(yield* jobs.list(sessionID)).some((job) => job.status === "running"))
+                      yield* Effect.sleep(10)
+                  }).pipe(Effect.timeout("5 seconds"))
+                  yield* jobs.cancelSession(sessionID)
+                  const settled = yield* Fiber.join(fiber)
+                  expect(settled.result.type).toBe("error")
+                  expect(String(settled.result.value)).toContain("Command was cancelled before completion")
+                  expect(String(settled.result.value)).toContain("Cancellation teardown completed.")
+                  expect(String(settled.result.value)).toContain("may have partially run")
+                  expect(String(settled.result.value)).not.toContain("code undefined")
+                }),
+              LayerNode.compile(AppProcess.node),
+            ),
+          (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+        ),
+      )
+
+  if (process.platform !== "win32")
     it.live(
       "returns long commands as owned jobs and exposes observation under exact bash-only grants",
       () =>
