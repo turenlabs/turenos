@@ -1488,9 +1488,13 @@ const layer = Layer.effect(
                 // a CLI tool call, so re-raising an interruption left it running forever.
                 const result = yield* protectReply({
                   type: "error",
-                  value: Cause.hasInterruptsOnly(settlement.cause)
-                    ? TurnInterruption.TOOL
-                    : `Tool execution failed: ${yield* visible(Cause.squash(settlement.cause))}`,
+                  value:
+                    Cause.hasInterruptsOnly(settlement.cause) ||
+                    settlement.cause.reasons.some(
+                      (reason) => Cause.isDieReason(reason) && reason.defect instanceof PermissionV2.DeclinedError,
+                    )
+                      ? TurnInterruption.TOOL
+                      : `Tool execution failed: ${yield* visible(Cause.squash(settlement.cause))}`,
                 })
                 yield* publish(LLMEvent.toolResult({ id: call.id, name: call.name, result }))
                 return result

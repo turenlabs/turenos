@@ -7929,6 +7929,68 @@ describe("SessionRunnerLLM Claude Code steering", () => {
     }),
   )
 
+  it.live("records a CLI permission decline as an interrupted tool", () =>
+    Effect.gen(function* () {
+      yield* setup
+      currentModel = claudeModel
+      const session = yield* SessionV2.Service
+      const registry = yield* ToolRegistry.Service
+      yield* registry.register({
+        declined: Tool.make({
+          description: "Fail because the user declined approval",
+          input: Schema.Struct({}),
+          output: Schema.Struct({}),
+          execute: () => Effect.die(new PermissionV2.DeclinedError()),
+        }),
+      })
+      responseStream = Stream.unwrap(
+        Effect.gen(function* () {
+          const server = yield* ClaudeCodeMcp.serve(ClaudeCodeMcp.requestToken(requests.at(-1)?.metadata)!).pipe(
+            Effect.orDie,
+          )
+          const client = new Client({ name: "forge-test", version: "1" })
+          yield* Effect.acquireRelease(
+            Effect.promise(() =>
+              client.connect(
+                new StreamableHTTPClientTransport(new URL(server.url), {
+                  requestInit: { headers: { Authorization: server.authorization } },
+                }),
+              ),
+            ),
+            () => Effect.promise(() => client.close()),
+          )
+          return Stream.concat(
+            Stream.make(LLMEvent.stepStart({ index: 0 })),
+            Stream.concat(
+              Stream.fromEffect(Effect.promise(() => client.callTool({ name: "declined", arguments: {} }))).pipe(
+                Stream.drain,
+              ),
+              Stream.never,
+            ),
+          )
+        }),
+      )
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Call declined" }), resume: false })
+      const exit = yield* session.resume(sessionID).pipe(Effect.exit, Effect.timeout("10 seconds"))
+      expect(exit._tag).toBe("Failure")
+      if (exit._tag === "Failure") expect(Cause.hasInterruptsOnly(exit.cause)).toBe(true)
+      expect(requests).toHaveLength(1)
+      expect(yield* session.context(sessionID)).toMatchObject([
+        { type: "user", text: "Call declined" },
+        {
+          type: "assistant",
+          content: [
+            {
+              type: "tool",
+              name: "declined",
+              state: { status: "error", error: { message: "Tool execution interrupted" } },
+            },
+          ],
+        },
+      ])
+    }),
+  )
+
   it.live("makes a tool selected by tool_load callable within the same CLI turn", () =>
     Effect.gen(function* () {
       yield* setup
