@@ -11,7 +11,7 @@ export async function listingFolder(run: Run) {
   const folder = run.folder
   if (!folder) return undefined
   if (folder.explicit) validDirectory(folder.directory)
-  return resolveFolder(run.connection.client, folder.directory).catch((error: unknown) => {
+  return resolveFolder(run.connection.client, folder.directory, run.connection.local).catch((error: unknown) => {
     if (folder.explicit || !(error instanceof FolderNotFound)) throw error
     run.io.stderr(`turen-tui: ${clean(folder.directory, 1000)} is not readable on this server; listing every folder.\n`)
     return undefined

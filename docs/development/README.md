@@ -3,10 +3,13 @@
 Guides for changing TurenOS code: testing patterns, fixtures, and code conventions. Build, run, lint, and release commands
 live in [`CONTRIBUTING.md`](../../CONTRIBUTING.md) and the operator procedures in [operations](../operations/README.md).
 
+- [Session attachment testing](./session-attachment-testing.md): persisted file cards, inline mentions, image previews,
+  and safe native actions.
 - [Security MCP integration conventions](./security-integrations.md): the contract, handlers, output, caching, and
   scanner rules for integrations in `packages/forge/src/security/`.
 - [Forge test fixtures](./forge-tests.md): temporary directories, Effect test helpers, and waiting on concurrent work in
   `packages/forge` tests.
+- [Session stream replay testing](./session-stream-testing.md): completed-message regressions and delayed-event GUI acceptance.
 - [Desktop sidecar profiler](./desktop-profiler.md): Bun profiling limits and sidecar memory diagnostics.
 - [Test selection](./testing.md): opt-in local affected-package plans and the informational CI report.
 - [TUI development](./tui.md): testing `packages/tui`, its size limits, fixture rules, the sandbox and the PTY audit.

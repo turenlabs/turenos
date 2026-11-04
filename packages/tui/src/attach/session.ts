@@ -12,6 +12,7 @@ export function start(session: Session) {
 export function finish(session: Session, result: AttachResult) {
   if (session.finished) return
   session.finished = true
+  clearTimeout(session.inputTimer)
   session.options.stdin.off("data", session.listeners.keystrokes)
   session.options.stdout.off("resize", session.listeners.resized)
   // Whatever the PTY's programs left switched on must not outlive the attachment.
@@ -21,12 +22,32 @@ export function finish(session: Session, result: AttachResult) {
 }
 
 export function keystrokes(session: Session, chunk: Buffer | string) {
+  if (session.finished) return
+  clearTimeout(session.inputTimer)
   const bytes = typeof chunk === "string" ? Buffer.from(chunk) : chunk
-  const found = [DETACH, ...DETACH_SEQUENCES].map((key) => bytes.indexOf(key)).filter((index) => index >= 0)
-  const stop = found.length ? Math.min(...found) : -1
-  const text = session.decoder.decode(stop < 0 ? bytes : bytes.subarray(0, stop), { stream: stop < 0 })
-  if (text) send(session, text)
-  if (stop >= 0) finish(session, { reason: "detached" })
+  const input = session.inputHeld + session.decoder.decode(bytes, { stream: true })
+  session.inputHeld = ""
+  const found = [String.fromCharCode(DETACH), ...DETACH_SEQUENCES]
+    .map((key) => input.indexOf(key))
+    .filter((index) => index >= 0)
+  if (found.length) {
+    const stop = Math.min(...found)
+    if (stop) send(session, input.slice(0, stop))
+    return finish(session, { reason: "detached" })
+  }
+  const held = Math.max(
+    0,
+    ...DETACH_SEQUENCES.flatMap((key) =>
+      Array.from({ length: key.length - 1 }, (_, i) => i + 1).filter((length) => input.endsWith(key.slice(0, length))),
+    ),
+  )
+  if (input.length > held) send(session, input.slice(0, input.length - held))
+  session.inputHeld = held ? input.slice(-held) : ""
+  if (held)
+    session.inputTimer = setTimeout(() => {
+      if (!session.finished && session.inputHeld) send(session, session.inputHeld)
+      session.inputHeld = ""
+    }, 100)
 }
 
 function send(session: Session, text: string) {

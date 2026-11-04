@@ -186,11 +186,11 @@ async function showFolder(ctx: FoldersContext, directory: string | undefined) {
 
 async function openFolder(ctx: FoldersContext, directory: string) {
   const { state, connection } = ctx
-  const folder = await resolveFolder(connection.client, directory)
-  const result = await connection.folders.open(directory)
+  const folder = await resolveFolder(connection.client, directory, connection.local)
+  const result = await connection.folders.open(folder.directory)
   if (state.closed) return
   if (state.snapshot) state.snapshot.workingFolders = result
-  await focusFolder(ctx, directory, folder)
+  await focusFolder(ctx, folder.directory, folder)
   ctx.actions.say(`Opened ${label(directory, 200)}. ${connection.folders.takeNotice()}`.trim())
 }
 
@@ -210,7 +210,7 @@ async function closeFolder(ctx: FoldersContext, directory: string) {
  */
 async function focusFolder(ctx: FoldersContext, directory: string, known?: Awaited<ReturnType<typeof resolveFolder>>) {
   const { state } = ctx
-  const folder = known ?? (await resolveFolder(ctx.connection.client, directory))
+  const folder = known ?? (await resolveFolder(ctx.connection.client, directory, ctx.connection.local))
   if (state.closed) return
   state.folder = folder
   const sessions = state.snapshot?.sessions ?? []

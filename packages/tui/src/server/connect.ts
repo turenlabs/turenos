@@ -33,6 +33,7 @@ export function connect(options: ConnectionOptions) {
   const ctx: Context = { url, headers, controller, options, transport, client, folders, api, missingFiles, needsInput }
   const providers = createProviders({ url, headers, signal: controller.signal, socketPath })
   return {
+    local: options.local ?? false,
     address: socketPath ? `unix:${socketPath}` : url.origin,
     /** The origin requests are addressed to; with `socketPath` it is only `http://localhost`. */
     url,
