@@ -2,6 +2,26 @@ import type { ReleaseNote } from "../release-notes"
 
 export const notes: readonly ReleaseNote[] = [
   {
+    version: "1.0.49",
+    summary:
+      "Antigravity ACP integration, a steadier session sidebar and attachments, and a batch of core correctness and privacy fixes.",
+    changes: {
+      new: [
+        "Connect through the new Antigravity ACP integration.",
+      ],
+      improved: [
+        "The desktop app publishes the local server connection so `forge tui` can find it.",
+        "Session prompts now supply the current model identity.",
+      ],
+      fixed: [
+        "Archived and deleted sessions leave the sidebar, and sent file attachments stay visible.",
+        "Declined CLI permissions record as interrupted and cancelled shell commands report as errors.",
+        "JSON secret values stay masked even when a preview cuts them off, and loopback aliases of protected Security Browser origins are blocked.",
+        "SSE streams continue after retry directives, and memory matches survive unknown query terms.",
+      ],
+    },
+  },
+  {
     version: "1.0.48",
     summary:
       "A hardening release: file edits handle mixed line endings and encodings, provider thinking and tool results are forwarded correctly, and permission prompts reach the right session.",
