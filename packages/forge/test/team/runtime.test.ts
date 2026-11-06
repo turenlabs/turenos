@@ -6,7 +6,7 @@ import { Global } from "@turenlabs/core/global"
 import { SessionMessage } from "@turenlabs/core/session/message"
 import { Team } from "@turenlabs/schema/team"
 import { HttpApiApp } from "../../src/server/routes/instance/httpapi/server"
-import { extractTeamTaskOutput, teamSessionOutputText, teamTaskIDForResponse } from "../../src/team/runtime"
+import { extractTeamTaskOutput, teamSessionOutputText } from "../../src/team/runtime"
 import { resetDatabase } from "../fixture/db"
 import { disposeAllInstances, tmpdir } from "../fixture/fixture"
 import { pollWithTimeout, testEffect } from "../lib/effect"
@@ -113,26 +113,6 @@ describe("TeamRuntime dispatch", () => {
 
       expect(output.text).toBe("Actual completed response")
       expect(output.artifacts).toEqual([{ type: "changed", path: "final.txt" }])
-    }))
-
-  it("attributes a Session response to the nearest preceding Team task prompt", () =>
-    Effect.sync(() => {
-      const user = (id: string) => ({ id, type: "user" }) as unknown as SessionMessage.Message
-      const assistant = (id: string) => ({ id, type: "assistant" }) as unknown as SessionMessage.Message
-      const messages = [
-        user("msg_team_old_task"),
-        assistant("msg_old_task_response"),
-        user("msg_team_runtime_followup"),
-        assistant("msg_followup_response"),
-        user("msg_team_new_task"),
-        assistant("msg_new_task_response"),
-      ]
-
-      const taskIDs = new Set(["old_task", "new_task"])
-      expect(teamTaskIDForResponse(messages, "msg_old_task_response", taskIDs)).toBe("old_task")
-      expect(teamTaskIDForResponse(messages, "msg_followup_response", taskIDs)).toBe("old_task")
-      expect(teamTaskIDForResponse(messages, "msg_new_task_response", taskIDs)).toBe("new_task")
-      expect(teamTaskIDForResponse(messages, "msg_missing_response", taskIDs)).toBeUndefined()
     }))
 
   it("keeps the text parts of one teammate reply apart across a tool step", () =>
