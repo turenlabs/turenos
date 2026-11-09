@@ -167,6 +167,20 @@ export const dict = {
   "provider.connect.devinCli.description":
     "Install Devin CLI on this machine or server. Run the command below, then refresh. Devin CLI manages your sign-in. TurenOS stores no API key.",
   "provider.connect.devinCli.notReady": "Devin CLI is not available. Install it, run devin auth login, then refresh.",
+  "provider.connect.antigravity.description":
+    "Sign in with Google through the official Antigravity ACP runtime. Google credentials stay with that runtime and are not stored in TurenOS.",
+  "provider.connect.antigravity.installation":
+    "Install the official Antigravity ACP runtime on the selected server first. Complete browser sign-in on that machine, or forward its loopback callback port when connecting remotely.",
+  "provider.connect.antigravity.signIn": "Sign in with Google",
+  "provider.connect.antigravity.openBrowser": "Open Google sign-in",
+  "provider.connect.antigravity.starting": "Starting Antigravity sign-in…",
+  "provider.connect.antigravity.waiting": "Complete Google sign-in in your browser. Keep this dialog open.",
+  "provider.connect.antigravity.finishing": "Google sign-in completed. Refreshing available models…",
+  "provider.connect.antigravity.cancelling": "Cancelling Antigravity sign-in…",
+  "provider.connect.antigravity.cancelled": "Antigravity sign-in cancelled.",
+  "provider.connect.antigravity.failed": "Antigravity sign-in failed. Check the selected server and try again.",
+  "provider.connect.antigravity.cancelFailed":
+    "Could not confirm cancellation with the server. The sign-in attempt will expire automatically. Reconnect to try again.",
   "provider.connect.localServer.description.ollama":
     "Ollama serves local models over HTTP on this machine. Install it, pull a model, then connect.",
   "provider.connect.localServer.description.llamaCpp":
@@ -1487,6 +1501,8 @@ export const dict = {
   "settings.localProviders.available.claudeCode": "Runs Claude through the Claude Code CLI using your Claude sign-in.",
   "settings.localProviders.available.museCode": "Runs models through the Muse Code CLI using its own local sign-in.",
   "settings.localProviders.available.devinCli": "Runs models through your installed Devin CLI using its own sign-in.",
+  "settings.localProviders.available.antigravityAcp":
+    "Runs Gemini models through the official Antigravity ACP server using its local oauth-personal sign-in.",
   "settings.localProviders.available.ollama": "Serves models you pull locally over an OpenAI-compatible API.",
   "settings.localProviders.available.llamaCpp": "Serves a local GGUF model through llama-server.",
   "settings.localProviders.custom.title": "Custom local endpoint",

@@ -84,7 +84,7 @@ HTTPServer     -> httpserver, http, server
 
 Queries are tokenized, deduplicated, bounded, and joined with `OR` so partial overlap can retrieve a drawer. Search then:
 
-1. Removes corpus-wide terms that carry no useful BM25 ranking signal once the corpus is large enough.
+1. Once the searched drawers number at least 200, drops terms that appear in none of them and terms that appear in at least half of them, which carry no useful BM25 ranking signal. If every term that does appear is that common, it keeps the three rarest instead, so a query with matching terms still returns results.
 2. Applies the allowed wing and optional room scope in SQL.
 3. Applies temporal validity before limiting results.
 4. Ranks matches with FTS5 `bm25()` and returns a higher-is-better score.

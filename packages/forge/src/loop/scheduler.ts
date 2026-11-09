@@ -12,6 +12,8 @@ import { SessionEvent } from "@turenlabs/schema/session-event"
 import { FileSystemWatcher } from "@turenlabs/schema/filesystem-watcher"
 import { SessionV2 } from "@turenlabs/core/session"
 import { SessionMessage } from "@turenlabs/core/session/message"
+import { SessionRunnerModel } from "@turenlabs/core/session/runner/model"
+import { AntigravityAcpCLI } from "@turenlabs/core/provider/antigravity-acp"
 import { WorkspaceV2 } from "@turenlabs/core/workspace"
 import path from "path"
 import { Cause, Clock, Context, Duration, Effect, Exit, Layer, Option, Schema, Stream } from "effect"
@@ -27,6 +29,8 @@ const LEASE_MS = Duration.toMillis(Duration.minutes(5))
 const RENEW_INTERVAL = Duration.minutes(1)
 const CANCELLATION_INTERVAL = Duration.seconds(1)
 const CLAIM_LIMIT = 32
+const ACP_AUTOMATION_ERROR =
+  "Antigravity ACP supports interactive single-user sessions only; configure an authorized API or enterprise model for unattended Automations"
 
 /**
  * Process-global scheduling for durable Loop runs. Core owns persistence,
@@ -107,7 +111,26 @@ const layer = Layer.effect(
             skill: loop.skill,
             workflow: loop.workflow,
           }
+          const failAcp = () => Effect.fail(new Error(ACP_AUTOMATION_ERROR))
+          if (
+            snapshot.model?.providerID === AntigravityAcpCLI.ID ||
+            teammate?.model?.providerID === AntigravityAcpCLI.ID ||
+            snapshot.workflow?.steps.some((step) => step.model?.providerID === AntigravityAcpCLI.ID)
+          ) {
+            return yield* failAcp()
+          }
           if (snapshot.factoryRoomID) {
+            const roomState = yield* team
+              .state({ roomID: snapshot.factoryRoomID })
+              .pipe(Effect.catch(() => Effect.succeed(undefined)))
+            const configuredIDs = new Set(roomState?.room.factory?.config.teammateIDs ?? [])
+            if (
+              roomState?.teammates.some(
+                (member) => configuredIDs.has(member.id) && member.model?.providerID === AntigravityAcpCLI.ID,
+              )
+            ) {
+              return yield* failAcp()
+            }
             const factoryRunID = `frun_${run.id}`
             const factoryRun = yield* team.startFactoryRun({
               id: factoryRunID,
@@ -172,21 +195,15 @@ const layer = Layer.effect(
           // Agents are Location-scoped, so the run's own Location decides whether its
           // agent exists. Validating against the run's `execution` snapshot rather than
           // the live Loop keeps the check aligned with what actually gets prompted.
-          if (execution.agent) {
-            const agentID = AgentV2.ID.make(execution.agent)
-            const agentInfo = yield* AgentV2.Service.use((agents) => agents.get(agentID)).pipe(
-              Effect.provide(locations.get(ref)),
-            )
-            if (!agentInfo) {
-              yield* loops.finishRun({
-                id: run.id,
-                owner,
-                status: "failed",
-                error: `Agent '${execution.agent}' not found in workspace`,
-              })
-              return
-            }
+          const agentInfo = execution.agent
+            ? yield* AgentV2.Service.use((agents) => agents.get(AgentV2.ID.make(execution.agent!))).pipe(
+                Effect.provide(locations.get(ref)),
+              )
+            : undefined
+          if (execution.agent && !agentInfo) {
+            return yield* Effect.fail(new Error(`Agent '${execution.agent}' not found in workspace`))
           }
+          if (agentInfo?.model?.providerID === AntigravityAcpCLI.ID) return yield* failAcp()
 
           const sessionID = SessionV2.ID.make(run.sessionID ?? `ses_loop_${run.id}`)
           if (!run.sessionID) yield* loops.recordRunSession({ id: run.id, owner, sessionID })
@@ -201,6 +218,25 @@ const layer = Layer.effect(
               }),
             ),
           )
+          if (session.model?.providerID === AntigravityAcpCLI.ID) return yield* failAcp()
+          const resolvedExecutionModel =
+            execution.model ??
+            (yield* Effect.gen(function* () {
+              const models = yield* Effect.serviceOption(SessionRunnerModel.Service)
+              if (Option.isNone(models)) return undefined
+              const resolved = yield* models.value
+                .resolve({ ...session, model: agentInfo?.model }, agentInfo?.request, {
+                  excludeProviderID: AntigravityAcpCLI.ID,
+                })
+                .pipe(Effect.option)
+              if (Option.isNone(resolved) || resolved.value.ref.providerID === AntigravityAcpCLI.ID)
+                return "acp" as const
+              return resolved.value.ref
+            }).pipe(
+              Effect.provide(locations.get(ref)),
+              Effect.catchCause(() => Effect.succeed(undefined)),
+            ))
+          if (resolvedExecutionModel === "acp") return yield* failAcp()
 
           const triggerPayload: Readonly<Record<string, unknown>> = {
             repository: execution.location.directory,
@@ -211,6 +247,8 @@ const layer = Layer.effect(
           const workflow = execution.workflow
           if (workflow) {
             let outputs = run.outputs
+            // Set the safe initial model once, then preserve Session inheritance.
+            let initialModel = run.currentStep === 0 ? resolvedExecutionModel : undefined
             yield* Effect.forEach(
               workflow.steps.slice(run.currentStep),
               (step, offset) =>
@@ -240,6 +278,18 @@ const layer = Layer.effect(
                   }
                   const messageID = SessionMessage.ID.make(`msg_loop_${run.id}_${step.id}`)
                   const stepEffect = Effect.gen(function* () {
+                    if (step.model?.providerID === AntigravityAcpCLI.ID) {
+                      return yield* Effect.fail(new Error(ACP_AUTOMATION_ERROR))
+                    }
+                    if (step.agent) {
+                      const stepAgent = yield* AgentV2.Service.use((agents) => agents.get(step.agent!)).pipe(
+                        Effect.provide(locations.get(ref)),
+                        Effect.catchCause(() => Effect.succeed(undefined)),
+                      )
+                      if (stepAgent?.model?.providerID === AntigravityAcpCLI.ID) {
+                        return yield* Effect.fail(new Error(ACP_AUTOMATION_ERROR))
+                      }
+                    }
                     const rendered = renderWorkflowStep(step, index, workflow.steps.length, context)
                     yield* sessions.prompt({
                       id: messageID,
@@ -250,8 +300,9 @@ const layer = Layer.effect(
                       // A step without its own selection inherits the Session's agent and
                       // model, which the Automation set when the Session was created.
                       ...(step.agent ? { agent: step.agent } : {}),
-                      ...(step.model ? { model: step.model } : {}),
+                      ...(step.model ? { model: step.model } : initialModel ? { model: initialModel } : {}),
                     })
+                    initialModel = undefined
                     yield* loops.startRun({ id: run.id, owner, sessionID: session.id, currentStep: index })
                     yield* sessions.resumePending(session.id)
                     const output = extractStepOutput(
@@ -300,6 +351,7 @@ const layer = Layer.effect(
               id: messageID,
               sessionID: session.id,
               prompt: { text: mission + prompt },
+              ...(resolvedExecutionModel ? { model: resolvedExecutionModel } : {}),
               resume: false,
               owner: "automation",
             })

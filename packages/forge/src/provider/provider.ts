@@ -32,6 +32,7 @@ import { ModelV2 } from "@turenlabs/core/model"
 import { ModelStatus } from "./model-status"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { ProviderError } from "./error"
+import { AntigravityAcpProvider } from "./antigravity-acp"
 import { ClaudeCodeProvider } from "./claude-code"
 import { MuseCodeProvider } from "./muse-code"
 import { ModelStorage } from "@/model-storage"
@@ -211,6 +212,13 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
     }),
     "muse-code": Effect.fnUntraced(function* (input: Info) {
       const result = yield* Effect.promise(() => MuseCodeProvider.probe(input.options.executable))
+      return {
+        autoload: result.status === "installed",
+        options: result.status === "installed" ? { executable: result.executable } : {},
+      }
+    }),
+    "antigravity-acp": Effect.fnUntraced(function* (input: Info) {
+      const result = yield* Effect.promise(() => AntigravityAcpProvider.probe(input.options.executable))
       return {
         autoload: result.status === "installed",
         options: result.status === "installed" ? { executable: result.executable } : {},
@@ -1719,6 +1727,7 @@ const layer = Layer.effect(
         const claudeCode = ClaudeCodeProvider.info(modelsDev)
         catalog[ClaudeCodeProvider.ID] = claudeCode
         catalog[MuseCodeProvider.ID] = MuseCodeProvider.info(modelsDev)
+        catalog[AntigravityAcpProvider.ID] = AntigravityAcpProvider.info(modelsDev)
         catalog[ProviderV2.ID.make(OLLAMA_PROVIDER_ID)] = ollamaCatalogProvider()
         const database = mapValues(catalog, toPublicInfo)
 

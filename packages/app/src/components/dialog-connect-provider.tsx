@@ -31,6 +31,7 @@ import { popularProviders, useProviders } from "@/hooks/use-providers"
 import { isLocalProviderEndpoint, localProviders } from "@/hooks/provider-visibility"
 import { useProviderConnection } from "@/hooks/use-provider-connection"
 import { CustomProviderForm } from "./dialog-custom-provider"
+import { AntigravityAcpConnection } from "./dialog-antigravity-acp"
 
 const CUSTOM_ID = "_custom"
 
@@ -88,13 +89,20 @@ const DialogConnectProviderContent: Component<{
       transition
       title={
         <Show when={controller.selected()} fallback={language.t("command.provider.connect")}>
-          <IconButton
-            tabIndex={-1}
-            icon="arrow-left"
-            variant="ghost"
-            onClick={() => back.current()}
-            aria-label={language.t("common.goBack")}
-          />
+          <>
+            <IconButton
+              tabIndex={controller.selected() === "antigravity-acp" ? undefined : -1}
+              icon="arrow-left"
+              variant="ghost"
+              onClick={() => back.current()}
+              aria-label={language.t("common.goBack")}
+            />
+            <Show when={controller.selected() === "antigravity-acp"}>
+              <span class="sr-only">
+                {language.t("provider.connect.title", { provider: "Antigravity ACP (local)" })}
+              </span>
+            </Show>
+          </>
         </Show>
       }
     >
@@ -189,6 +197,7 @@ function ProviderConnection(props: {
   onBack: () => void
   setBack: (handler: () => void) => void
 }) {
+  if (props.provider === "antigravity-acp") return <AntigravityAcpConnection {...props} />
   const cli = localCliConnections.get(props.provider)
   if (cli) return <LocalCliConnection {...props} setup={cli} />
   if (localProviders.some((item) => item.id === props.provider && item.kind === "server"))

@@ -8,7 +8,8 @@ export function encode(value: unknown, maxBytes: number, maxNodes = 100_000): st
   while (pending.length > 0) {
     const item = pending.pop()!
     if (++nodes > maxNodes || item.depth > 100) return
-    if (item.value === null || typeof item.value === "boolean") bytes += 5
+    if (item.value === null || item.value === true) bytes += 4
+    else if (item.value === false) bytes += 5
     else if (typeof item.value === "number") {
       if (!Number.isFinite(item.value)) return
       bytes += String(item.value).length
@@ -20,7 +21,7 @@ export function encode(value: unknown, maxBytes: number, maxNodes = 100_000): st
       if (Array.isArray(item.value)) {
         if (Object.getPrototypeOf(item.value) !== Array.prototype) return
         if (item.value.length > maxNodes - nodes - pending.length) return
-        bytes += 2 + item.value.length
+        bytes += 2 + Math.max(0, item.value.length - 1)
         for (let index = 0; index < item.value.length; index++) {
           const field = Object.getOwnPropertyDescriptor(item.value, String(index))
           if (field && !("value" in field)) return
@@ -30,13 +31,14 @@ export function encode(value: unknown, maxBytes: number, maxNodes = 100_000): st
         const prototype = Object.getPrototypeOf(item.value)
         if (prototype !== Object.prototype && prototype !== null) return
         bytes += 2
+        let fields = 0
         for (const key in item.value) {
           if (!Object.hasOwn(item.value, key)) continue
           const field = Object.getOwnPropertyDescriptor(item.value, key)
           if (!field || !("value" in field)) return
           if (field.value === undefined) continue
           if (pending.length + nodes >= maxNodes || key.length > maxBytes) return
-          bytes += stringBytes(key) + 2
+          bytes += stringBytes(key) + 1 + (fields++ > 0 ? 1 : 0)
           pending.push({ value: field.value, depth: item.depth + 1 })
           if (bytes > maxBytes) return
         }

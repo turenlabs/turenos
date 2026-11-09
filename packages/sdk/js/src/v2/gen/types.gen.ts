@@ -2732,6 +2732,17 @@ export type PermissionNotFoundError = {
   message: string
 }
 
+export type AntigravityAcpAuthState = {
+  id: string
+  status: "starting" | "waiting" | "authenticated" | "error" | "cancelled"
+  url?: string
+  message?: string
+}
+
+export type AcpAuthApiError = {
+  message: string
+}
+
 export type ProviderAuthMethod = {
   type: "oauth" | "api"
   label: string
@@ -11872,6 +11883,102 @@ export type PermissionReplyResponses = {
 }
 
 export type PermissionReplyResponse = PermissionReplyResponses[keyof PermissionReplyResponses]
+
+export type ProviderAcpAuthorizeData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/provider/antigravity-acp/auth"
+}
+
+export type ProviderAcpAuthorizeErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type ProviderAcpAuthorizeError = ProviderAcpAuthorizeErrors[keyof ProviderAcpAuthorizeErrors]
+
+export type ProviderAcpAuthorizeResponses = {
+  /**
+   * Antigravity ACP sign-in attempt
+   */
+  200: AntigravityAcpAuthState
+}
+
+export type ProviderAcpAuthorizeResponse = ProviderAcpAuthorizeResponses[keyof ProviderAcpAuthorizeResponses]
+
+export type ProviderAcpCancelData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/provider/antigravity-acp/auth/{id}"
+}
+
+export type ProviderAcpCancelErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * AcpAuthApiError
+   */
+  404: AcpAuthApiError
+}
+
+export type ProviderAcpCancelError = ProviderAcpCancelErrors[keyof ProviderAcpCancelErrors]
+
+export type ProviderAcpCancelResponses = {
+  /**
+   * Antigravity ACP sign-in cancelled
+   */
+  200: AntigravityAcpAuthState
+}
+
+export type ProviderAcpCancelResponse = ProviderAcpCancelResponses[keyof ProviderAcpCancelResponses]
+
+export type ProviderAcpStatusData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/provider/antigravity-acp/auth/{id}"
+}
+
+export type ProviderAcpStatusErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * AcpAuthApiError
+   */
+  404: AcpAuthApiError
+}
+
+export type ProviderAcpStatusError = ProviderAcpStatusErrors[keyof ProviderAcpStatusErrors]
+
+export type ProviderAcpStatusResponses = {
+  /**
+   * Antigravity ACP sign-in progress
+   */
+  200: AntigravityAcpAuthState
+}
+
+export type ProviderAcpStatusResponse = ProviderAcpStatusResponses[keyof ProviderAcpStatusResponses]
 
 export type ProviderListData = {
   body?: never

@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process"
 
 // This probe sends initialize only. It does not authenticate, create a session, or send a prompt.
-const executable = process.argv[2] ?? "devin"
+const executable = "devin"
 const version = execFileSync(executable, ["--version"], {
   encoding: "utf8",
   timeout: 10_000,

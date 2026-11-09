@@ -6,7 +6,7 @@ TurenOS Session V2 can use an installed Devin CLI and its existing login. This l
 
 1. Install Devin on the machine that runs the TurenOS backend.
 2. Run `devin --version` on that machine.
-3. Check that it reports `devin 3000.11.228 (053434014dbd)`.
+3. Check that it reports `devin 3000.12.28 (91c3aec41579)`.
 4. Run `devin auth login` if login is needed.
 5. Open **Settings > Local Providers** in TurenOS.
 6. Select **Devin CLI (local)** and select **Refresh**.
@@ -73,7 +73,7 @@ The unit tests include startup cancellation, text-only history replay, and MCP s
 
 Live tests restore the real credential data root because the normal Core test preload isolates XDG paths. Set `FORGE_LIVE_DEVIN_DATA_HOME` for a non-default data root. Product code uses the backend's configured `XDG_DATA_HOME` or the normal home-directory fallback.
 
-The installed build passed these real-CLI checks on macOS on 2026-10-28. Linux, WSL, and packaged Desktop execution still need qualification.
+Build `devin 3000.12.28 (91c3aec41579)` passed these real-CLI checks on macOS on 2026-11-09. Linux, WSL, and packaged Desktop execution still need qualification.
 
 ## Limits
 

@@ -10,5 +10,7 @@ policy, and limits. Provider resolution internals belong to the "Model and provi
     boundaries.
 - [Muse Code](./muse-code.md): using the signed-in local Muse CLI with host-routed tools.
 - [Devin CLI](./devin-cli.md): a version-qualified local ACP provider with host-routed tools and text-only input.
+- [Antigravity ACP](./antigravity-acp.md): driving the official local `agy_acp_server` binary over ACP v1 with
+  host-routed MCP tools and `oauth-personal` sign-in.
 - [Local models](./local-models.md): background discovery of local Ollama and llama.cpp servers, and running Bonsai 2
   with its supported local runtime and connecting the loopback API.

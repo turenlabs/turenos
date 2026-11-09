@@ -2,7 +2,7 @@
 
 TurenOS-managed credentials and small sensitive files must be encrypted with `SecretVault` before they are persisted. The
 vault uses one random application key protected by the operating system and exposes authenticated encryption to Core and
-TurenOS services.
+TurenOS services. Local server attach records are a bootstrap exception, described below.
 
 ## Security boundary
 
@@ -13,6 +13,13 @@ using a credential.
 The vault does not protect against arbitrary code execution in the Electron main process or server sidecar, same-user
 process compromise on Windows, OS swap or hibernation files, kernel crash dumps, or secrets deliberately written to a
 user-authored config or environment file.
+
+The desktop's local server password is published in an owner-readable `0600` `attach.json` so same-user clients such as
+the TUI can connect without access to the vault key. The record contains the loopback URL, username, password and desktop
+pid; it contains no vault key or provider credentials. It is replaced atomically when the sidecar becomes ready and removed
+on sidecar exit or desktop shutdown. A crash can leave the file behind; the TUI rejects records whose pid is dead or whose
+file predates that process, and the next desktop startup clears the old record. This password grants access to the local
+server API, so same-user processes that can read the record remain trusted. See [server discovery](./tui/README.md#server-discovery-and-switching).
 
 ## Architecture
 
@@ -327,6 +334,8 @@ persist such values in a credential repository and leave only an opaque referenc
 
 - [`packages/core/src/secret-vault.ts`](../../packages/core/src/secret-vault.ts)
 - [`packages/desktop/src/main/secret-key.ts`](../../packages/desktop/src/main/secret-key.ts)
+- [`packages/desktop/src/main/desktop-attach.ts`](../../packages/desktop/src/main/desktop-attach.ts) and
+  [`packages/tui/src/servers/records.ts`](../../packages/tui/src/servers/records.ts): local server bootstrap credentials.
 - [`packages/forge/src/cli/secret-vault-key.ts`](../../packages/forge/src/cli/secret-vault-key.ts) and
   [`packages/forge/src/cli/server-password.ts`](../../packages/forge/src/cli/server-password.ts): host key and
   password sources.

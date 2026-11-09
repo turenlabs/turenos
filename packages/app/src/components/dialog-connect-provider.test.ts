@@ -28,10 +28,11 @@ describe("local CLI setup", () => {
     expect(english.get(setup!.notReadyKey)).toBeTruthy()
   })
 
-  test("routes only built-in CLI providers to local login", () => {
+  test("keeps Antigravity on its separate browser sign-in flow", () => {
     expect([...localCliConnections.keys()]).toEqual(
-      localProviders.filter((item) => item.kind === "cli").map((item) => item.id),
+      localProviders.filter((item) => item.kind === "cli" && item.id !== "antigravity-acp").map((item) => item.id),
     )
+    expect(localCliConnections.has("antigravity-acp")).toBe(false)
     expect(localCliConnections.has("openai")).toBe(false)
     expect(localCliConnections.has("ollama")).toBe(false)
     expect(localCliConnections.has("constructor")).toBe(false)

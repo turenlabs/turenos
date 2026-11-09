@@ -64,6 +64,7 @@ import { createProfilerController, type ProfilerController } from "./profiler"
 import { withTeardownTimeout } from "./teardown-timeout"
 import { loadCredentialSecretKey } from "./secret-key"
 import { createSidecarSupervisor } from "./sidecar-supervisor"
+import { createDesktopAttach } from "./desktop-attach"
 
 // Deliberately still "Forge" after the rename to TurenOS. Electron derives the
 // safeStorage keychain service name from `app.getName()` ("<name> Safe Storage"),
@@ -88,6 +89,7 @@ const jsCallStackFeature = "DocumentPolicyIncludeJSCallStacksInCrashReports"
 let logger: ReturnType<typeof initLogging>
 let server: SidecarListener | null = null
 let sidecarSupervisor: ReturnType<typeof createSidecarSupervisor> | undefined
+let desktopAttach: ReturnType<typeof createDesktopAttach> | undefined
 let sidecarsStopped = false
 let securityProxyOrigin: string | undefined
 let wslServers: WslServersController | undefined
@@ -115,6 +117,7 @@ function emitDeepLinks(urls: string[]) {
 async function killSidecar() {
   sidecarsStopped = true
   sidecarSupervisor?.stop()
+  desktopAttach?.clear()
   await boundTeardownStep("securityProxy", closeSecurityProxy)()
   // Every sidecar teardown path funnels through here - quit, relaunch, the
   // updater and the kill-sidecar IPC - so it is the one place an in-flight
@@ -235,6 +238,7 @@ const main = Effect.gen(function* () {
     return
   }
 
+  desktopAttach = createDesktopAttach(app.getPath("userData"), (message) => logger.warn(message))
   preferAppEnv(app.getPath("userData"))
 
   app.on("second-instance", (_event: Event, argv: string[]) => {
@@ -259,6 +263,7 @@ const main = Effect.gen(function* () {
   app.on("before-quit", shutdown.beforeQuit)
 
   app.on("will-quit", () => {
+    desktopAttach?.clear()
     setAppQuitting()
   })
 
@@ -513,8 +518,10 @@ const main = Effect.gen(function* () {
         }),
       ready: ({ listener }) => {
         server = listener
+        desktopAttach?.publish({ url, username: "forge", password })
       },
       exited: (code) => {
+        desktopAttach?.clear()
         writeLog("utility", "sidecar exited", { code }, "warn")
         server = null
         void boundTeardownStep("securityProxy", disconnectSecurityProxy)().catch(() => undefined)

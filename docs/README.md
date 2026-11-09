@@ -109,6 +109,8 @@ outputs, ownership, failure behavior, and implementation links. These systems ha
   policy and settlement boundaries.
 - [Muse Code](./providers/muse-code.md): using the signed-in local Muse CLI with host-routed tools.
 - [Devin CLI](./providers/devin-cli.md): a version-qualified local ACP provider with host-routed tools and text-only input.
+- [Antigravity ACP](./providers/antigravity-acp.md): driving the official local `agy_acp_server` binary over ACP v1 with
+  host-routed MCP tools and `oauth-personal` sign-in.
 - [Local models](./providers/local-models.md): running Bonsai 2 with its supported local runtime and connecting the
   loopback API.
 
@@ -125,13 +127,18 @@ outputs, ownership, failure behavior, and implementation links. These systems ha
 
 ## Development
 
+- [Session attachment testing](./development/session-attachment-testing.md): persisted file cards, inline mentions,
+  image previews, and safe native actions.
 - [Security MCP integration conventions](./development/security-integrations.md): the contract, handlers, output,
   caching, and scanner rules for Security MCP integrations.
 - [Forge test fixtures](./development/forge-tests.md): temporary directories, Effect test helpers, and waiting on
   concurrent work in `packages/forge` tests.
+- [Session stream replay testing](./development/session-stream-testing.md): completed-message regressions and delayed-event GUI acceptance.
 - [Desktop sidecar profiler](./development/desktop-profiler.md): recording a CPU profile of the local sidecar in
   dev-channel Desktop builds.
 - [TUI development](./development/tui.md): testing `packages/tui`, its size limits, fixture rules and the PTY audit.
+- [Session removal testing](./development/session-removal-testing.md): conversation archive/delete cache checks and
+  desktop acceptance while global events are delayed.
 
 ## Experimental
 

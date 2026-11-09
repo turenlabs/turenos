@@ -15,7 +15,7 @@ import { DevinCLI } from "../../provider/devin-cli"
 import { ClaudeCodeMcp } from "./claude-code-mcp-namespace"
 
 const ROUTE_ID = "devin-acp"
-export const SUPPORTED_VERSION = "devin 3000.11.228 (053434014dbd)"
+export const SUPPORTED_VERSION = "devin 3000.12.28 (91c3aec41579)"
 export const NATIVE_TOOLS = [
   "read",
   "write",
@@ -112,12 +112,14 @@ export const credentialsPath = (source: NodeJS.ProcessEnv = process.env) =>
 
 // The hook is a second boundary for tools added by a future model or plugin.
 // It must not grant permission: the private MCP server applies current host policy.
-export const GUARD = `const { readFileSync } = require("node:fs")
-const input = JSON.parse(readFileSync(0, "utf8"))
-if (typeof input.tool_name === "string" && input.tool_name.startsWith("mcp__forge__")) process.exit(0)
-process.stderr.write("Use only TurenOS tools from the forge MCP server.")
-process.exit(2)
-`
+export const GUARD = [
+  'const { readFileSync } = require("node:fs")',
+  'const input = JSON.parse(readFileSync(0, "utf8"))',
+  'if (typeof input.tool_name === "string" && input.tool_name.startsWith("mcp__forge__")) process.exit(0)',
+  'process.stderr.write("Use only TurenOS tools from the forge MCP server.")',
+  "process.exit(2)",
+  "",
+].join("\n")
 
 export const settings = (directory: string) => ({
   auto_update: false,

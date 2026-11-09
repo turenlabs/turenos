@@ -2,8 +2,8 @@
 
 Core Session V2 resolves a catalog model to an `@turenlabs/llm` route and streams
 one provider turn through `LLMClient`. The legacy Forge session processor has a
-separate runtime selection: a CLI-direct path for Claude Code and Muse Code
-models, an AI SDK default, and an experimental native adapter. The native flag
+separate runtime selection: a CLI-direct path for Claude Code, Muse Code, and
+Antigravity ACP models, an AI SDK default, and an experimental native adapter. The native flag
 does not select the V2 runtime.
 
 ## Model catalog
@@ -39,9 +39,17 @@ the resulting events, then owns tool execution and continuation. Provider
 streaming does not delegate to the legacy Forge prompt loop.
 
 The V2 local CLI routes include [Claude Code](../../providers/claude-code/README.md),
-[Muse Code](../../providers/muse-code.md), and [Devin CLI](../../providers/devin-cli.md).
+[Muse Code](../../providers/muse-code.md), [Devin CLI](../../providers/devin-cli.md),
+and [Antigravity ACP](../../providers/antigravity-acp.md).
 Devin uses ACP with a fresh private CLI session per provider turn and the existing
 host MCP tool bridge. It is not part of the legacy CLI-direct path below.
+
+Each provider turn includes runtime model identity in the system prompt: the
+resolved provider ID, catalog model ID, and upstream model ID. This guidance
+remains present with custom agent prompts and updates when a later turn resolves
+a different model. It tells the assistant to use these configured identifiers
+instead of model identities from earlier replies. The identifiers describe the
+requested model; they do not independently verify the provider's backend.
 
 If OpenAI rejects a ChatGPT OAuth token with HTTP 401, Session V2 can refresh it once and retry the same request.
 This recovery applies only before text or tool input starts. A second 401 or a failed refresh ends the attempt.
@@ -63,7 +71,7 @@ See [LLM package architecture](./llm-package.md) for route construction and
 
 `packages/forge/src/session/llm.ts` picks one of three runtimes per request:
 
-1. **CLI direct.** Claude Code and Muse Code models always go through
+1. **CLI direct.** Claude Code, Muse Code, and Antigravity ACP models always go through
    `LLMClaudeCodeDirect.stream` (`packages/forge/src/session/llm/claude-code-direct.ts`).
    It lowers the request to an `LLMRequest` routed to the local CLI bridge,
    exposes session tools to the CLI through a private MCP namespace, and
@@ -76,8 +84,9 @@ See [LLM package architecture](./llm-package.md) for route construction and
 
 All three produce `LLMEvent`s for the legacy session processor. Tool execution
 remains session-owned. The CLIs themselves are covered in
-[Claude Code](../../providers/claude-code/README.md) and
-[Muse Code](../../providers/muse-code.md).
+[Claude Code](../../providers/claude-code/README.md),
+[Muse Code](../../providers/muse-code.md), and
+[Antigravity ACP](../../providers/antigravity-acp.md).
 
 ## Configuration
 

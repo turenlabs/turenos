@@ -18,6 +18,7 @@ export function attachTerminal(input: AttachOptions): Promise<AttachResult> {
     const session: Session = {
       options: input,
       open: input.socket ?? ((url: string) => new WebSocket(url)),
+      inputHeld: "",
       decoder: new TextDecoder("utf-8"),
       osc: { held: "", dropping: false },
       location: {

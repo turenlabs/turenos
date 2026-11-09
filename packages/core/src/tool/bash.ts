@@ -315,6 +315,17 @@ const layer = Layer.effect(
               })
             if (result.status === "failed" && result.exit === undefined)
               return yield* new ToolFailure({ message: `Unable to execute command: ${input.command}` })
+            if (result.status === "cancelled")
+              return yield* new ToolFailure({
+                message: [
+                  "Command was cancelled before completion and may have partially run.",
+                  result.output,
+                  result.truncated ? "[output capture truncated at the in-memory safety limit]" : "",
+                  warnings.length ? `Warnings:\n${warnings.map((warning) => `- ${warning}`).join("\n")}` : "",
+                ]
+                  .filter(Boolean)
+                  .join("\n\n"),
+              })
             return {
               ...(result.status === "running" || result.status === "stopping" || result.status === "interrupted"
                 ? { job_id: job.id, status: result.status }

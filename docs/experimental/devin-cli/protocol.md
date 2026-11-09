@@ -58,11 +58,7 @@ Run from the worktree root:
 bun mockups/devin-cli/probe.ts
 ```
 
-For a non-default executable:
-
-```sh
-bun mockups/devin-cli/probe.ts /absolute/path/to/devin
-```
+The probe resolves `devin` from `PATH`.
 
 The probe checks the executable version, then sends one initialization request. It limits initialization output to 1 MiB. Version checking has a 10-second timeout; initialization has a 15-second process deadline. It suppresses stderr and prints authentication method names, not credentials.
 

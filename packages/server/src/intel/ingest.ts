@@ -32,8 +32,11 @@ const parsedCache = (raw: string): Cache => {
 }
 
 export const readCache = (): Effect.Effect<Cache> =>
-  Effect.promise(() => fs.readFile(cachePath(), "utf8").then(parsedCache, () => emptyCache)).pipe(
-    Effect.catch(() => Effect.succeed(emptyCache)),
+  Effect.promise(() =>
+    fs
+      .readFile(cachePath(), "utf8")
+      .then(parsedCache)
+      .catch(() => emptyCache),
   )
 
 const writeCacheFile = (cache: Cache): Effect.Effect<void> =>

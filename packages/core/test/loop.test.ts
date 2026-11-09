@@ -772,6 +772,51 @@ describe("Loop", () => {
     }),
   )
 
+  it.effect("rejects antigravity-acp models on unattended loop create and edit", () =>
+    Effect.gen(function* () {
+      const loops = yield* Loop.Service
+      const acpModel = ModelV2.Ref.make({
+        providerID: ProviderV2.ID.make("antigravity-acp"),
+        id: ModelV2.ID.make("gemini-3-flash"),
+      })
+
+      expect(
+        yield* loops.create(input("lop_acp_top", { model: acpModel })).pipe(Effect.flip),
+      ).toBeInstanceOf(Loop.InvalidInputError)
+
+      expect(
+        yield* loops
+          .create(
+            input("lop_acp_step", {
+              workflow: {
+                version: 1,
+                steps: [{ id: "step-1", name: "Step 1", type: "agent", prompt: "Work", model: acpModel }],
+                delivery: { type: "turen" },
+              },
+            }),
+          )
+          .pipe(Effect.flip),
+      ).toBeInstanceOf(Loop.InvalidInputError)
+
+      const valid = yield* loops.create(input("lop_acp_edit_target", { paused: true }))
+      expect(
+        yield* loops.edit({ id: valid.id, model: acpModel }).pipe(Effect.flip),
+      ).toBeInstanceOf(Loop.InvalidInputError)
+      expect(
+        yield* loops
+          .edit({
+            id: valid.id,
+            workflow: {
+              version: 1,
+              steps: [{ id: "step-1", name: "Step 1", type: "agent", prompt: "Work", model: acpModel }],
+              delivery: { type: "turen" },
+            },
+          })
+          .pipe(Effect.flip),
+      ).toBeInstanceOf(Loop.InvalidInputError)
+    }),
+  )
+
   it.effect("validates cron expressions and computes the next firing", () =>
     Effect.sync(() => {
       expect(Loop.validateCronExpression("*/5 * * * *")).toBeUndefined()

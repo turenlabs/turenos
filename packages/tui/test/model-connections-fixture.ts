@@ -11,6 +11,8 @@ export { cleanup }
 
 export async function fixture(
   options: {
+    provider?: { id: string; name: string }
+    route?: (request: Request) => Response | undefined | Promise<Response | undefined>
     methods?: AuthMethod[]
     authMissing?: boolean
     mode?: "auto" | "code"
@@ -31,11 +33,16 @@ export async function fixture(
         path: url.pathname,
         method: request.method,
         directory: url.searchParams.get("directory"),
-        body: request.method === "GET" ? undefined : await request.json(),
+        body: request.method === "GET" || !request.body ? undefined : await request.json(),
       })
+      const extra = await options.route?.(request)
+      if (extra) return extra
       if (url.pathname === "/provider") {
         if (saved && options.failCatalogAfterSave) return new Response(null, { status: 503 })
-        return Response.json({ all: [{ id: "test", name: "Test Provider", models: {} }], connected: [] })
+        return Response.json({
+          all: [{ ...(options.provider ?? { id: "test", name: "Test Provider" }), models: {} }],
+          connected: [],
+        })
       }
       if (url.pathname === "/provider/auth")
         return Response.json(

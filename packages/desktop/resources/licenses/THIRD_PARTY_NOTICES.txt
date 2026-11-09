@@ -57147,7 +57147,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 --------------------------------------------------------------------------------
-undici@8.10.2
+undici@8.12.2
 License: MIT
 Source: git+https://github.com/nodejs/undici.git
 

@@ -78,6 +78,7 @@ import { makeLocationNode } from "../../effect/app-node"
 import { llmClient } from "../../effect/app-node-platform"
 import { isWithReplicas } from "@turenlabs/effect-drizzle-sqlite"
 import { and, eq } from "drizzle-orm"
+import { AntigravityAcpCLI } from "../../provider/antigravity-acp"
 import { ClaudeCodeCLI } from "../../provider/claude-code"
 import { MuseCodeCLI } from "../../provider/muse-code"
 import { DevinCLI } from "../../provider/devin-cli"
@@ -380,11 +381,17 @@ const layer = Layer.effect(
       const session = yield* store.get(sessionID)
       // Resolved even without an override: the turn's model carries the model's default reasoning
       // level, which would spend the summary's small output cap on thinking.
+      const avoidAcp = !override && (session?.model === undefined || session.model.providerID === AntigravityAcpCLI.ID)
       const resolved = session
         ? yield* models
-            .resolve(override ? { ...session, model: override } : session, selection.info?.request, {
-              defaultVariant: false,
-            })
+            .resolve(
+              override ? { ...session, model: override } : avoidAcp ? { ...session, model: undefined } : session,
+              selection.info?.request,
+              {
+                defaultVariant: false,
+                ...(avoidAcp ? { excludeProviderID: AntigravityAcpCLI.ID } : {}),
+              },
+            )
             .pipe(
               Effect.catch((error) =>
                 Effect.logWarning("Compaction model is unavailable; summarising with the session model").pipe(
@@ -801,12 +808,18 @@ const layer = Layer.effect(
       }
       const isLastStep = agent.info?.steps !== undefined && currentStep >= agent.info.steps
       const toolsDisabled = agent.info?.tools === false || isLastStep
+      const disallowAcp =
+        session.parentID !== undefined || session.id.startsWith("ses_loop_") || session.id.startsWith("ses_team_")
       const [system, resolvedModel] = yield* Effect.all(
         [
           initialized
             ? Effect.succeed(initialized)
             : SessionContextEpoch.prepare(db, events, loadSystemContext(agent, session.id), session.id),
-          models.resolve(session, agent.info?.request),
+          models.resolve(
+            session,
+            agent.info?.request,
+            disallowAcp ? { excludeProviderID: AntigravityAcpCLI.ID } : undefined,
+          ),
         ] as const,
         { concurrency: "unbounded" },
       )
@@ -849,6 +862,16 @@ const layer = Layer.effect(
             { concurrency: "unbounded" },
           )
         : [undefined, undefined]
+      if (disallowAcp && modelRef.providerID === AntigravityAcpCLI.ID) {
+        return yield* new SessionRunnerModel.ModelUnavailableError({
+          providerID: modelRef.providerID,
+          modelID: modelRef.id,
+          reason:
+            session.parentID !== undefined
+              ? "Antigravity ACP does not support subagent or child sessions"
+              : "Antigravity ACP supports interactive single-user sessions only; configure an authorized API or enterprise model for unattended Automations",
+        })
+      }
       const currentTask =
         latestHumanInput &&
         (followsRoomRead === true ||
@@ -918,7 +941,8 @@ const layer = Layer.effect(
       const claudeTools =
         modelRef.providerID === ClaudeCodeCLI.ID ||
         modelRef.providerID === MuseCodeCLI.ID ||
-        modelRef.providerID === DevinCLI.ID
+        modelRef.providerID === DevinCLI.ID ||
+        modelRef.providerID === AntigravityAcpCLI.ID
           ? (toolMaterialization?.definitions ?? [])
           : []
       type ClaudeToolCall = { readonly id: string; readonly name: string; readonly input: unknown }
@@ -944,6 +968,11 @@ const layer = Layer.effect(
       const base = [
         agent.info?.system ?? ProviderPrompt.forModel(model.id),
         system.baseline,
+        // Resolve per turn, not from the durable context baseline that survives model switches.
+        [
+          `Runtime model identity for this turn: ${JSON.stringify({ providerID: modelRef.providerID, modelID: modelRef.id, upstreamModelID: model.id })}`,
+          "When asked which model you are, report this configured identity instead of model identities from earlier replies. This identifies the requested model, not an independently verified provider backend.",
+        ].join("\n"),
         toolSnapshot?.snapshot.broker.visible.includes(ToolBroker.SEARCH_TOOL_NAME)
           ? ToolBroker.DISCOVERY_SYSTEM_PROMPT
           : undefined,
@@ -1465,9 +1494,13 @@ const layer = Layer.effect(
                 // a CLI tool call, so re-raising an interruption left it running forever.
                 const result = yield* protectReply({
                   type: "error",
-                  value: Cause.hasInterruptsOnly(settlement.cause)
-                    ? TurnInterruption.TOOL
-                    : `Tool execution failed: ${yield* visible(Cause.squash(settlement.cause))}`,
+                  value:
+                    Cause.hasInterruptsOnly(settlement.cause) ||
+                    settlement.cause.reasons.some(
+                      (reason) => Cause.isDieReason(reason) && reason.defect instanceof PermissionV2.DeclinedError,
+                    )
+                      ? TurnInterruption.TOOL
+                      : `Tool execution failed: ${yield* visible(Cause.squash(settlement.cause))}`,
                 })
                 yield* publish(LLMEvent.toolResult({ id: call.id, name: call.name, result }))
                 return result
@@ -1580,6 +1613,8 @@ const layer = Layer.effect(
               needsContinuation = true
               const assistantMessageID = yield* publisher.assistantMessageID(event.id)
               toolTurnIDs.add(assistantMessageID)
+              // Before the fork: a call that settles before the stream ends must still wait for `completeTurn`.
+              yield* toolMaterialization.openTurn({ sessionID: session.id, assistantMessageID })
               pendingToolCalls.set(event.id, { name: event.name, assistantMessageID, startedAt: Date.now() })
               // Goal updates settle on their own fiber set and are awaited after the real work, so
               // they stay outside the fan-out budget: a bookkeeping call must not queue behind eight
@@ -1980,6 +2015,7 @@ const layer = Layer.effect(
             todoPrompt !== "done" &&
             todoToolAvailable &&
             modelRef.providerID !== ClaudeCodeCLI.ID &&
+            modelRef.providerID !== AntigravityAcpCLI.ID &&
             substantiveWork &&
             !todoUpdated &&
             (todoPrompt === "initial" || SessionTodoGuidance.hasOpenItems(yield* todos.get(session.id)))

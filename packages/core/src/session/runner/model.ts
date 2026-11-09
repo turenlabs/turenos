@@ -22,6 +22,7 @@ import { AmazonBedrockModel } from "../../plugin/provider/amazon-bedrock-model"
 import { OpenAICodex } from "../../plugin/provider/openai-codex"
 import { ProviderV2 } from "../../provider"
 import { AISDKBridge } from "./aisdk-bridge"
+import { AntigravityAcpBridge } from "./antigravity-acp-bridge"
 import { ClaudeCodeBridge } from "./claude-code-bridge"
 import { MuseCodeBridge } from "./muse-code-bridge"
 import { DevinACP } from "./devin-acp"
@@ -238,6 +239,11 @@ export type ResolveOptions = {
   readonly defaultVariant?: boolean
   /** The `oauthExpires` of a resolution whose token the provider rejected: refresh it first. */
   readonly refreshOAuth?: number
+  /**
+   * When resolving an unpinned background call, prefer any connected provider other than this one
+   * before falling back to it.
+   */
+  readonly excludeProviderID?: ProviderV2.ID
 }
 
 export interface Interface {
@@ -1069,6 +1075,8 @@ export const fromCatalogModel = (
   if (MuseCodeBridge.isMuseCode(model))
     return Effect.succeed(MuseCodeBridge.model({ model, defaults: defaults(model) }))
   if (DevinACP.isDevin(model)) return Effect.succeed(DevinACP.model({ model, defaults: defaults(model) }))
+  if (AntigravityAcpBridge.isAntigravityAcp(model))
+    return Effect.succeed(AntigravityAcpBridge.model({ model, defaults: defaults(model) }))
   if (
     model.providerID === ProviderV2.ID.openai &&
     model.api.id === "gpt-5.3-codex-spark" &&
@@ -1113,6 +1121,8 @@ export const fromCatalogModelWithAISDK = (
   if (MuseCodeBridge.isMuseCode(model))
     return Effect.succeed(MuseCodeBridge.model({ model, defaults: defaults(model) }))
   if (DevinACP.isDevin(model)) return Effect.succeed(DevinACP.model({ model, defaults: defaults(model) }))
+  if (AntigravityAcpBridge.isAntigravityAcp(model))
+    return Effect.succeed(AntigravityAcpBridge.model({ model, defaults: defaults(model) }))
   if (credential?.type === "oauth" && model.providerID === ProviderV2.ID.openai) return chatGPTOAuth(model, credential)
   if (
     model.api.type === "aisdk" &&
@@ -1220,6 +1230,7 @@ export const supported = (model: ModelV2.Info) =>
   ClaudeCodeBridge.isClaudeCode(model) ||
   MuseCodeBridge.isMuseCode(model) ||
   DevinACP.isDevin(model) ||
+  AntigravityAcpBridge.isAntigravityAcp(model) ||
   (model.api.type === "aisdk" &&
     ((adapterFor(model.api.package) !== undefined && nativeQualified(model)) || bridgeQualified(model)))
 
@@ -1365,13 +1376,18 @@ export const locationLayer = Layer.effect(
           candidates = yield* availableModels(catalog, integrations)
           defaultModel = yield* catalog.model.default()
         }
+        const filtered =
+          options?.excludeProviderID === undefined
+            ? candidates
+            : candidates.filter((candidate) => candidate.model.providerID !== options.excludeProviderID)
+        const usable = filtered.length > 0 ? filtered : candidates
         const selected =
-          candidates.find(
+          usable.find(
             (candidate) =>
               defaultModel !== undefined &&
               candidate.model.providerID === defaultModel.providerID &&
               candidate.model.id === defaultModel.id,
-          ) ?? candidates[0]
+          ) ?? usable[0]
         if (!selected) return yield* new ModelNotSelectedError({ sessionID: session.id })
         const credential =
           options?.refreshOAuth === undefined

@@ -24,6 +24,44 @@ describe("proxy policy", () => {
       expect(ProxyPolicy.matches(url, "https://target.test/api")).toBe(false)
   })
 
+  test("protects loopback aliases only on the protected scheme and port", () => {
+    const origins = ["http://127.0.0.1:4321", "https://dev.example.com"]
+    const aliases = [
+      "127.0.0.1",
+      "localhost",
+      "anything.localhost",
+      "localhost.",
+      "anything.localhost.",
+      "0.0.0.0",
+      "[::1]",
+      "[::]",
+      "[::ffff:127.0.0.1]",
+      "[::ffff:127.255.255.255]",
+      "127.0.0.2",
+      "127.255.255.255",
+      "2130706433",
+      "127.1",
+      "0x7f000001",
+      "0177.0.0.1",
+    ]
+    expect(aliases.filter((host) => !ProxyPolicy.isProtected(new URL(`http://${host}:4321/path`), origins))).toEqual([])
+    const allowed = [
+      "http://localhost:3000",
+      "https://localhost:4321",
+      "http://example.com:4321",
+      "http://localhost.example.com:4321",
+      "https://other.example.com",
+      "http://[::ffff:128.0.0.1]:4321",
+      "http://128.0.0.1:4321",
+      "http://127.example.com:4321",
+    ]
+    expect(allowed.filter((value) => ProxyPolicy.isProtected(new URL(value), origins))).toEqual([])
+    expect(ProxyPolicy.isProtected(new URL("https://dev.example.com/path"), origins)).toBe(true)
+    expect(ProxyPolicy.isProtected(new URL("http://localhost/path"), ["http://127.0.0.1:80"])).toBe(true)
+    expect(ProxyPolicy.isProtected(new URL("https://localhost/path"), ["https://[::1]:443"])).toBe(true)
+    expect(ProxyPolicy.isProtected(new URL("http://localhost:443"), ["https://127.0.0.1"])).toBe(false)
+  })
+
   test("requires only a name to create a case", () => {
     const input = { id: "case_1", name: " Lab " }
     expect(ProxyPolicy.requireCreate(input).name).toBe("Lab")
@@ -60,5 +98,18 @@ describe("proxy policy", () => {
     expect(masked.body.data).toContain("visible")
     expect(message.headers[0].value).toBe("Bearer secret")
     expect(message.url).toContain("token=secret")
+  })
+
+  test("masks JSON secrets across preview and capture boundaries", () => {
+    const value = `{"message":"${"x".repeat(65500)}","token":"leak-boundary-secret-value"}`
+    const preview = ProxyPolicy.publicBody({ data: value, encoding: "utf8", state: "complete", size: value.length })
+    expect(preview.data.includes("leak")).toBe(false)
+    expect(preview.data.endsWith('"token":"[REDACTED]"')).toBe(true)
+    expect(preview.state).toBe("truncated")
+
+    const partial = '{"password":"captured-secret\\'
+    const truncated = ProxyPolicy.publicBody({ data: partial, encoding: "utf8", state: "truncated", size: 100 })
+    expect(truncated.data.includes("captured-secret")).toBe(false)
+    expect(truncated.state).toBe("truncated")
   })
 })

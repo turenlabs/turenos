@@ -36,6 +36,12 @@ const layer = Layer.effectDiscard(
         event.notes.push(...notes)
       }),
     )
+
+    // `after` does not run for a call the registry refuses after `before` (masked secret input) or that is
+    // interrupted. `finalize` runs for every settled call, after `after`.
+    yield* interceptors.hook.finalize((event) => {
+      active.delete(key(event))
+    })
   }),
 )
 

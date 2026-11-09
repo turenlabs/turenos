@@ -165,11 +165,11 @@ export const applyFeedAdd = (feeds: ReadonlyArray<Feed>, input: FeedCreateInput)
 
 const readStoredFeeds = (): Effect.Effect<Array<Feed> | undefined> =>
   Effect.promise(() =>
-    fs.readFile(feedsConfigPath(), "utf8").then(
-      (raw) => sanitizeFeedList(JSON.parse(raw) as unknown),
-      () => undefined,
-    ),
-  ).pipe(Effect.catch(() => Effect.succeed(undefined)))
+    fs
+      .readFile(feedsConfigPath(), "utf8")
+      .then((raw) => sanitizeFeedList(JSON.parse(raw) as unknown))
+      .catch(() => undefined),
+  )
 
 const writeStoredFeeds = (feeds: ReadonlyArray<Feed>): Effect.Effect<void> =>
   Effect.promise(async () => {

@@ -2,10 +2,13 @@ import { createHash, randomUUID } from "node:crypto"
 import { createServer } from "node:http"
 import type { ToolContent, ToolDefinition, ToolResultValue } from "@turenlabs/llm"
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js"
-import { Effect } from "effect"
+import { Context, Effect } from "effect"
 import { ClaudeCodeGuidance } from "../../claude-code-guidance"
 
 const metadataKey = "forge/claude-code-mcp"
+export const ActiveMcpToken = Context.Reference<string | undefined>("@forge/ClaudeCodeMcp/ActiveMcpToken", {
+  defaultValue: () => undefined,
+})
 const bridges = new Map<string, Registered>()
 const REQUEST_LIMIT = 2 * 1024 * 1024
 const ACTIVE_DRAIN_TIMEOUT = 5_000
@@ -198,7 +201,7 @@ export const serve = Effect.fn("ClaudeCodeMcp.serve")(function* (token: string) 
           name: request.params.name,
           input: request.params.arguments ?? {},
         })
-        .pipe(Effect.map(toCallToolResult)),
+        .pipe(Effect.provideService(ActiveMcpToken, token), Effect.map(toCallToolResult)),
       { signal: controller.signal },
     )
     active.add(running)
