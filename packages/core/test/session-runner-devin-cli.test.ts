@@ -387,24 +387,25 @@ if (request.id === "permission") reply(promptRequest, { stopReason: "end_turn" }
   it.effect("guards every native tool and permits only the private MCP namespace", () =>
     Effect.gen(function* () {
       const cli = yield* fakeCLI(textReply)
-      const guard = join(cli.directory, "guard.cjs")
-      writeFileSync(guard, DevinACP.GUARD)
+      const directory = join(cli.directory, "hook '\" $() `printf denied`;")
+      DevinACP.prepare(directory, "Host system rules")
+      const guard = DevinACP.settings(directory).hooks.PreToolUse[0]!.hooks[0]!.command
       for (const tool_name of [...DevinACP.NATIVE_TOOLS, "new_native_tool", "mcp__other__read"]) {
         expect(() =>
-          execFileSync(process.execPath, [guard], {
+          execFileSync("/bin/sh", ["-c", guard], {
             input: JSON.stringify({ tool_name }),
             stdio: ["pipe", "ignore", "ignore"],
           }),
         ).toThrow()
       }
       expect(() =>
-        execFileSync(process.execPath, [guard], {
+        execFileSync("/bin/sh", ["-c", guard], {
           input: JSON.stringify({ tool_name: "mcp__forge__read" }),
           stdio: ["pipe", "ignore", "ignore"],
         }),
       ).not.toThrow()
       expect(() =>
-        execFileSync(process.execPath, [guard], { input: "invalid", stdio: ["pipe", "ignore", "ignore"] }),
+        execFileSync("/bin/sh", ["-c", guard], { input: "invalid", stdio: ["pipe", "ignore", "ignore"] }),
       ).toThrow()
     }),
   )

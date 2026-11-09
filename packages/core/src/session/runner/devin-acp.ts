@@ -3,6 +3,7 @@ export * as DevinACP from "./devin-acp"
 import type { ClientSideConnection, SessionNotification } from "@agentclientprotocol/sdk"
 import { LLMError, LLMEvent, LLMRequest, TransportReason } from "@turenlabs/llm"
 import { Endpoint, Protocol, Route, type RouteDefaultsInput, type TransportDef } from "@turenlabs/llm/route"
+import { $ } from "bun"
 import { Cause, Effect, Queue, Schema, Stream } from "effect"
 import { execFile, spawn } from "node:child_process"
 import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
@@ -140,9 +141,7 @@ export const settings = (directory: string) => ({
         hooks: [
           {
             type: "command",
-            command: [process.execPath, join(directory, "guard.cjs")]
-              .map((part) => `'${part.replaceAll("'", "'\\''")}'`)
-              .join(" "),
+            command: [process.execPath, join(directory, "guard.cjs")].map($.escape).join(" "),
             timeout: 5,
             fail_closed: true,
           },
