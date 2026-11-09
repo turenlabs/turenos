@@ -150,7 +150,10 @@ try {
       },
       { requestTimeoutMs: 20 },
     )
-    await assert.rejects(hanging.send(entry(`hanging-${stage}`), client, undefined, () => assert.fail("cleared")))
+    await assert.rejects(
+      hanging.send(entry(`hanging-${stage}`), client, undefined, () => assert.fail("cleared")),
+      { name: "TimeoutError", message: "Saving the prompt timed out. It has not been sent." },
+    )
     assert.equal(hanging.sending(scope, "session", `hanging-${stage}`), false)
     assert.equal(posts.length, count)
     gate.resolve()
@@ -169,6 +172,7 @@ try {
       signal.throwIfAborted()
       clearedAfterDeadline = true
     }),
+    { name: "TimeoutError", message: "Preparing the prompt timed out. It has not been sent." },
   )
   preparationGate.resolve()
   await pause(5)
@@ -206,6 +210,46 @@ try {
   await boot.ready
   assert.equal(boot.error(), undefined)
   assert.equal(await boot.send(entry("bootstrap"), client), "admitted")
+
+  const hangingBoot = owner({ ...storage().port, keys: () => new Promise(() => {}) }, { requestTimeoutMs: 20 })
+  await assert.rejects(hangingBoot.ready, {
+    name: "TimeoutError",
+    message: "Saved prompt delivery information could not be read in time. Keep this device's storage intact.",
+  })
+
+  // A timed-out POST stays uncertain. A failed save on retry must not imply non-delivery.
+  mode = "hold"
+  const timeoutStorage = storage()
+  let holdSave = false
+  const saveGate = Promise.withResolvers<void>()
+  const timeoutOwner = owner(
+    {
+      ...timeoutStorage.port,
+      setItem: async (key, value) => {
+        if (holdSave) await saveGate.promise
+        timeoutStorage.port.setItem(key, value)
+      },
+    },
+    { requestTimeoutMs: 20 },
+  )
+  assert.equal(await timeoutOwner.send(entry("post-timeout"), client), "unknown")
+  assert.equal(
+    timeoutOwner.get(scope, "session", "post-timeout")?.error,
+    "Sending the prompt timed out. Delivery is not confirmed.",
+  )
+  holdSave = true
+  const beforeRetrySave = posts.length
+  await assert.rejects(timeoutOwner.send(entry("post-timeout"), client), {
+    name: "TimeoutError",
+    message: "Saving the retry timed out. The original delivery is still unconfirmed.",
+  })
+  assert.equal(posts.length, beforeRetrySave)
+  assert.equal(timeoutOwner.get(scope, "session", "post-timeout")?.state, "unknown")
+  holdSave = false
+  saveGate.resolve()
+  releases.get("post-timeout")!()
+  await until(() => statuses.has("post-timeout"))
+  assert.equal(await timeoutOwner.check(scope, "session", "post-timeout", client), "pending")
 
   // A late POST can commit after an authoritative missing read. Keep the ID
   // and exact payload through restart, then resolve without a second POST.
@@ -437,7 +481,10 @@ try {
   assert.ok(rows.filter(([key]) => key.includes("\u0000\u0000")).length >= 2)
   assert.ok(rows.every(([, value]) => value.length <= 768 * 1024))
   assert.equal(
-    rows.map(([, value]) => value).join("").split(bigFile).length - 1,
+    rows
+      .map(([, value]) => value)
+      .join("")
+      .split(bigFile).length - 1,
     1,
   )
   const largeReopened = owner(largeStorage.port)

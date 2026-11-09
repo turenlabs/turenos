@@ -127,12 +127,14 @@ export function createPromptAdmission(input: {
     if (loading) return loading
     loading = Promise.resolve()
       .then(async () => {
-        const keys = (await timedRequest(async () => storage.keys(), undefined, timeout)).filter((key) =>
+        const readTimeout =
+          "Saved prompt delivery information could not be read in time. Keep this device's storage intact."
+        const keys = (await timedRequest(async () => storage.keys(), undefined, timeout, readTimeout)).filter((key) =>
           key.startsWith(PREFIX),
         )
         const records = await Promise.all(
           keys.map(async (key) => {
-            const raw = await timedRequest(async () => storage.getItem(key), undefined, timeout)
+            const raw = await timedRequest(async () => storage.getItem(key), undefined, timeout, readTimeout)
             if (!raw) return
             const value: unknown = decodeEntry(JSON.parse(raw))
             if (!validEntry(value) || PREFIX + keyFor(value.scope, value.sessionID, value.payload.id) !== key)
@@ -257,8 +259,7 @@ export function createPromptAdmission(input: {
       }),
     )
     const other = Object.entries(state.entries).filter(
-      (pair): pair is [string, PromptAdmission] =>
-        pair[0] !== key && !!pair[1] && pair[1].state !== "admitted",
+      (pair): pair is [string, PromptAdmission] => pair[0] !== key && !!pair[1] && pair[1].state !== "admitted",
     )
     // The bound covers the stored encoding — file parts keep references into the
     // payload rather than a second copy of each attachment's data URL.
@@ -278,12 +279,18 @@ export function createPromptAdmission(input: {
     const errors: unknown[] = []
     const retry = input.retryDelays ?? [250, 750, 1500]
     try {
-      await timedRequest(() => persist(key, encoded), signal, timeout).catch((error: unknown) => {
+      await timedRequest(
+        () => persist(key, encoded),
+        signal,
+        timeout,
+        previouslyUnknown
+          ? "Saving the retry timed out. The original delivery is still unconfirmed."
+          : "Saving the prompt timed out. It has not been sent.",
+      ).catch((error: unknown) => {
         // The adapter may finish after our deadline. Keep cleanup behind the
         // actual write, while releasing the sender with its composer intact.
         // An earlier uncertain POST still owns its journal on retry failure.
-        if (!existing)
-          void serializeWrite(key, async () => storage.removeItem(PREFIX + key)).catch(() => undefined)
+        if (!existing) void serializeWrite(key, async () => storage.removeItem(PREFIX + key)).catch(() => undefined)
         throw error
       })
       setState("entries", key, next)
@@ -294,7 +301,14 @@ export function createPromptAdmission(input: {
         parts: next.parts,
       })
       notify()
-      await timedRequest(async (signal) => beforePost?.(signal), signal, timeout).catch((error: unknown) => {
+      await timedRequest(
+        async (signal) => beforePost?.(signal),
+        signal,
+        timeout,
+        previouslyUnknown
+          ? "Preparing the retry timed out. The original delivery is still unconfirmed."
+          : "Preparing the prompt timed out. It has not been sent.",
+      ).catch((error: unknown) => {
         // No POST has begun: keeping this prepared-only record would create a
         // ghost unknown row when the preserved composer is submitted again.
         if (!existing) settle(entry.scope, entry.sessionID, entry.payload.id, "cancelled")
@@ -307,6 +321,7 @@ export function createPromptAdmission(input: {
           (signal) => client.v2.session.prompt(next.payload, { signal }),
           signal,
           timeout,
+          "Sending the prompt timed out. Delivery is not confirmed.",
         )
           .then(() => ({ ok: true as const }))
           .catch((error: unknown) => ({ ok: false as const, error }))
@@ -500,13 +515,11 @@ export async function timedRequest<T>(
   request: (signal: AbortSignal) => Promise<T>,
   signal: AbortSignal | undefined,
   timeout: number,
+  timeoutMessage = "Delivery check timed out",
 ) {
   const controller = new AbortController()
   const cancel = () => controller.abort(signal?.reason)
-  const timer = setTimeout(
-    () => controller.abort(new DOMException("Delivery check timed out", "TimeoutError")),
-    timeout,
-  )
+  const timer = setTimeout(() => controller.abort(new DOMException(timeoutMessage, "TimeoutError")), timeout)
   signal?.addEventListener("abort", cancel, { once: true })
   if (signal?.aborted) cancel()
   const interrupted = new Promise<never>((_, reject) => {
@@ -610,7 +623,12 @@ function decodeEntry(value: unknown) {
   return {
     ...value,
     parts: value.parts.map((part) => {
-      if (!isRecord(part) || part.type !== "file" || typeof part.url !== "string" || !part.url.startsWith(FILE_REFERENCE))
+      if (
+        !isRecord(part) ||
+        part.type !== "file" ||
+        typeof part.url !== "string" ||
+        !part.url.startsWith(FILE_REFERENCE)
+      )
         return part
       const file = files[Number(part.url.slice(FILE_REFERENCE.length))]
       return isRecord(file) && typeof file.uri === "string" ? { ...part, url: file.uri } : part

@@ -38,12 +38,11 @@ const layer = Layer.effect(
     const syncSessionOutput = (input: {
       readonly sessionID: string
       readonly assistantMessageID: string
-      readonly taskID: string
-      readonly finish: string
       readonly recovery?: boolean
     }) =>
       Effect.gen(function* () {
-        if (input.finish !== "stop") return
+        const taskID = yield* team.sessionOutputTask(input)
+        if (!taskID) return
         const sessionID = SessionV2.ID.make(input.sessionID)
         const assistantMessageID = SessionMessage.ID.make(input.assistantMessageID)
         const message = yield* sessions.message({ sessionID, messageID: assistantMessageID })
@@ -56,7 +55,7 @@ const layer = Layer.effect(
           return
         yield* team.publishSessionOutput({
           sessionID,
-          taskID: input.taskID,
+          taskID,
           assistantMessageID,
           text: teamSessionOutputText(message),
           ...(input.recovery ? { recovery: true } : {}),
@@ -71,37 +70,12 @@ const layer = Layer.effect(
         ),
       )
 
-    const taskIDsForMessages = (sessionID: string, messages: ReadonlyArray<SessionMessage.Message>) =>
-      Effect.forEach(
-        new Set(
-          messages
-            .filter((message) => message.type === "user" && message.id.startsWith("msg_team_"))
-            .map((message) => message.id.slice("msg_team_".length)),
-        ),
-        (id) =>
-          team.getTask(id).pipe(
-            Effect.catch(() => Effect.succeed(undefined)),
-            Effect.map((task) => (task?.sessionID === sessionID ? task.id : undefined)),
-          ),
-      ).pipe(Effect.map((ids) => new Set(ids.filter((id): id is string => id !== undefined))))
-
     const sessionOutputSync = events.subscribe(SessionEvent.Step.Ended).pipe(
       Stream.filter((event) => event.data.finish === "stop"),
       Stream.runForEach((event) =>
-        Effect.gen(function* () {
-          const messages = yield* sessions.messages({
-            sessionID: SessionV2.ID.make(event.data.sessionID),
-            order: "asc",
-          })
-          const taskIDs = yield* taskIDsForMessages(event.data.sessionID, messages)
-          const taskID = teamTaskIDForResponse(messages, event.data.assistantMessageID, taskIDs)
-          if (!taskID) return
-          yield* syncSessionOutput({
-            sessionID: event.data.sessionID,
-            assistantMessageID: event.data.assistantMessageID,
-            taskID,
-            finish: event.data.finish,
-          })
+        syncSessionOutput({
+          sessionID: event.data.sessionID,
+          assistantMessageID: event.data.assistantMessageID,
         }),
       ),
       Effect.catchCause((cause) =>
@@ -120,31 +94,18 @@ const layer = Layer.effect(
           sessionIDs,
           (id) =>
             Effect.gen(function* () {
-              const sessionID = SessionV2.ID.make(id)
-              const messages = yield* sessions.messages({ sessionID, order: "asc" })
-              const taskIDs = yield* taskIDsForMessages(id, messages)
-              yield* Effect.forEach(
-                messages.filter(
-                  (message): message is SessionMessage.Assistant =>
-                    message.type === "assistant" &&
-                    message.time.completed !== undefined &&
-                    !message.error &&
-                    message.finish === "stop",
-                ),
-                (message) => {
-                  const taskID = teamTaskIDForResponse(messages, message.id, taskIDs)
-                  return taskID
-                    ? syncSessionOutput({
-                        sessionID: id,
-                        assistantMessageID: message.id,
-                        taskID,
-                        finish: "stop",
-                        recovery: true,
-                      })
-                    : Effect.void
-                },
-                { discard: true },
-              )
+              let after: number | undefined
+              do {
+                const page = yield* team.sessionOutputPage({ sessionID: id, after })
+                yield* Effect.forEach(
+                  page.messageIDs,
+                  (assistantMessageID) => syncSessionOutput({ sessionID: id, assistantMessageID, recovery: true }),
+                  { discard: true },
+                )
+                after = page.next
+                // Give network requests a host event-loop turn between recovery pages.
+                yield* Effect.sleep(Duration.millis(1))
+              } while (after !== undefined)
             }).pipe(
               Effect.catchCause((cause) =>
                 Effect.logError("Team Session output reconciliation failed", {
@@ -390,24 +351,6 @@ export function extractTeamTaskOutput(
 // between them rather than running the sentences together.
 export function teamSessionOutputText(message: SessionMessage.Assistant) {
   return message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n\n")
-}
-
-export function teamTaskIDForResponse(
-  messages: ReadonlyArray<SessionMessage.Message>,
-  assistantMessageID: string,
-  taskIDs: ReadonlySet<string>,
-) {
-  const responseIndex = messages.findLastIndex((message) => message.id === assistantMessageID)
-  if (responseIndex < 0) return undefined
-  const taskPrompt = messages
-    .slice(0, responseIndex)
-    .findLast(
-      (message) =>
-        message.type === "user" &&
-        message.id.startsWith("msg_team_") &&
-        taskIDs.has(message.id.slice("msg_team_".length)),
-    )
-  return taskPrompt?.id.slice("msg_team_".length)
 }
 
 /**

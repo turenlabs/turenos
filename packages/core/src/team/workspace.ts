@@ -10,6 +10,12 @@ import { makeGlobalNode } from "../effect/app-node"
 import { Global } from "../global"
 import { Identifier } from "../id/id"
 import { LoopRunTable, LoopTable } from "../loop/sql"
+import { EventV2 } from "../event"
+import { EventTable } from "../event/sql"
+import { SessionEvent } from "../session/event"
+import { SessionMessage } from "../session/message"
+import { SessionSchema } from "../session/schema"
+import { SessionMessageTable } from "../session/sql"
 import {
   TeamAttachmentTable,
   TeamDutyRunTable,
@@ -107,6 +113,16 @@ export interface Interface {
     readonly offset?: number
     readonly limit?: number
   }) => Effect.Effect<ReadonlyArray<string>, unknown>
+  readonly sessionOutputPage: (input: {
+    readonly sessionID: string
+    readonly after?: number
+    readonly limit?: number
+  }) => Effect.Effect<{ readonly messageIDs: ReadonlyArray<string>; readonly next?: number }, unknown>
+  readonly sessionOutputTask: (input: {
+    readonly sessionID: string
+    readonly assistantMessageID: string
+    readonly recovery?: boolean
+  }) => Effect.Effect<string | undefined, unknown>
   readonly collaborate: (input: {
     readonly sessionID: string
     readonly assistantMessageID: string
@@ -2035,8 +2051,7 @@ const layer = Layer.effect(
             const id = sessionOutputMessageID(input.sessionID, input.assistantMessageID)
             const existing = yield* tx.select().from(TeamMessageTable).where(eq(TeamMessageTable.id, id)).get()
             if (existing) {
-              // Recovery republishes every finished reply on a timer. One already in the room keeps its stored text,
-              // which an earlier version may have joined differently; a live publish must match it exactly.
+              // A recovery retry preserves stored text from earlier versions. A live publish must match it exactly.
               if (
                 existing.session_id !== input.sessionID ||
                 (!input.recovery && existing.text !== input.text.slice(0, 20000))
@@ -2048,16 +2063,7 @@ const layer = Layer.effect(
             }
             const task = yield* tx.select().from(TeamTaskTable).where(eq(TeamTaskTable.id, input.taskID)).get()
             if (!task || task.session_id !== input.sessionID) return undefined
-            if (
-              task.status !== "succeeded" &&
-              task.status !== "failed" &&
-              !(
-                input.recovery &&
-                (task.status === "stale" ||
-                  (task.status === "running" && task.lease_expires_at !== null && task.lease_expires_at <= now()))
-              )
-            )
-              return undefined
+            if (!canPublishSessionOutput(task, input.recovery)) return undefined
             const taskResult = yield* tx
               .select()
               .from(TeamMessageTable)
@@ -2119,6 +2125,109 @@ const layer = Layer.effect(
           .offset(offset)
           .all()
           .pipe(Effect.orDie)).map((row) => row.sessionID)
+      })
+
+    const sessionOutputPage: Interface["sessionOutputPage"] = (input) =>
+      Effect.gen(function* () {
+        const after = input.after ?? -1
+        const limit = input.limit ?? 100
+        if (!Number.isSafeInteger(after) || after < -1 || !Number.isSafeInteger(limit) || limit < 1 || limit > 100)
+          return yield* new Team.InvalidRequestError({ message: "Invalid Team Session output page" })
+        if (!SessionEvent.Step.Ended.durable) return yield* Effect.die("Step.Ended must be durable")
+        // Completion events contain no transcript text or tool output. Page all finishes so each read stays bounded.
+        const rows = yield* db
+          .select({
+            seq: EventTable.seq,
+            messageID: sql<string>`json_extract(${EventTable.data}, '$.assistantMessageID')`,
+            finish: sql<string>`json_extract(${EventTable.data}, '$.finish')`,
+          })
+          .from(EventTable)
+          .where(
+            and(
+              eq(EventTable.aggregate_id, input.sessionID),
+              eq(
+                EventTable.type,
+                EventV2.versionedType(SessionEvent.Step.Ended.type, SessionEvent.Step.Ended.durable.version),
+              ),
+              gt(EventTable.seq, after),
+            ),
+          )
+          .orderBy(asc(EventTable.seq))
+          .limit(limit)
+          .all()
+          .pipe(Effect.orDie)
+        return {
+          messageIDs: rows.filter((row) => row.finish === "stop").map((row) => row.messageID),
+          next: rows.length === limit ? rows.at(-1)?.seq : undefined,
+        }
+      })
+
+    const sessionOutputTask: Interface["sessionOutputTask"] = (input) =>
+      Effect.gen(function* () {
+        const tasks = yield* db
+          .select({
+            id: TeamTaskTable.id,
+            status: TeamTaskTable.status,
+            lease_expires_at: TeamTaskTable.lease_expires_at,
+            archived: TeamRoomTable.archived,
+            teammateStatus: TeamTeammateTable.status,
+          })
+          .from(TeamTaskTable)
+          .innerJoin(TeamRoomTable, eq(TeamRoomTable.id, TeamTaskTable.room_id))
+          .innerJoin(TeamTeammateTable, eq(TeamTeammateTable.id, TeamTaskTable.teammate_id))
+          .where(eq(TeamTaskTable.session_id, input.sessionID))
+          .all()
+          .pipe(Effect.orDie)
+        if (!tasks.length) return undefined
+        const response = yield* db
+          .select({ seq: SessionMessageTable.seq })
+          .from(SessionMessageTable)
+          .where(
+            and(
+              eq(SessionMessageTable.session_id, SessionSchema.ID.make(input.sessionID)),
+              eq(SessionMessageTable.id, SessionMessage.ID.make(input.assistantMessageID)),
+              eq(SessionMessageTable.type, "assistant"),
+            ),
+          )
+          .get()
+          .pipe(Effect.orDie)
+        if (!response) return undefined
+        const prompt = yield* db
+          .select({ id: SessionMessageTable.id })
+          .from(SessionMessageTable)
+          .where(
+            and(
+              eq(SessionMessageTable.session_id, SessionSchema.ID.make(input.sessionID)),
+              eq(SessionMessageTable.type, "user"),
+              inArray(
+                SessionMessageTable.id,
+                tasks.map((task) => SessionMessage.ID.make(`msg_team_${task.id}`)),
+              ),
+              lt(SessionMessageTable.seq, response.seq),
+            ),
+          )
+          .orderBy(desc(SessionMessageTable.seq))
+          .limit(1)
+          .get()
+          .pipe(Effect.orDie)
+        const task = tasks.find((task) => prompt?.id === `msg_team_${task.id}`)
+        if (
+          !task ||
+          task.archived ||
+          task.teammateStatus !== "active" ||
+          !canPublishSessionOutput(task, input.recovery)
+        )
+          return undefined
+        const sourceKey = `session-output:${input.sessionID}:${input.assistantMessageID}`
+        const published = yield* db
+          .select({ sourceKey: TeamMessageTable.source_key, messageIDs: TeamMessageTable.source_message_ids })
+          .from(TeamMessageTable)
+          .where(inArray(TeamMessageTable.source_key, [sourceKey, `task:${task.id}`]))
+          .all()
+          .pipe(Effect.orDie)
+        if (published.some((row) => row.sourceKey === sourceKey || row.messageIDs?.includes(input.assistantMessageID)))
+          return undefined
+        return task.id
       })
 
     const collaborate: Interface["collaborate"] = (input) =>
@@ -2971,6 +3080,8 @@ const layer = Layer.effect(
       postTeammateMessage,
       publishSessionOutput,
       taskSessions,
+      sessionOutputPage,
+      sessionOutputTask,
       collaborate,
       claimTasks,
       startTask,
@@ -3040,4 +3151,17 @@ function sessionOutputMessageID(sessionID: string, assistantMessageID: string) {
   return `msg_output_${createHash("sha256")
     .update(JSON.stringify([sessionID, assistantMessageID]))
     .digest("hex")}`
+}
+
+function canPublishSessionOutput(
+  task: Pick<typeof TeamTaskTable.$inferSelect, "status" | "lease_expires_at">,
+  recovery = false,
+) {
+  return (
+    task.status === "succeeded" ||
+    task.status === "failed" ||
+    (recovery &&
+      (task.status === "stale" ||
+        (task.status === "running" && task.lease_expires_at !== null && task.lease_expires_at <= Date.now())))
+  )
 }

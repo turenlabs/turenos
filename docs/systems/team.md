@@ -108,6 +108,20 @@ While a task's Session or one of its subagent Sessions waits on such a request, 
 The link opens the Session that owns the request. Pending requests load from each task's stored Location, including its workspace. Descendant requests appear before their Directory is opened. Live requests load missing ancestor metadata. Live replies and rejections take precedence over pending-request snapshots.
 A room message is not a permission grant.
 
+## Reply recovery
+
+Team publishes completed `stop` replies through live events and a background recovery scan.
+The scan starts with the runtime and waits 30 seconds between passes.
+It pages durable completion events in groups of at most 100.
+It checks task ownership and existing room output before reading one reply's content.
+It does not load full Session transcripts.
+Source-message IDs suppress replies already included in task reports.
+
+Successful and failed tasks can publish follow-up replies.
+Recovery also accepts stale tasks and running tasks with expired leases.
+Cancelled tasks, paused teammates, and archived rooms do not receive recovered replies.
+Failed publication is retried on later passes.
+
 ## Message attachments
 
 Select **Attach**, drop files onto the composer, or paste a screenshot to add files to a room message. Remove an unwanted draft attachment with its **×** button. A failed send keeps its attachments for an exact retry; changing the draft starts a new message. A message can contain files without text. Each message accepts up to five files, at most 10 MiB per file and 20 MiB total decoded content. The server requires canonical base64 data URIs, a matching lowercase media type, and a filename without path separators. Remote URLs and host paths are not upload inputs.
