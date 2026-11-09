@@ -19,6 +19,7 @@ describe("isLocalProvider", () => {
     }
     expect(isLocalProviderID("claude-code")).toBe(true)
     expect(isLocalProviderID("muse-code")).toBe(true)
+    expect(isLocalProviderID("devin-cli")).toBe(true)
     expect(isLocalProviderID("antigravity-acp")).toBe(true)
     expect(isLocalProviderID("ollama")).toBe(true)
     expect(isLocalProviderID("llama-cpp")).toBe(true)
@@ -27,7 +28,19 @@ describe("isLocalProvider", () => {
   test("classifies local:// sentinel providers", () => {
     expect(isLocalProviderEndpoint("local://claude-code")).toBe(true)
     expect(isLocalProvider(provider("anything", "local://muse-code"))).toBe(true)
+    expect(isLocalProvider(provider("anything", "local://devin-cli"))).toBe(true)
+    expect(isLocalProviderID("custom-devin", "local://devin-cli")).toBe(true)
     expect(isLocalProvider(provider("anything", "local://antigravity-acp"))).toBe(true)
+  })
+
+  test("offers Devin CLI setup without a running provider", () => {
+    expect(localProviders.find((item) => item.id === "devin-cli")).toEqual({
+      id: "devin-cli",
+      name: "Devin CLI (local)",
+      kind: "cli",
+      descriptionKey: "settings.localProviders.available.devinCli",
+    })
+    expect(isRemovedProvider("devin-cli")).toBe(false)
   })
 
   test("classifies loopback endpoints, including schemeless and IPv6", () => {

@@ -25,6 +25,7 @@ import { AISDKBridge } from "./aisdk-bridge"
 import { AntigravityAcpBridge } from "./antigravity-acp-bridge"
 import { ClaudeCodeBridge } from "./claude-code-bridge"
 import { MuseCodeBridge } from "./muse-code-bridge"
+import { DevinACP } from "./devin-acp"
 import { SessionSchema } from "../schema"
 
 export class ModelNotSelectedError extends Schema.TaggedErrorClass<ModelNotSelectedError>()(
@@ -496,8 +497,7 @@ const defaults = (model: ModelV2.Info) => {
     provider: model.providerID,
     headers: runtimeHeaders(model),
     ...request,
-    ...(model.providerID === ProviderV2.ID.make("ollama") ||
-    model.providerID === ProviderV2.ID.make("llama-cpp")
+    ...(model.providerID === ProviderV2.ID.make("ollama") || model.providerID === ProviderV2.ID.make("llama-cpp")
       ? { http: { ...request.http, redirect: "error" as const } }
       : {}),
     limits: { context: model.limit.context, input: model.limit.input, output: model.limit.output },
@@ -1045,7 +1045,9 @@ const chatGPTOAuth = (
       .with({
         endpoint: { baseURL: OpenAICodex.API_ENDPOINT, path: "" },
         auth: Auth.headers(OpenAICodex.authorizationHeaders(credential.access, accountID)).andThen(
-          Auth.custom((input) => Effect.succeed(Headers.setAll(input.headers, OpenAICodex.affinityHeaders(input.request)))),
+          Auth.custom((input) =>
+            Effect.succeed(Headers.setAll(input.headers, OpenAICodex.affinityHeaders(input.request))),
+          ),
         ),
       })
       // The Codex endpoint is not the Responses API: it answers
@@ -1072,6 +1074,7 @@ export const fromCatalogModel = (
   if (ClaudeCodeBridge.isClaudeCode(model)) return Effect.succeed(claudeCodeModel(model))
   if (MuseCodeBridge.isMuseCode(model))
     return Effect.succeed(MuseCodeBridge.model({ model, defaults: defaults(model) }))
+  if (DevinACP.isDevin(model)) return Effect.succeed(DevinACP.model({ model, defaults: defaults(model) }))
   if (AntigravityAcpBridge.isAntigravityAcp(model))
     return Effect.succeed(AntigravityAcpBridge.model({ model, defaults: defaults(model) }))
   if (
@@ -1117,6 +1120,7 @@ export const fromCatalogModelWithAISDK = (
   if (ClaudeCodeBridge.isClaudeCode(model)) return Effect.succeed(claudeCodeModel(model))
   if (MuseCodeBridge.isMuseCode(model))
     return Effect.succeed(MuseCodeBridge.model({ model, defaults: defaults(model) }))
+  if (DevinACP.isDevin(model)) return Effect.succeed(DevinACP.model({ model, defaults: defaults(model) }))
   if (AntigravityAcpBridge.isAntigravityAcp(model))
     return Effect.succeed(AntigravityAcpBridge.model({ model, defaults: defaults(model) }))
   if (credential?.type === "oauth" && model.providerID === ProviderV2.ID.openai) return chatGPTOAuth(model, credential)
@@ -1225,6 +1229,7 @@ export const resolve = (
 export const supported = (model: ModelV2.Info) =>
   ClaudeCodeBridge.isClaudeCode(model) ||
   MuseCodeBridge.isMuseCode(model) ||
+  DevinACP.isDevin(model) ||
   AntigravityAcpBridge.isAntigravityAcp(model) ||
   (model.api.type === "aisdk" &&
     ((adapterFor(model.api.package) !== undefined && nativeQualified(model)) || bridgeQualified(model)))

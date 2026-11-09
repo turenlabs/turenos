@@ -49,8 +49,10 @@ const fakeCLI = (body: string, version = MuseCodeBridge.SUPPORTED_VERSION) =>
         [
           `#!${process.execPath}`,
           `if (process.argv.includes("--version")) { console.log(${JSON.stringify(version)}); process.exit(0) }`,
+          `import { renameSync } from "node:fs"`,
           `const capture = ${JSON.stringify(capture)}`,
-          `await Bun.write(capture, JSON.stringify({ pid: process.pid, argv: process.argv.slice(2), cwd: process.cwd(), env: process.env, settings: await Bun.file(process.env.XDG_CONFIG_HOME + "/muse/settings.json").json(), prompt: await Bun.file(process.env.XDG_CONFIG_HOME + "/prompt.txt").text() }))`,
+          `await Bun.write(capture + ".tmp", JSON.stringify({ pid: process.pid, argv: process.argv.slice(2), cwd: process.cwd(), env: process.env, settings: await Bun.file(process.env.XDG_CONFIG_HOME + "/muse/settings.json").json(), prompt: await Bun.file(process.env.XDG_CONFIG_HOME + "/prompt.txt").text() }))`,
+          `renameSync(capture + ".tmp", capture)`,
           body,
           "",
         ].join("\n"),

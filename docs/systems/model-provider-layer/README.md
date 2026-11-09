@@ -38,6 +38,12 @@ entry, or a local CLI bridge. `SessionRunner` constructs a canonical
 the resulting events, then owns tool execution and continuation. Provider
 streaming does not delegate to the legacy Forge prompt loop.
 
+The V2 local CLI routes include [Claude Code](../../providers/claude-code/README.md),
+[Muse Code](../../providers/muse-code.md), [Devin CLI](../../providers/devin-cli.md),
+and [Antigravity ACP](../../providers/antigravity-acp.md).
+Devin uses ACP with a fresh private CLI session per provider turn and the existing
+host MCP tool bridge. It is not part of the legacy CLI-direct path below.
+
 Each provider turn includes runtime model identity in the system prompt: the
 resolved provider ID, catalog model ID, and upstream model ID. This guidance
 remains present with custom agent prompts and updates when a later turn resolves

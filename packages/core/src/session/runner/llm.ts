@@ -81,6 +81,7 @@ import { and, eq } from "drizzle-orm"
 import { AntigravityAcpCLI } from "../../provider/antigravity-acp"
 import { ClaudeCodeCLI } from "../../provider/claude-code"
 import { MuseCodeCLI } from "../../provider/muse-code"
+import { DevinCLI } from "../../provider/devin-cli"
 
 /**
  * Runs one durable coding-agent Session until it settles.
@@ -940,6 +941,7 @@ const layer = Layer.effect(
       const claudeTools =
         modelRef.providerID === ClaudeCodeCLI.ID ||
         modelRef.providerID === MuseCodeCLI.ID ||
+        modelRef.providerID === DevinCLI.ID ||
         modelRef.providerID === AntigravityAcpCLI.ID
           ? (toolMaterialization?.definitions ?? [])
           : []
@@ -1127,7 +1129,9 @@ const layer = Layer.effect(
           // `tool_search_output`, so loading a tool no longer changes the request's tools.
           openai: { promptCacheKey, ...(nativeToolSearch ? { toolSearch: "client" } : {}) },
           openrouter: { promptCacheKey },
-          ...(model.compatibility?.promptCacheKey === true ? { [String(modelRef.providerID)]: { promptCacheKey } } : {}),
+          ...(model.compatibility?.promptCacheKey === true
+            ? { [String(modelRef.providerID)]: { promptCacheKey } }
+            : {}),
         },
         // Providers that pin a conversation to one server or replica with a header.
         http: {
@@ -1475,6 +1479,7 @@ const layer = Layer.effect(
                 // Forked detached because the bridge's teardown awaits every
                 // active MCP call: awaiting the interrupt from inside one of
                 // those calls would deadlock on our own settlement.
+                // Start before replying so the interrupt cannot hit the next turn.
                 // Interrupting drops the drain's pending wake, so a steer that
                 // dismissed a question needs a wake of its own to be delivered.
                 if (isUserDeclined(settlement.cause))
@@ -1483,6 +1488,7 @@ const layer = Layer.effect(
                       Effect.andThen(SessionInput.hasPending(db, session.id, "steer")),
                       Effect.flatMap((steered) => (steered ? control.wake(session.id) : Effect.void)),
                     ),
+                    { startImmediately: true },
                   )
                 // Every call the CLI started gets a durable terminal result: nothing else settles
                 // a CLI tool call, so re-raising an interruption left it running forever.
@@ -1974,8 +1980,7 @@ const layer = Layer.effect(
               }),
             )
           }
-          if (publisher.hasProviderError())
-            yield* withPublication(publisher.failUnsettledTools(TurnInterruption.TOOL))
+          if (publisher.hasProviderError()) yield* withPublication(publisher.failUnsettledTools(TurnInterruption.TOOL))
           if (stream._tag === "Success" && !publisher.hasProviderError())
             yield* withPublication(publisher.failUnsettledTools("Provider did not return a tool result", true))
           yield* resetReflectionContext(session.id)
