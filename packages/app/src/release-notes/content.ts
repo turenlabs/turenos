@@ -2,6 +2,22 @@ import type { ReleaseNote } from "../release-notes"
 
 export const notes: readonly ReleaseNote[] = [
   {
+    version: "1.0.50",
+    summary:
+      "Run Devin as a managed provider inside TurenOS, plus a Team recovery and delivery-timeout fix.",
+    changes: {
+      new: [
+        "Use the managed Devin CLI provider to run Devin sessions through ACP with private TurenOS MCP tools.",
+      ],
+      improved: [
+        "Dismissed CLI turns interrupt before replying.",
+      ],
+      fixed: [
+        "Team recovery is bounded and delivery timeouts are clearer.",
+      ],
+    },
+  },
+  {
     version: "1.0.49",
     summary:
       "Antigravity ACP integration, a steadier session sidebar and attachments, and a batch of core correctness and privacy fixes.",

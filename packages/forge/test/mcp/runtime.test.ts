@@ -296,7 +296,9 @@ describe("MCP runtime", () => {
   })
 
   test("runs audited package recipes from the managed binary root with an isolated environment", async () => {
-    const executable = "/usr/bin/true"
+    // resolve() canonicalizes the executable with realpath; on runners where
+    // coreutils links /usr/bin/true to gnutrue the resolved path differs.
+    const executable = await fs.realpath("/usr/bin/true")
     const resolved = await McpRuntime.resolve({
       server: {
         backend: "package",
