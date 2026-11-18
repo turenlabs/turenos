@@ -347,8 +347,8 @@ describe("HttpApi SDK", () => {
 
       expect(result.response?.status).toBe(200)
       expect(openai).toBeDefined()
-      expect(openai?.models["daybreak-blue-latest"]).toBeDefined()
-      expect(openai?.models["daybreak-red-latest"]).toBeDefined()
+      expect(openai?.models["gpt-daybreak-blue-latest"]).toBeDefined()
+      expect(openai?.models["gpt-daybreak-red-latest"]).toBeDefined()
       expect(openai?.models["gpt-5.6-cyber"]).toBeDefined()
       expect(openai?.models["gpt-6-astra"]).toMatchObject({
         name: "GPT-6 Astra",

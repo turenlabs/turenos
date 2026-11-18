@@ -361,20 +361,20 @@ describe("OpenAIPlugin", () => {
       })
 
       const expected = {
-        "daybreak-blue-latest": {
+        "gpt-daybreak-blue-latest": {
           name: "Daybreak Blue",
           limit: { context: 1_050_000, input: 922_000, output: 128_000 },
           cost: [
-            { input: 5, output: 30, cache: { read: 0.5, write: 6.25 } },
+            { input: 4, output: 20, cache: { read: 0.4, write: 5 } },
             {
               tier: { type: "context", size: 272_000 },
-              input: 10,
-              output: 45,
-              cache: { read: 1, write: 12.5 },
+              input: 8,
+              output: 30,
+              cache: { read: 0.8, write: 10 },
             },
           ],
         },
-        "daybreak-red-latest": {
+        "gpt-daybreak-red-latest": {
           name: "Daybreak Red",
           limit: { context: 400_000, input: 272_000, output: 128_000 },
           cost: [{ input: 12.5, output: 75, cache: { read: 1.25, write: 15.625 } }],
@@ -406,8 +406,8 @@ describe("OpenAIPlugin", () => {
       }
 
       expect(calls).toEqual([
-        "responses:daybreak-blue-latest",
-        "responses:daybreak-red-latest",
+        "responses:gpt-daybreak-blue-latest",
+        "responses:gpt-daybreak-red-latest",
         "responses:gpt-5.6-cyber",
       ])
     }),

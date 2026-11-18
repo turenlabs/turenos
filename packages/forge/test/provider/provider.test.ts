@@ -1718,7 +1718,7 @@ test("V2 catalog projection preserves models for the public provider list", () =
     name: "OpenAI",
     api: { type: "aisdk", package: "@ai-sdk/openai", url: "https://api.openai.com/v1" },
   })
-  const models = ["daybreak-blue-latest", "daybreak-red-latest", "gpt-5.6-cyber"].map((id) =>
+  const models = ["gpt-daybreak-blue-latest", "gpt-daybreak-red-latest", "gpt-5.6-cyber"].map((id) =>
     ModelV2.Info.make({
       ...ModelV2.Info.empty(providerID, ModelV2.ID.make(id)),
       name: id,
@@ -1732,9 +1732,9 @@ test("V2 catalog projection preserves models for the public provider list", () =
   )
 
   const result = Provider.fromCatalogProvider(provider, models)
-  expect(Object.keys(result.models)).toEqual(["daybreak-blue-latest", "daybreak-red-latest", "gpt-5.6-cyber"])
-  expect(result.models["daybreak-blue-latest"]).toMatchObject({
-    api: { id: "daybreak-blue-latest", npm: "@ai-sdk/openai", url: "https://api.openai.com/v1" },
+  expect(Object.keys(result.models)).toEqual(["gpt-daybreak-blue-latest", "gpt-daybreak-red-latest", "gpt-5.6-cyber"])
+  expect(result.models["gpt-daybreak-blue-latest"]).toMatchObject({
+    api: { id: "gpt-daybreak-blue-latest", npm: "@ai-sdk/openai", url: "https://api.openai.com/v1" },
     capabilities: {
       reasoning: true,
       toolcall: true,
@@ -1743,7 +1743,7 @@ test("V2 catalog projection preserves models for the public provider list", () =
     },
     variants: { medium: { reasoningEffort: "medium" } },
   })
-  expect(result.models["daybreak-blue-latest"].defaultVariant).toBeUndefined()
+  expect(result.models["gpt-daybreak-blue-latest"].defaultVariant).toBeUndefined()
 })
 
 test("V2 catalog projection advertises only a published default variant", () => {
