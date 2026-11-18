@@ -2,6 +2,22 @@ import type { ReleaseNote } from "../release-notes"
 
 export const notes: readonly ReleaseNote[] = [
   {
+    version: "1.0.51",
+    summary:
+      "GPT-6.2 Astra and Sol support, and a deduped OpenAI model list.",
+    changes: {
+      new: [
+        "Use GPT-6.2 Astra and GPT-6.2 Sol through API keys and ChatGPT sign-in.",
+      ],
+      improved: [
+        "Daybreak models appear once in the model picker under their canonical IDs.",
+      ],
+      fixed: [
+        "Daybreak Blue pricing reflects current rates.",
+      ],
+    },
+  },
+  {
     version: "1.0.50",
     summary:
       "Run Devin as a managed provider inside TurenOS, plus a Team recovery and delivery-timeout fix.",
