@@ -6,6 +6,8 @@ export const API_ENDPOINT = "https://chatgpt.com/backend-api/codex/responses"
 export const ACCOUNT_HEADER = "ChatGPT-Account-Id"
 
 const allowedModels = new Set([
+  "gpt-6.2-astra",
+  "gpt-6.2-sol",
   "gpt-6-astra",
   "gpt-6-sol",
   "gpt-6.1-sol",
