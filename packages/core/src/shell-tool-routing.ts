@@ -2,7 +2,7 @@ export * as ShellToolRouting from "./shell-tool-routing"
 
 import path from "node:path"
 import { Effect } from "effect"
-import type { Node, Tree } from "web-tree-sitter"
+import type { Node, Tree } from "./shell-tree"
 import { ShellSafety } from "./shell-safety"
 
 export type Tool = "grep" | "glob" | "edit" | "apply_patch"

@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url"
 import { promisify } from "node:util"
 
 import { extractFile } from "@electron/asar"
-import type { Configuration } from "electron-builder"
+import { Arch, type Configuration } from "electron-builder"
 import { missingTreeSitterAssets, referencedWasmAssets } from "./scripts/wasm-assets"
 
 const execFileAsync = promisify(execFile)
@@ -166,6 +166,9 @@ const verifyPackage: NonNullable<Configuration["afterPack"]> = async (context) =
       "server/sidecar.js",
       "server/node.js",
       "server/native-check.js",
+      ...(context.electronPlatformName === "darwin" && context.arch === Arch.arm64
+        ? ["server/libturen_shell_parser.dylib", "server/shell-parser-licenses.txt"]
+        : []),
       "server/node_modules/@ff-labs/fff-bun/package.json",
       "decompiler/decompiler-worker.js",
       "decompiler/ghidra-decompiler/package.json",

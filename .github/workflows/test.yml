@@ -301,6 +301,16 @@ jobs:
         run: bun run --cwd packages/desktop scripts/stage-bun.ts --unsigned
       - name: Bundle desktop sidecar entry
         run: bun run --cwd packages/desktop scripts/build-sidecar.ts
+      - name: Stage Apple silicon native shell parser
+        if: matrix.name == 'macos-arm64'
+        working-directory: packages/desktop
+        run: |
+          rustup toolchain install 1.93.0 --profile minimal --target aarch64-apple-darwin
+          RUSTUP_TOOLCHAIN=1.93.0 bun scripts/stage-shell-parser.ts
+      - name: Compare native and WASM shell parsing
+        if: matrix.name == 'macos-arm64'
+        working-directory: packages/core
+        run: bun test test/shell-native-parity.test.ts
       - name: Smoke staged Bun backend
         run: node packages/desktop/scripts/smoke-bun-sidecar.mjs packages/desktop/resources packages/forge/dist/node
         env:

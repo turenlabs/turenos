@@ -15,3 +15,4 @@ await $`cd ../forge && bun script/build.ts ${flags}`
 await copyBinaryToSidecarFolder(windowsify(`../forge/dist/${binary}/bin/forge`))
 await $`cd ../forge && bun script/build-node.ts`
 await $`bun ./scripts/build-sidecar.ts`
+await $`bun ./scripts/stage-shell-parser.ts`
