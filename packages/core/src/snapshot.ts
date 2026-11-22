@@ -133,24 +133,21 @@ const layer = Layer.effect(
         .pipe(Effect.mapError((cause) => failure("capture", cause)))
     })
 
-    const repository = Effect.fnUntraced(function* () {
-      if (!source) return yield* new Error({ operation: "capture", message: "Project is not a Git repository" })
-      if (yield* fs.existsSafe(path.join(gitDirectory, "HEAD"))) {
+    const repository = Effect.fnUntraced(
+      function* () {
+        if (!source) return yield* new Error({ operation: "capture", message: "Project is not a Git repository" })
+        yield* SnapshotShadow.initialize(fs, gitDirectory, (directory) =>
+          git.repo.create({ worktree, gitDirectory: AbsolutePath.make(directory), seed: source }),
+        ).pipe(Effect.mapError((cause) => failure("capture", cause)))
         yield* alternates(source)
         return new Git.Repository({
           worktree,
           gitDirectory,
           commonDirectory: gitDirectory,
         })
-      }
-      return yield* git.repo
-        .create({
-          worktree,
-          gitDirectory,
-          seed: source,
-        })
-        .pipe(Effect.mapError((cause) => failure("capture", cause)))
-    })
+      },
+      SnapshotShadow.withLock(gitDirectory),
+    )
 
     const enabled = Effect.fnUntraced(function* () {
       if (location.vcs?.type !== "git") return false

@@ -1,5 +1,5 @@
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
-import { Cause, Duration, Effect, Layer, Schedule, Schema, Semaphore, Context } from "effect"
+import { Cause, Duration, Effect, Layer, Schedule, Schema, Context } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
 import { formatPatch, structuredPatch } from "diff"
 import path from "path"
@@ -56,17 +56,6 @@ const layer: Layer.Layer<Service, never, Requirements> = Layer.effect(
     const appProcess = yield* AppProcess.Service
     const config = yield* Config.Service
     const storage = yield* Storage.Service
-    const locks = new Map<string, Semaphore.Semaphore>()
-
-    const lock = (key: string) => {
-      const hit = locks.get(key)
-      if (hit) return hit
-
-      const next = Semaphore.makeUnsafe(1)
-      locks.set(key, next)
-      return next
-    }
-
     const state = yield* InstanceState.make<State>(
       Effect.fn("Snapshot.state")(function* (ctx) {
         const state = {
@@ -174,7 +163,7 @@ const layer: Layer.Layer<Service, never, Requirements> = Layer.effect(
         const exists = (file: string) => fs.exists(file).pipe(Effect.orDie)
         const read = (file: string) => fs.readFileString(file).pipe(Effect.catch(() => Effect.succeed("")))
         const remove = (file: string) => fs.remove(file).pipe(Effect.catch(() => Effect.void))
-        const locked = <A, E, R>(fx: Effect.Effect<A, E, R>) => lock(state.gitdir).withPermits(1)(fx)
+        const locked = SnapshotShadow.withLock(state.gitdir)
 
         const enabled = Effect.fnUntraced(function* () {
           if (state.vcs !== "git") return false
@@ -207,7 +196,7 @@ const layer: Layer.Layer<Service, never, Requirements> = Layer.effect(
         // Reuse the hashes for the git storage between the original repo and snapshot
         // on huge repos like chromium checkout the git add --all rebuilding the
         // hashes can take minutes. By doing this we eliminating this at all
-        const seed = Effect.fnUntraced(function* () {
+        const seed = Effect.fnUntraced(function* (directory: string) {
           if (state.vcs !== "git") return
 
           const commonDir = yield* git(["rev-parse", "--path-format=absolute", "--git-common-dir"], {
@@ -231,16 +220,16 @@ const layer: Layer.Layer<Service, never, Requirements> = Layer.effect(
           }
           if (!alternates.length) return
 
-          yield* fs.ensureDir(path.join(state.gitdir, "objects", "info")).pipe(Effect.orDie)
+          yield* fs.ensureDir(path.join(directory, "objects", "info"))
           yield* fs
-            .writeFileString(path.join(state.gitdir, "objects", "info", "alternates"), alternates.join("\n") + "\n")
-            .pipe(Effect.orDie)
+            .writeFileString(path.join(directory, "objects", "info", "alternates"), alternates.join("\n") + "\n")
 
           // Seed the index from the source repo so already-hashed entries are reused.
           // Best-effort: a missing/incompatible index just falls back to a full add.
           const sourceIndex = path.join(source, "index")
-          if (yield* exists(sourceIndex)) {
-            yield* fs.copyFile(sourceIndex, path.join(state.gitdir, "index")).pipe(Effect.catch(() => Effect.void))
+          const index = path.join(directory, "index")
+          if (!(yield* exists(index))) {
+            yield* fs.copyFile(sourceIndex, index).pipe(Effect.ignore)
           }
         })
 
@@ -331,24 +320,39 @@ const layer: Layer.Layer<Service, never, Requirements> = Layer.effect(
           return yield* locked(
             Effect.gen(function* () {
               if (!(yield* enabled())) return
-              const existed = yield* exists(state.gitdir)
-              yield* fs.ensureDir(state.gitdir).pipe(Effect.orDie)
-              if (!existed) {
-                yield* git(["init"], {
-                  env: { GIT_DIR: state.gitdir, GIT_WORK_TREE: state.worktree },
-                })
-                yield* git(["--git-dir", state.gitdir, "config", "core.autocrlf", "false"])
-                yield* git(["--git-dir", state.gitdir, "config", "core.longpaths", "true"])
-                yield* git(["--git-dir", state.gitdir, "config", "core.symlinks", "true"])
-                yield* git(["--git-dir", state.gitdir, "config", "core.fsmonitor", "false"])
-                // Tuning for very large worktrees so the first add stays bounded.
-                yield* git(["--git-dir", state.gitdir, "config", "feature.manyFiles", "true"])
-                yield* git(["--git-dir", state.gitdir, "config", "index.version", "4"])
-                yield* git(["--git-dir", state.gitdir, "config", "index.threads", "true"])
-                yield* git(["--git-dir", state.gitdir, "config", "core.untrackedCache", "true"])
-                yield* seed()
-                yield* Effect.logInfo("initialized")
-              }
+              const ready = yield* SnapshotShadow.initialize(fs, state.gitdir, (directory) =>
+                Effect.gen(function* () {
+                  const init = yield* git(["init"], {
+                    env: { GIT_DIR: directory, GIT_WORK_TREE: state.worktree },
+                  })
+                  if (init.code !== 0) return yield* Effect.fail(init)
+                  // Tuning for very large worktrees so the first add stays bounded.
+                  yield* Effect.forEach(
+                    [
+                      ["core.autocrlf", "false"],
+                      ["core.longpaths", "true"],
+                      ["core.symlinks", "true"],
+                      ["core.fsmonitor", "false"],
+                      ["feature.manyFiles", "true"],
+                      ["index.version", "4"],
+                      ["index.threads", "true"],
+                      ["core.untrackedCache", "true"],
+                    ],
+                    (setting) =>
+                      git(["--git-dir", directory, "config", ...setting]).pipe(
+                        Effect.flatMap((result) => (result.code === 0 ? Effect.void : Effect.fail(result))),
+                      ),
+                    { discard: true },
+                  )
+                  yield* seed(directory)
+                }),
+              ).pipe(
+                Effect.as(true),
+                Effect.catch((cause) =>
+                  Effect.logWarning("failed to initialize snapshot repository", { cause }).pipe(Effect.as(false)),
+                ),
+              )
+              if (!ready) return
               yield* add()
               const result = yield* git(args(["write-tree"]), { cwd: state.directory })
               const hash = result.text.trim()

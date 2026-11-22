@@ -2,12 +2,57 @@ export * as SnapshotShadow from "./shadow"
 
 import path from "path"
 import { Effect } from "effect"
+import { KeyedMutex } from "../effect/keyed-mutex"
 import { FSUtil } from "../fs-util"
 import { Storage } from "../storage"
 import { Hash } from "../util/hash"
 
 const scope = Storage.Scope.make("internal/snapshot-worktree")
 const bindings = 1000
+
+export const withLock = KeyedMutex.makeUnsafe<string>().withLock
+
+/** Called with the shadow directory lock held. */
+export const initialize = <E, R>(
+  fs: FSUtil.Interface,
+  gitdir: string,
+  init: (directory: string) => Effect.Effect<unknown, E, R>,
+) =>
+  Effect.gen(function* () {
+    const incomplete = path.join(gitdir, "turen-initializing")
+    const ready = Effect.gen(function* () {
+      return (
+        (yield* fs.exists(path.join(gitdir, "HEAD"))) &&
+        (yield* fs.exists(path.join(gitdir, "config"))) &&
+        !(yield* fs.exists(incomplete))
+      )
+    })
+    if (yield* ready) return
+
+    // A previous version could leave an incomplete directory in place. Keep its
+    // index and objects and retry in place, even if Git already created HEAD.
+    if (yield* fs.exists(gitdir)) {
+      yield* fs.writeFileString(incomplete, "")
+      yield* init(gitdir)
+      yield* fs.remove(incomplete)
+      return
+    }
+
+    // Publish the repository only after config and object alternates are ready.
+    // A failed or interrupted cold start leaves the canonical path untouched.
+    const parent = path.dirname(gitdir)
+    yield* fs.ensureDir(parent)
+    yield* Effect.scoped(
+      Effect.gen(function* () {
+        const staging = yield* fs.makeTempDirectoryScoped({ directory: parent, prefix: ".initializing-" })
+        const repository = path.join(staging, "repository")
+        yield* init(repository)
+        yield* fs.rename(repository, gitdir).pipe(
+          Effect.catch((cause) => ready.pipe(Effect.flatMap((exists) => (exists ? Effect.void : Effect.fail(cause))))),
+        )
+      }),
+    )
+  })
 
 export interface Input {
   /** Global data directory the `snapshot` tree lives under. */

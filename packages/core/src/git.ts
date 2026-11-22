@@ -423,9 +423,10 @@ const layer = Layer.effect(
               }),
           ),
         )
-      yield* fs
-        .copyFile(path.join(input.seed.gitDirectory, "index"), path.join(input.gitDirectory, "index"))
-        .pipe(Effect.catch(() => Effect.void))
+      const index = path.join(input.gitDirectory, "index")
+      if (!(yield* fs.existsSafe(index))) {
+        yield* fs.copyFile(path.join(input.seed.gitDirectory, "index"), index).pipe(Effect.ignore)
+      }
       return repository
     })
 
