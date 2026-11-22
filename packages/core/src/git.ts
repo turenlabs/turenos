@@ -10,6 +10,7 @@ import { AppProcess } from "./process"
 import { makeGlobalNode } from "./effect/app-node"
 import { File } from "./file"
 import { KeyedMutex } from "./effect/keyed-mutex"
+import { GitLauncher } from "./git-launcher"
 import { Global } from "./global"
 import { SnapshotScanner } from "./snapshot/scanner"
 import { SnapshotShadow } from "./snapshot/shadow"
@@ -183,6 +184,7 @@ const layer = Layer.effect(
   Effect.gen(function* () {
     const fs = yield* FSUtil.Service
     const proc = yield* AppProcess.Service
+    const resolveLauncher = yield* GitLauncher.make(proc)
     const global = yield* Global.Service
     const scanner = SnapshotScanner.make({ shadowRoot: SnapshotShadow.root(global.data) })
     if (scanner)
@@ -346,32 +348,40 @@ const layer = Layer.effect(
       ...args,
     ]
 
+    const repositoryCommand = Effect.fnUntraced(function* (
+      repository: Repository,
+      args: string[],
+      env?: Record<string, string>,
+    ) {
+      const launch =
+        !env || Object.keys(env).every((key) => key.startsWith("GIT_"))
+          ? yield* resolveLauncher(repository.worktree)
+          : undefined
+      return ChildProcess.make(launch?.command ?? "git", repositoryArgs(repository, args), {
+        cwd: repository.worktree,
+        env: launch ? { ...launch.env, ...env } : env,
+        extendEnv: !launch,
+      })
+    })
+
     const repositoryOperation = Effect.fnUntraced(function* (
       operationName: OperationError["operation"],
       repository: Repository,
       args: string[],
       options?: { stdin?: string; env?: Record<string, string>; exitCodes?: readonly number[] },
     ) {
-      const result = yield* proc
-        .run(
-          ChildProcess.make("git", repositoryArgs(repository, args), {
-            cwd: repository.worktree,
-            env: options?.env,
-            extendEnv: true,
-          }),
-          { stdin: options?.stdin },
-        )
-        .pipe(
-          Effect.mapError(
-            (cause) =>
-              new OperationError({
-                operation: operationName,
-                directory: repository.worktree,
-                message: cause.message,
-                cause,
-              }),
-          ),
-        )
+      const command = yield* repositoryCommand(repository, args, options?.env)
+      const result = yield* proc.run(command, { stdin: options?.stdin }).pipe(
+        Effect.mapError(
+          (cause) =>
+            new OperationError({
+              operation: operationName,
+              directory: repository.worktree,
+              message: cause.message,
+              cause,
+            }),
+        ),
+      )
       const text = result.stdout.toString("utf8")
       if ((options?.exitCodes ?? [0]).includes(result.exitCode)) return { text, stderr: result.stderr.toString("utf8") }
       return yield* new OperationError({
@@ -575,25 +585,18 @@ const layer = Layer.effect(
       paths: readonly RelativePath[]
     }) {
       if (!input.paths.length) return new Set<RelativePath>()
-      const result = yield* proc
-        .run(
-          ChildProcess.make("git", repositoryArgs(input.repository, ["check-ignore", "--no-index", "--stdin", "-z"]), {
-            cwd: input.repository.worktree,
-            extendEnv: true,
-          }),
-          { stdin: input.paths.join("\0") + "\0" },
-        )
-        .pipe(
-          Effect.mapError(
-            (cause) =>
-              new OperationError({
-                operation: "list_files",
-                directory: input.repository.worktree,
-                message: cause.message,
-                cause,
-              }),
-          ),
-        )
+      const command = yield* repositoryCommand(input.repository, ["check-ignore", "--no-index", "--stdin", "-z"])
+      const result = yield* proc.run(command, { stdin: input.paths.join("\0") + "\0" }).pipe(
+        Effect.mapError(
+          (cause) =>
+            new OperationError({
+              operation: "list_files",
+              directory: input.repository.worktree,
+              message: cause.message,
+              cause,
+            }),
+        ),
+      )
       if (result.exitCode !== 0 && result.exitCode !== 1)
         return yield* new OperationError({
           operation: "list_files",
