@@ -121,6 +121,15 @@ test("fails closed when extension reads fail or enumeration exceeds its work bud
   }
 })
 
+test("protects provider credentials when the catalog declares no secrets", async () => {
+  const secret = "opaque.cobalt.river.42"
+  const exit = await snapshot(() => Effect.succeed([key(secret)]), {
+    storedSecretFields: () => Effect.die("Unexpected extension secret lookup"),
+  })
+  expect(Exit.isSuccess(exit)).toBe(true)
+  if (Exit.isSuccess(exit)) expect(exit.value.text(secret)).not.toContain(secret)
+})
+
 test("preserves interruption without turning it into a credential failure", async () => {
   const exit = await snapshot(() => Effect.interrupt)
   expect(Exit.isFailure(exit)).toBe(true)

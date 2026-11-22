@@ -91,8 +91,10 @@ export const layer = Layer.effect(
           }
           // Check addresses in batches without loading ciphertext. Read stored values one at a time
           // so declaration checks, vault validation, and the protection budget still apply to each.
-          for (const field of yield* extensions.storedSecretFields([...declarations.values()]))
-            add(yield* extensions.secret(field.id, field.name))
+          if (declarations.size > 0) {
+            for (const field of yield* extensions.storedSecretFields([...declarations.values()]))
+              add(yield* extensions.secret(field.id, field.name))
+          }
           return SecretRedaction.compile([...secrets]) satisfies Snapshot
         }).pipe(
           Effect.timeout("5 seconds"),
