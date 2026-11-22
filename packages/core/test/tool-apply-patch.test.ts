@@ -1,7 +1,8 @@
 import fs from "fs/promises"
 import path from "path"
 import { describe, expect } from "bun:test"
-import { Deferred, Effect, Exit, Fiber, Layer } from "effect"
+import { applyPatch } from "diff"
+import { Deferred, Effect, Exit, Fiber, Layer, Schema } from "effect"
 import { AppNodeBuilder } from "@turenlabs/core/effect/app-node-builder"
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
 import { FileMutation } from "@turenlabs/core/file-mutation"
@@ -193,6 +194,44 @@ describe("ApplyPatchTool", () => {
                 )
                 expect(yield* Effect.promise(() => fs.readFile(update, "utf8"))).toBe("after\n")
                 expect(yield* exists(remove)).toBe(false)
+              }),
+            ),
+          ),
+        )
+      },
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+    ),
+  )
+
+  it.live("returns a valid diff for a large update and preserves CRLF", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) => {
+        reset()
+        const file = path.join(tmp.path, "update.txt")
+        const oldLines = Array.from({ length: 150 }, (_, index) => `old ${index}`)
+        const newLines = oldLines.map((line) => line.replace("old", "new"))
+        const before = `${oldLines.join("\r\n")}\r\n`
+        const after = `${newLines.join("\r\n")}\r\n`
+        return Effect.promise(() => fs.writeFile(file, before)).pipe(
+          Effect.andThen(
+            withTool(tmp.path, (registry) =>
+              Effect.gen(function* () {
+                const settled = yield* settleTool(
+                  registry,
+                  call([
+                    "*** Begin Patch",
+                    "*** Update File: update.txt",
+                    "@@",
+                    ...oldLines.map((line) => `-${line}`),
+                    ...newLines.map((line) => `+${line}`),
+                    "*** End Patch",
+                  ].join("\n")),
+                )
+                const diff = Schema.decodeUnknownSync(ApplyPatchTool.Output)(settled.output?.structured).files[0]!
+                expect(diff).toMatchObject({ file: "update.txt", status: "modified", additions: 150, deletions: 150 })
+                expect(applyPatch(before, diff.patch!)).toBe(after)
+                expect(yield* Effect.promise(() => fs.readFile(file, "utf8"))).toBe(after)
               }),
             ),
           ),

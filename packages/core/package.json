@@ -68,7 +68,6 @@
     "@turenlabs/binwalk-scan-wasm": "workspace:*",
     "@turenlabs/monodis-wasm": "workspace:*",
     "@turenlabs/ripgrep-wasm": "workspace:*",
-    "@turenlabs/text-diff-wasm": "workspace:*",
     "@turenlabs/debug-symbols-wasm": "workspace:*",
     "drizzle-kit": "catalog:"
   },
@@ -150,6 +149,7 @@
     "@turenlabs/static-analysis-wasm": "workspace:*",
     "@turenlabs/static-unpack-wasm": "workspace:*",
     "@turenlabs/stng-core-wasm": "workspace:*",
+    "@turenlabs/text-diff-wasm": "workspace:*",
     "@turenlabs/unicode-audit-wasm": "workspace:*",
     "@turenlabs/wasm-toolkit-wasm": "workspace:*",
     "@turenlabs/wifi-offline-wasm": "workspace:*",
