@@ -105,6 +105,66 @@ describe("OpenAIPlugin", () => {
     }),
   )
 
+  it.effect("offers the 6.2 Astra and Sol fallbacks through the Responses route", () =>
+    Effect.gen(function* () {
+      const catalog = yield* Catalog.Service
+      const aisdk = yield* AISDK.Service
+      yield* addPlugin()
+
+      const astra = required(yield* catalog.model.get(ProviderV2.ID.openai, ModelV2.ID.make("gpt-6.2-astra")))
+      expect(astra).toMatchObject({
+        name: "GPT-6.2 Astra",
+        api: { id: "gpt-6.2-astra", type: "aisdk", package: "@ai-sdk/openai" },
+        limit: { context: 1_050_000, input: 922_000, output: 128_000 },
+        status: "active",
+        enabled: true,
+      })
+      expect(astra.cost).toEqual([
+        { input: 8, output: 40, cache: { read: 0.4, write: 10 } },
+        { tier: { type: "context", size: 272_000 }, input: 16, output: 60, cache: { read: 0.8, write: 20 } },
+      ])
+
+      const sol = required(yield* catalog.model.get(ProviderV2.ID.openai, ModelV2.ID.make("gpt-6.2-sol")))
+      expect(sol).toMatchObject({
+        name: "GPT-6.2 Sol",
+        api: { id: "gpt-6.2-sol", type: "aisdk", package: "@ai-sdk/openai" },
+        limit: { context: 1_050_000, input: 922_000, output: 128_000 },
+        status: "active",
+        enabled: true,
+      })
+      expect(sol.cost).toEqual([
+        { input: 2, output: 10, cache: { read: 0.1, write: 2.5 } },
+        { tier: { type: "context", size: 272_000 }, input: 4, output: 15, cache: { read: 0.2, write: 5 } },
+      ])
+
+      for (const model of [astra, sol]) {
+        expect(model.variants.map((variant) => [variant.id, variant.body.reasoningEffort])).toEqual([
+          ["low", "low"],
+          ["medium", "medium"],
+          ["high", "high"],
+          ["xhigh", "xhigh"],
+          ["max", "max"],
+        ])
+        const calls: string[] = []
+        yield* aisdk.runLanguage({ model, sdk: fakeSelectorSdk(calls), options: {} })
+        expect(calls).toEqual([`responses:${model.api.id}`])
+        const resolved = yield* SessionRunnerModel.fromCatalogModelWithAISDK(
+          model,
+          Credential.Key.make({ type: "key", key: "test-key" }),
+        )
+        const prepared = yield* LLMClient.prepare(LLM.request({ model: resolved, prompt: "Hello" }))
+        expect(resolved.route.id).toBe("openai-responses")
+        expect(prepared.body).toMatchObject({
+          model: model.api.id,
+          store: false,
+          include: ["reasoning.encrypted_content"],
+        })
+      }
+      expect(OpenAICodex.eligible("gpt-6.2-astra")).toBe(true)
+      expect(OpenAICodex.eligible("gpt-6.2-sol")).toBe(true)
+    }),
+  )
+
   it.effect("offers the Sol and Luna fallbacks through the Responses route", () =>
     Effect.gen(function* () {
       const catalog = yield* Catalog.Service
@@ -301,20 +361,20 @@ describe("OpenAIPlugin", () => {
       })
 
       const expected = {
-        "daybreak-blue-latest": {
+        "gpt-daybreak-blue-latest": {
           name: "Daybreak Blue",
           limit: { context: 1_050_000, input: 922_000, output: 128_000 },
           cost: [
-            { input: 5, output: 30, cache: { read: 0.5, write: 6.25 } },
+            { input: 4, output: 20, cache: { read: 0.4, write: 5 } },
             {
               tier: { type: "context", size: 272_000 },
-              input: 10,
-              output: 45,
-              cache: { read: 1, write: 12.5 },
+              input: 8,
+              output: 30,
+              cache: { read: 0.8, write: 10 },
             },
           ],
         },
-        "daybreak-red-latest": {
+        "gpt-daybreak-red-latest": {
           name: "Daybreak Red",
           limit: { context: 400_000, input: 272_000, output: 128_000 },
           cost: [{ input: 12.5, output: 75, cache: { read: 1.25, write: 15.625 } }],
@@ -346,8 +406,8 @@ describe("OpenAIPlugin", () => {
       }
 
       expect(calls).toEqual([
-        "responses:daybreak-blue-latest",
-        "responses:daybreak-red-latest",
+        "responses:gpt-daybreak-blue-latest",
+        "responses:gpt-daybreak-red-latest",
         "responses:gpt-5.6-cyber",
       ])
     }),
