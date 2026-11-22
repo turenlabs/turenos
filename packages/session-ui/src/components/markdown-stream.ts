@@ -1,5 +1,5 @@
 import { marked, type Tokens, type TokensList } from "marked"
-import remend from "remend"
+import { repairMarkdown } from "./markdown-link-repair"
 
 export type Block = {
   raw: string
@@ -47,45 +47,17 @@ function closesFence(raw: string, suffix: string) {
   return `${raw.slice(-(mark.length - 1))}${suffix.slice(0, mark.length - 1)}`.includes(mark)
 }
 
-function heal(text: string) {
-  const repair = needsLinkRepair(text)
-  return remend(text, { linkMode: "text-only", links: repair, images: repair })
-}
-
-function needsLinkRepair(text: string) {
-  if (!text.includes("[")) return false
-
-  // Remend can strip an unfinished HTML tag before repairing links. A closing
-  // bracket or parenthesis inside that tag may disappear.
-  if (text.includes("<")) return true
-
-  // Remend checks the prefix for code at every opening bracket. If all opening
-  // brackets and the last link destination close, that handler has no work.
-  let brackets = 0
-  let pendingDestination = false
-  let afterBracket = false
-  for (let index = 0; index < text.length; index++) {
-    const char = text.charAt(index)
-    if (char === "[") brackets++
-    if (char === "]" && brackets > 0) brackets--
-    if (char === "(" && afterBracket) pendingDestination = true
-    if (char === ")") pendingDestination = false
-    afterBracket = char === "]"
-  }
-  return brackets > 0 || pendingDestination
-}
-
 export function stream(text: string, live: boolean): Block[] {
   if (!live) return [{ raw: text, src: text, mode: "full" }] satisfies Block[]
-  if (refs(text)) return [{ raw: text, src: heal(text), mode: "live" }] satisfies Block[]
+  if (refs(text)) return [{ raw: text, src: repairMarkdown(text), mode: "live" }] satisfies Block[]
   return blocksFromTokens(marked.lexer(text), text)
 }
 
 function blocksFromTokens(tokens: TokensList, text: string): Block[] {
   const tail = tokens.findLastIndex((token) => token.type !== "space")
-  if (tail < 0) return [{ raw: text, src: heal(text), mode: "live" }] satisfies Block[]
+  if (tail < 0) return [{ raw: text, src: repairMarkdown(text), mode: "live" }] satisfies Block[]
   const last = tokens[tail]
-  if (!last) return [{ raw: text, src: heal(text), mode: "live" }] satisfies Block[]
+  if (!last) return [{ raw: text, src: repairMarkdown(text), mode: "live" }] satisfies Block[]
 
   const result: Block[] = []
   for (let index = 0; index < tail; index++) {
@@ -105,7 +77,7 @@ function blocksFromTokens(tokens: TokensList, text: string): Block[] {
     .slice(tail)
     .map((token) => token.raw)
     .join("")
-  if (last.type !== "code") return [...result, { raw, src: heal(raw), mode: "live" }]
+  if (last.type !== "code") return [...result, { raw, src: repairMarkdown(raw), mode: "live" }]
 
   const code = last as Tokens.Code
   if (!open(code.raw))
