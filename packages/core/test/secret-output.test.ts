@@ -24,6 +24,7 @@ function providers(all: Credential.Interface["all"], extensions: Partial<Extensi
       ExtensionRuntime.Service,
       ExtensionRuntime.Service.of({
         manifests: () => Effect.succeed([]),
+        manifestSnapshot: unused,
         secret: () => Effect.succeed(undefined),
         storedSecretFields: (fields) => Effect.succeed(fields),
         get: unused,

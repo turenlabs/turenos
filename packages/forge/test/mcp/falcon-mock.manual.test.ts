@@ -65,6 +65,11 @@ const harness = testEffect(
       ExtensionRuntime.node,
       Layer.mock(ExtensionRuntime.Service, {
         manifests: () => Effect.succeed([...ExtensionCatalog.manifests, falcon]),
+        manifestSnapshot: () =>
+          Effect.succeed({
+            manifests: [...ExtensionCatalog.manifests, falcon],
+            enabled: (manifest) => String(manifest.id) === FALCON_ID,
+          }),
         enabled: (id) => Effect.succeed(String(id) === FALCON_ID),
         desired: (id) =>
           Effect.succeed(

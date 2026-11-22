@@ -421,10 +421,7 @@ const layer = (allowUnmanaged: boolean, managedRetryMs = MANAGED_RETRY_MS) =>
         pendingOAuthTransports.delete(name)
         return pending
       }
-      const syncManaged = Effect.fnUntraced(function* () {
-        McpIntegration.sync(yield* extensions.manifests())
-      })
-      yield* syncManaged()
+      McpIntegration.sync(yield* extensions.manifests())
       const storage = yield* Storage.Service
       const security = <A, E>(effect: Effect.Effect<A, E, ExtensionRuntime.Service>) =>
         Effect.provideService(effect, ExtensionRuntime.Service, extensions)
@@ -1128,15 +1125,21 @@ const layer = (allowUnmanaged: boolean, managedRetryMs = MANAGED_RETRY_MS) =>
       })
 
       const ensureManaged = Effect.fnUntraced(function* (s: State) {
-        yield* syncManaged()
+        const catalog = yield* extensions.manifestSnapshot()
+        McpIntegration.sync(catalog.manifests)
+        const enabled = McpIntegration.Definitions.flatMap((definition) => {
+          const manifest = McpIntegration.contribution(definition.id).manifest
+          return catalog.enabled(manifest) ? [{ definition, manifest }] : []
+        })
         yield* Effect.forEach(
-          McpIntegration.Definitions,
-          (definition) =>
+          enabled,
+          ({ definition, manifest }) =>
             Effect.gen(function* () {
-              const manifest = McpIntegration.contribution(definition.id).manifest
-              if (!(yield* extensions.enabled(manifest.id))) return
               const current = s.status[definition.id]?.status
               if (current === "connected" || current === "connecting") return
+              // The catalog snapshot may predate a disable. Check before updating retry state.
+              const desired = yield* extensions.desired(manifest.id)
+              if (!desired?.enabled) return
               if (s.config[definition.id]) {
                 // Admission already ran for this directory. `needs_auth` clears only
                 // after OAuth tokens are committed -- process-global in McpAuth and
@@ -1163,14 +1166,13 @@ const layer = (allowUnmanaged: boolean, managedRetryMs = MANAGED_RETRY_MS) =>
                   s.managedRetry[gate] = Date.now()
                 }
               }
-              const configuration = yield* extensions.configuration(manifest.id)
               const declaredSecrets = manifest.contributions.flatMap((contribution) => contribution.secrets)
               const secrets = Object.fromEntries(
                 yield* Effect.forEach(declaredSecrets, (secret) =>
                   extensions.secret(manifest.id, secret.id).pipe(Effect.map((value) => [secret.id, value] as const)),
                 ),
               )
-              const resolved = yield* McpIntegration.configuration(definition.id, configuration, secrets)
+              const resolved = yield* McpIntegration.configuration(definition.id, desired.configuration, secrets)
               if (!resolved) return
               const entry = yield* McpIntegration.runtimeEntry(definition.id, resolved)
               yield* closeClient(s, definition.id)
