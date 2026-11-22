@@ -1292,7 +1292,7 @@ export const available = Effect.fn("SessionRunnerModel.available")(function* () 
 })
 
 /**
- * Explains why a pinned model missed `catalog.model.available()`. The composer builds its list
+ * Explains why the pinned model could not be selected. The composer builds its list
  * from a different catalog, so a model it offers can be absent here for structurally different
  * reasons — name each one instead of emitting one indistinguishable "Model unavailable".
  */
@@ -1303,7 +1303,7 @@ const unavailableReason = Effect.fnUntraced(function* (
 ) {
   const provider = yield* catalog.provider.get(providerID)
   if (!provider) return `provider "${providerID}" is not in this runtime's catalog, so the model cannot be run here`
-  if (!(yield* catalog.provider.available()).some((item) => item.id === providerID))
+  if (!(yield* catalog.provider.isAvailable(providerID)))
     return `provider "${providerID}" has no usable credential`
   const model = yield* catalog.model.get(providerID, modelID)
   if (!model) return `provider "${providerID}" does not publish model "${modelID}"`
@@ -1322,23 +1322,13 @@ export const locationLayer = Layer.effect(
     // catalog. A pinned model that is genuinely unavailable still fails, just
     // after the bounded wait — a short delay on a real failure beats failing
     // every session's first turn.
-    //
-    // The bound is wall clock rather than a count of attempts. Each attempt re-reads the whole
-    // catalog and resolves a credential per provider, which on a populated catalog costs about as
-    // much as the sleep between attempts, so 200 attempts at 50ms was twenty seconds rather than
-    // the ten it reads as — long enough that a model whose provider is simply gone pushed callers
-    // past their own deadlines before it could say so.
-    const selectedModel = (session: SessionSchema.Info): Effect.Effect<ModelV2.Info | undefined> =>
+    const selectedModel = (providerID: ProviderV2.ID, modelID: ModelV2.ID) =>
       Effect.gen(function* () {
         while (true) {
-          const selected = (yield* catalog.model.available()).find(
-            (model) => model.providerID === session.model?.providerID && model.id === session.model.id,
-          )
-          if (selected || !session.model) return selected
-          // Once the catalog publishes the pinned model at all, its absence from
-          // `available()` is a real answer (disabled, or no usable credential) —
-          // keep waiting only while the catalog has yet to publish it.
-          if (yield* catalog.model.get(session.model.providerID, session.model.id)) return selected
+          // Resolve just this model on each turn. Once it is published, a disabled
+          // model or unavailable provider can fail immediately.
+          const model = yield* catalog.model.get(providerID, modelID)
+          if (model) return model.enabled && (yield* catalog.provider.isAvailable(providerID)) ? model : undefined
           yield* Effect.sleep("50 millis")
         }
       }).pipe(Effect.timeoutOrElse({ duration: "10 seconds", orElse: () => Effect.succeed(undefined) }))
@@ -1350,7 +1340,7 @@ export const locationLayer = Layer.effect(
       resolve: Effect.fn("SessionRunnerModel.resolve")(function* (session, request, options) {
         // Location plugins populate and filter the catalog asynchronously during layer startup.
         if (session.model) {
-          const selected = yield* selectedModel(session)
+          const selected = yield* selectedModel(session.model.providerID, session.model.id)
           if (!selected)
             return yield* new ModelUnavailableError({
               providerID: session.model.providerID,

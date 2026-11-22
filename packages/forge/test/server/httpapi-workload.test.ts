@@ -66,7 +66,7 @@ import { Provider } from "../../src/provider/provider"
 import { RuntimeFlags } from "../../src/effect/runtime-flags"
 import { MCP } from "../../src/mcp"
 import { LSP } from "../../src/lsp/lsp"
-import { GlobalBus } from "../../src/bus/global"
+import { GlobalBus, globalEventFrame } from "../../src/bus/global"
 import { resetDatabase } from "../fixture/db"
 import { disposeAllInstances, provideTmpdirServer } from "../fixture/fixture"
 import { reply, TestLLMServer } from "../lib/llm-server"
@@ -576,6 +576,42 @@ describe("event stream under agent workload", () => {
     60_000,
   )
 
+  it.live(
+    "reports a replay gap after large events evict the requested cursor",
+    () =>
+      Effect.gen(function* () {
+        const first = yield* subscriber()
+        yield* first.until((event) => event.type === "server.connected", "subscriber never connected")
+        emit("budget.before", 1)
+        yield* first.until((event) => event.type === "budget.before", "initial cursor never arrived")
+        const cursor = first.parser.all.find((event) => event.type === "budget.before")?.id
+        expect(cursor).toBeDefined()
+        yield* Fiber.interrupt(first.reader)
+
+        const text = "x".repeat(1024 * 1024)
+        for (let index = 0; index < 17; index++) {
+          GlobalBus.emit("event", { payload: { type: "budget.large", properties: { text, index } } })
+        }
+        emit("budget.recent", 2)
+
+        const second = yield* subscriber({ headers: { "Last-Event-ID": String(cursor) } })
+        yield* second.until((event) => event.type === "server.connected", "resumed subscriber never connected")
+        expect(second.parser.all[0]?.properties?.resume).toBe("gap")
+        emit("budget.after", 3)
+        yield* second.until((event) => event.type === "budget.after", "live events stopped after replay gap")
+        expect(second.parser.all.some((event) => event.type === "budget.large")).toBe(false)
+        yield* Fiber.interrupt(second.reader)
+
+        const recent = second.parser.all.find((event) => event.type === "budget.after")?.id
+        expect(recent).toBeDefined()
+        emit("budget.tail", 4)
+        const third = yield* subscriber({ headers: { "Last-Event-ID": String(recent) } })
+        yield* third.until((event) => event.type === "budget.tail", "recent replay cursor did not recover")
+        expect(third.parser.all[0]?.properties?.resume).toBe("ok")
+      }),
+    60_000,
+  )
+
   // The 1.0.36 wedge: under burst load the handler ran JSON.stringify once per
   // event per subscriber, so each attached stream multiplied serialization
   // cost on the main thread. The frame is rendered once per event and shared.
@@ -619,7 +655,7 @@ describe("event stream under agent workload", () => {
       payload: { id: `evt_probe${i}`, type: "workload.flood", properties: { i } },
     }))
     const writes = await Effect.runPromise(
-      encodeEvents(Stream.fromIterable(events)).pipe(Stream.runCollect),
+      encodeEvents(Stream.fromIterable(events).pipe(Stream.map(globalEventFrame))).pipe(Stream.runCollect),
     )
     expect(writes.length).toBeLessThanOrEqual(Math.ceil(flood / 256))
     const text = Array.from(writes, (write) => new TextDecoder().decode(write)).join("")

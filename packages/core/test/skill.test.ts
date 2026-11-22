@@ -40,6 +40,12 @@ const catalog = testEffect(
       Layer.mock(ExtensionRuntime.Service, {
         enabled: () => Effect.succeed(true),
         manifests: () => Effect.succeed([manifest]),
+        enabledSkills: () =>
+          Effect.succeed(
+            manifest.contributions.flatMap((contribution) =>
+              contribution.type === "skill" ? [{ manifest, contribution }] : [],
+            ),
+          ),
       }),
     ],
   ]),

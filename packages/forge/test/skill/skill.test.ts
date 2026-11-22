@@ -8,12 +8,21 @@ import { ExtensionCatalog } from "@turenlabs/extensions"
 import { Extension } from "@turenlabs/schema"
 
 function skillLayer(enabled: boolean) {
+  const manifest = ExtensionCatalog.get("turenlabs/customize-forge")!
   return LayerNode.compile(Skill.node, [
     [
       ExtensionRuntime.node,
       Layer.mock(ExtensionRuntime.Service, {
         enabled: () => Effect.succeed(enabled),
-        manifests: () => Effect.succeed([ExtensionCatalog.get("turenlabs/customize-forge")!]),
+        manifests: () => Effect.succeed([manifest]),
+        enabledSkills: () =>
+          Effect.succeed(
+            enabled
+              ? manifest.contributions.flatMap((contribution) =>
+                  contribution.type === "skill" ? [{ manifest, contribution }] : [],
+                )
+              : [],
+          ),
       }),
     ],
   ])
@@ -53,6 +62,12 @@ const catalog = testEffect(
       Layer.mock(ExtensionRuntime.Service, {
         enabled: () => Effect.succeed(true),
         manifests: () => Effect.succeed([catalogManifest]),
+        enabledSkills: () =>
+          Effect.succeed(
+            catalogManifest.contributions.flatMap((contribution) =>
+              contribution.type === "skill" ? [{ manifest: catalogManifest, contribution }] : [],
+            ),
+          ),
       }),
     ],
   ]),

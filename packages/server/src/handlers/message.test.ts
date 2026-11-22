@@ -68,6 +68,25 @@ describe("SessionLeanMessage.trim", () => {
     expect(tool.state.outputPaths).toEqual(["/tmp/a"])
   })
 
+  test("counts duplicated text and arbitrary result bodies at their exact JSON byte size", () => {
+    const text = '\u0000\uD800 "révision 🦀"\\\n'.repeat(6_000)
+    const structured = { exit: 1 }
+    for (const result of [
+      { value: text, type: "text" },
+      { type: "text", value: text, extra: "another field" },
+      { type: "text", value: "different" },
+    ]) {
+      const message = assistant([completedTool({ text, result, structured })])
+      const trimmed = SessionLeanMessage.trim(message)
+      if (trimmed.type !== "assistant" || trimmed.content[0]?.type !== "tool") throw new Error("expected tool")
+      const bytes = [structured, [{ type: "text", text }], result].reduce(
+        (total, field) => total + Buffer.byteLength(JSON.stringify(field)),
+        0,
+      )
+      expect(trimmed.content[0].truncated).toEqual({ bytes })
+    }
+  })
+
   test("keeps a small structured record while eliding the oversized content", () => {
     const message = assistant([completedTool({ text: large, structured: { exit: 0, timeout: false } })])
     const tool = (SessionLeanMessage.trim(message) as SessionMessage.Assistant).content[0]
