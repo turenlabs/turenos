@@ -49,7 +49,19 @@ const runtimeOverride = (): [[typeof ExtensionRuntime.node, Layer.Layer<Extensio
     ExtensionRuntime.node,
     Layer.mock(ExtensionRuntime.Service, {
       manifests: () => Effect.succeed([...ExtensionCatalog.manifests, fixture]),
+      manifestSnapshot: () =>
+        Effect.sync(() => {
+          const enabled = extensionEnabled
+          return {
+            manifests: [...ExtensionCatalog.manifests, fixture],
+            enabled: (manifest) => manifest.id === fixture.id && enabled,
+          }
+        }),
       enabled: (id) => Effect.succeed(String(id) === String(fixture.id) && extensionEnabled),
+      desired: (id) =>
+        Effect.sync(() =>
+          id === fixture.id ? { enabled: extensionEnabled, configuration: {}, revision: 1 } : undefined,
+        ),
       configuration: () => Effect.succeed({}),
       secret: () => Effect.succeed(undefined),
       secretsSet: () => Effect.succeed({}),
@@ -103,7 +115,7 @@ it.instance("admitted managed config carries the runtime policy marker", () =>
   }),
 )
 
-it.instance("skips admission while the extension is disabled", () =>
+it.instance("picks up activation changes for managed discovery in the same directory", () =>
   Effect.gen(function* () {
     yield* restoreCatalog
     extensionEnabled = false
@@ -113,6 +125,8 @@ it.instance("skips admission while the extension is disabled", () =>
     expect(yield* statusOf(NAME)).toBeUndefined()
     expect(yield* mcp.configuration(NAME)).toBeUndefined()
     extensionEnabled = true
+    yield* mcp.tools()
+    yield* awaitStatus(NAME, "failed")
   }),
 )
 

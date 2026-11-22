@@ -81,6 +81,37 @@ describe("ExtensionRuntime", () => {
     }),
   )
 
+  it.effect("reads installed manifests and current activation in one catalog snapshot", () =>
+    Effect.gen(function* () {
+      const extensions = yield* ExtensionRuntime.Service
+      const storage = yield* Storage.Service
+      const skill = ExtensionCatalog.get(Extension.ID.make("turenlabs", "customize-forge"))!
+      const connector = hosted()
+      const before = yield* extensions.manifestSnapshot()
+      expect(before.enabled(skill)).toBe(true)
+      expect(before.manifests.some((manifest) => manifest.id === connector.id)).toBe(false)
+
+      yield* extensions.update(connector.id, { enabled: true, manifest: connector })
+      const installed = yield* extensions.manifestSnapshot()
+      expect(installed.manifests.find((manifest) => manifest.id === connector.id)).toEqual(connector)
+      expect(installed.enabled(connector)).toBe(true)
+
+      const address = {
+        scope: Storage.Scope.make("internal/extensions"),
+        key: Storage.Key.make(`desired/${skill.id}`),
+      }
+      yield* storage.set({ ...address, value: "{}" })
+      yield* extensions.update(connector.id, { enabled: false })
+      const after = yield* extensions.manifestSnapshot()
+      expect(after.enabled(skill)).toBe(false)
+      expect(after.enabled(connector)).toBe(false)
+      expect(installed.enabled(connector)).toBe(true)
+
+      yield* storage.remove(address)
+      expect((yield* extensions.manifestSnapshot()).enabled(skill)).toBe(true)
+    }),
+  )
+
   it.effect("atomically stores only declared non-secret configuration", () =>
     Effect.gen(function* () {
       const extensions = yield* ExtensionRuntime.Service
