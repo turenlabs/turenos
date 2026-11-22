@@ -61,6 +61,12 @@ const catalogAgentIt = testEffect(
         Layer.mock(ExtensionRuntime.Service, {
           enabled: () => Effect.succeed(true),
           manifests: () => Effect.succeed([catalogAgentManifest, ExtensionCatalog.get("turenlabs/nvd")!]),
+          enabledSkills: () =>
+            Effect.succeed(
+              catalogAgentManifest.contributions.flatMap((contribution) =>
+                contribution.type === "skill" ? [{ manifest: catalogAgentManifest, contribution }] : [],
+              ),
+            ),
         }),
       ],
     ],
