@@ -48,6 +48,7 @@ export interface Interface {
   readonly enabledSkills: () => Effect.Effect<ReadonlyArray<EnabledSkill>>
   readonly configuration: (id: Extension.ID | string) => Effect.Effect<Record<string, string>>
   readonly secret: (id: Extension.ID | string, name: string) => Effect.Effect<string | undefined>
+  readonly storedSecretFields: (fields: ReadonlyArray<SecretField>) => Effect.Effect<ReadonlyArray<SecretField>>
   readonly secretsSet: (id: Extension.ID | string) => Effect.Effect<Record<string, boolean>>
   readonly update: (
     id: Extension.ID | string,
@@ -65,6 +66,8 @@ export type EnabledSkill = {
   readonly manifest: Extension.Manifest
   readonly contribution: Extension.Skill
 }
+
+export type SecretField = { readonly id: string; readonly name: string }
 
 export const enabledSkills = (runtime: Interface) => runtime.enabledSkills()
 
@@ -155,6 +158,15 @@ export const layer = Layer.effect(
       const stored = yield* storage.get(address)
       if (!stored || !vault.isSealed(stored.value)) return undefined
       return yield* vault.open(address.scope, address.key, stored.value)
+    })
+    const storedSecretFields = Effect.fn("Extension.storedSecretFields")(function* (
+      fields: ReadonlyArray<SecretField>,
+    ) {
+      const requested = fields.map((field) => ({ field, address: secretAddress(field.id, field.name) }))
+      const rows = yield* storage.existing(requested.map((item) => item.address))
+      const identity = (address: Storage.Address) => JSON.stringify([address.scope, address.key])
+      const stored = new Set(rows.map(identity))
+      return requested.filter((item) => stored.has(identity(item.address))).map((item) => item.field)
     })
     const secretsSet = Effect.fn("Extension.secretsSet")(function* (id: Extension.ID | string) {
       const manifest = yield* get(id)
@@ -295,6 +307,7 @@ export const layer = Layer.effect(
       enabledSkills,
       configuration,
       secret,
+      storedSecretFields,
       secretsSet,
       update,
     })

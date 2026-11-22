@@ -25,6 +25,7 @@ function providers(all: Credential.Interface["all"], extensions: Partial<Extensi
       ExtensionRuntime.Service.of({
         manifests: () => Effect.succeed([]),
         secret: () => Effect.succeed(undefined),
+        storedSecretFields: (fields) => Effect.succeed(fields),
         get: unused,
         desired: unused,
         enabled: unused,
@@ -100,6 +101,10 @@ test("fails closed when extension reads fail or enumeration exceeds its work bud
   )!
   for (const extensions of [
     { manifests: () => Effect.die(new Error("opaque.manifest.failure")) },
+    {
+      manifests: () => Effect.succeed([manifest]),
+      storedSecretFields: () => Effect.die(new Error("opaque.storage.failure")),
+    },
     { manifests: () => Effect.succeed([manifest]), secret: () => Effect.die(new Error("opaque.extension.failure")) },
     { manifests: () => Effect.succeed(Array.from({ length: 4097 }, () => manifest)) },
     {
@@ -115,6 +120,15 @@ test("fails closed when extension reads fail or enumeration exceeds its work bud
     expect(Cause.pretty(exit.cause)).toContain("Secret output protection unavailable")
     expect(Cause.pretty(exit.cause)).not.toContain("opaque.")
   }
+})
+
+test("protects provider credentials when the catalog declares no secrets", async () => {
+  const secret = "opaque.cobalt.river.42"
+  const exit = await snapshot(() => Effect.succeed([key(secret)]), {
+    storedSecretFields: () => Effect.die("Unexpected extension secret lookup"),
+  })
+  expect(Exit.isSuccess(exit)).toBe(true)
+  if (Exit.isSuccess(exit)) expect(exit.value.text(secret)).not.toContain(secret)
 })
 
 test("preserves interruption without turning it into a credential failure", async () => {
