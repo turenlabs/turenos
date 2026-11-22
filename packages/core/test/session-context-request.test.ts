@@ -123,6 +123,55 @@ const rowText = (db: Database.Interface["db"]) =>
     .pipe(Effect.map((row) => JSON.stringify(row?.data)))
 
 describe("SessionContextRequest", () => {
+  it.effect("keeps saved frames warm for five active sessions", () =>
+    Effect.gen(function* () {
+      const db = yield* setup
+      const others = Array.from({ length: 4 }, (_, index) => SessionSchema.ID.make(`ses_context_concurrent_${index}`))
+      yield* db
+        .insert(SessionTable)
+        .values(
+          others.map((id) => ({
+            id,
+            project_id: ProjectV2.ID.global,
+            slug: id,
+            directory: "/project",
+            title: "Concurrent context request",
+            version: "test",
+          })),
+        )
+        .run()
+      yield* db
+        .insert(SessionContextEpochTable)
+        .values(others.map((id) => ({ session_id: id, baseline: "baseline", baseline_seq: 0, snapshot: {} })))
+        .run()
+      const frames = yield* Effect.forEach([sessionID, ...others], (id) =>
+        Effect.gen(function* () {
+          const prepared = yield* SessionContextRequest.prepare(db, id, { ...configuration, history })
+          const frame = { entries: history, messages: [Message.user(id)], sources: prepared.sources, turn: id }
+          yield* SessionContextRequest.save(db, id, { ...configuration, ...prepared, frame })
+          return { id, frame }
+        }),
+      )
+      for (const item of frames) {
+        const loaded = yield* SessionContextRequest.prepare(db, item.id, { ...configuration, history })
+        expect(loaded.frame).toBe(item.frame)
+      }
+    }),
+  )
+
+  it.effect("loads an oversized frame from SQLite without retaining it in the cache", () =>
+    Effect.gen(function* () {
+      const db = yield* setup
+      const uri = largeURI(16 * 1024 * 1024)
+      const history = [attachmentEntry(1, uri)]
+      const frame = yield* saveFrame(db, history, attachmentFrame(history, uri, "oversized"))
+      const loaded = yield* SessionContextRequest.prepare(db, sessionID, { ...configuration, history })
+      expect(loaded.frame).not.toBe(frame)
+      expect(loaded.frame?.turn).toBe("oversized")
+      expect(loaded.frame?.messages[0]).toEqual(frame.messages[0])
+    }),
+  )
+
   it.effect("prepare is read-only and saved materialized frames round-trip bytes and DateTime", () =>
     Effect.gen(function* () {
       const db = yield* setup

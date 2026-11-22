@@ -75,7 +75,7 @@ import {
   contextToolSummary,
   sameGroups,
   isContextGroupTool,
-  isCoordinationTool,
+  searchOutcome,
   type PartGroup,
   type PartRef,
 } from "./message-part-group"
@@ -435,6 +435,16 @@ export function getToolInfo(
         title: i18n.t("ui.tool.grep"),
         subtitle: input.pattern,
       }
+    case "code_search":
+      return {
+        icon: "magnifying-glass-menu",
+        title: i18n.t("ui.tool.codeSearch"),
+        subtitle: Array.isArray(input.queries) && typeof input.queries[0] === "string" ? input.queries[0] : undefined,
+      }
+    case "memory_search":
+      return { icon: "magnifying-glass-menu", title: i18n.t("ui.tool.memorySearch"), subtitle: input.query }
+    case "memory_read":
+      return { icon: "brain", title: i18n.t("ui.tool.memoryRead") }
     case "webfetch":
       return {
         icon: "window-cursor",
@@ -464,6 +474,8 @@ export function getToolInfo(
         title: i18n.t("ui.tool.shell"),
         subtitle: input.command,
       }
+    case "shell_job":
+      return { icon: "console", title: i18n.t("ui.tool.shellJob"), subtitle: input.action }
     case "edit": {
       const editPath = input.filePath ?? input.path
       return {
@@ -505,11 +517,19 @@ export function getToolInfo(
     case "reflection_complete":
       return { icon: "brain", title: i18n.t("ui.tool.reflectionComplete") }
     case "board_read":
+    case "room_read":
       return { icon: "subagent", title: i18n.t("ui.tool.boardRead") }
     case "board_post":
-      return { icon: "subagent", title: i18n.t("ui.tool.boardPost") }
+    case "room_post":
+      return { icon: "subagent", title: i18n.t("ui.tool.boardPost"), subtitle: input.kind }
+    case "room_claim":
+      return { icon: "subagent", title: i18n.t("ui.tool.roomClaim"), subtitle: input.lane }
+    case "room_wait":
+      return { icon: "subagent", title: i18n.t("ui.tool.roomWait") }
     case "spawn_agent":
       return { icon: "subagent", title: i18n.t("ui.tool.agentSpawn"), subtitle: input.description }
+    case "spawn_agents":
+      return { icon: "subagent", title: i18n.t("ui.tool.agentSpawnBatch") }
     case "send_agent":
       return { icon: "subagent", title: i18n.t("ui.tool.agentSend") }
     case "wait_agents":
@@ -518,6 +538,10 @@ export function getToolInfo(
       return { icon: "subagent", title: i18n.t("ui.tool.agentInterrupt") }
     case "list_agents":
       return { icon: "subagent", title: i18n.t("ui.tool.agentList") }
+    case "peek_agent":
+      return { icon: "subagent", title: i18n.t("ui.tool.agentPeek") }
+    case "notify_parent":
+      return { icon: "subagent", title: i18n.t("ui.tool.notifyParent") }
     case "skill":
       return {
         icon: "brain",
@@ -714,21 +738,6 @@ export function AssistantParts(props: {
   )
 }
 
-function contextToolDetail(part: ToolPart): string | undefined {
-  const info = getToolInfo(
-    part.tool,
-    part.state.input ?? {},
-    "metadata" in part.state ? part.state.metadata : undefined,
-  )
-  if (info.subtitle) return info.subtitle
-  if (part.state.status === "error") return part.state.error
-  if ((part.state.status === "running" || part.state.status === "completed") && part.state.title)
-    return part.state.title
-  const description = part.state.input?.description
-  if (typeof description === "string") return description
-  return undefined
-}
-
 function contextToolTrigger(part: ToolPart, i18n: ReturnType<typeof useI18n>) {
   const input = (part.state.input ?? {}) as Record<string, unknown>
   const path = typeof input.path === "string" ? input.path : "/"
@@ -763,20 +772,24 @@ function contextToolTrigger(part: ToolPart, i18n: ReturnType<typeof useI18n>) {
         args: pattern ? ["pattern=" + pattern] : [],
       }
     case "grep": {
-      const args: string[] = []
-      if (pattern) args.push("pattern=" + pattern)
-      if (include) args.push("include=" + include)
+      const outcome = searchOutcome(part)
       return {
-        title: i18n.t("ui.tool.grep"),
-        subtitle: getDirectory(path),
-        args,
+        title: i18n.t(
+          outcome === "missing-path"
+            ? "ui.tool.searchPathMissing"
+            : outcome === "no-matches"
+              ? "ui.tool.searchNoMatches"
+              : "ui.tool.grep",
+        ),
+        subtitle: outcome === "missing-path" ? path : pattern,
+        args: include ? [include] : [],
       }
     }
     default: {
       const info = getToolInfo(part.tool, input, "metadata" in part.state ? part.state.metadata : undefined)
       return {
         title: info.title,
-        subtitle: info.subtitle || (isCoordinationTool(part.tool) ? part.tool : contextToolDetail(part)),
+        subtitle: info.subtitle,
         args: [],
       }
     }
@@ -1007,6 +1020,12 @@ export function ContextToolGroup(props: {
                     one: i18n.t("ui.messagePart.context.operation.one"),
                     other: i18n.t("ui.messagePart.context.operation.other"),
                   },
+                  {
+                    key: "missing",
+                    count: summary().missing,
+                    one: i18n.t("ui.messagePart.context.missing.one"),
+                    other: i18n.t("ui.messagePart.context.missing.other"),
+                  },
                 ]}
                 fallback=""
               />
@@ -1022,6 +1041,7 @@ export function ContextToolGroup(props: {
               const trigger = createMemo(() => contextToolTrigger(partAccessor(), i18n))
               const output = () => {
                 const state = partAccessor().state
+                if (state.status === "error") return state.error
                 return state.status === "completed" ? state.output : undefined
               }
               return (

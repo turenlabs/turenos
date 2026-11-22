@@ -2,7 +2,6 @@ export * as ApplyPatchTool from "./apply-patch"
 
 import { ToolFailure } from "@turenlabs/llm"
 import { FileDiff } from "@turenlabs/schema/file-diff"
-import { createTwoFilesPatch, diffLines } from "diff"
 import { Effect, Layer, Schema } from "effect"
 import { isUtf8 } from "node:buffer"
 import { makeLocationNode } from "../effect/app-node"
@@ -11,6 +10,7 @@ import { FSUtil } from "../fs-util"
 import { LocationMutation } from "../location-mutation"
 import { Patch } from "../patch"
 import { PermissionV2 } from "../permission"
+import { formatPatchDiff } from "./apply-patch-diff"
 import { ToolRegistry } from "./registry"
 import { Tool } from "./tool"
 import { Tools } from "./tools"
@@ -170,7 +170,7 @@ export const run = Effect.fn("ApplyPatchTool.run")(function* (input: {
       }).pipe(Effect.mapError((error) => fail(hunk.path, error)))
     }
 
-    const patchFiles = prepared.map(patchFile)
+    const patchFiles = yield* Effect.forEach(prepared, (change) => Effect.promise(() => patchFile(change)))
     yield* Effect.forEach(
       prepared,
       (change) =>
@@ -254,19 +254,21 @@ export const node = makeLocationNode({
   deps: [ToolRegistry.node, LocationMutation.node, FileMutation.node, FSUtil.node, PermissionV2.node],
 })
 
-function patchFile(change: Prepared): typeof FileDiff.Info.Type {
-  const counts = diffLines(change.before, change.after).reduce(
-    (result, item) => ({
-      additions: result.additions + (item.added ? (item.count ?? 0) : 0),
-      deletions: result.deletions + (item.removed ? (item.count ?? 0) : 0),
-    }),
-    { additions: 0, deletions: 0 },
-  )
+async function patchFile(change: Prepared): Promise<typeof FileDiff.Info.Type> {
   const move = change.type === "update" ? change.moveTarget : undefined
+  const diff = await formatPatchDiff({
+    before: change.before,
+    after: change.after,
+    oldName: change.target.resource,
+    newName: (move ?? change.target).resource,
+    patchLines:
+      change.type === "update"
+        ? change.chunks.reduce((total, chunk) => total + chunk.oldLines.length + chunk.newLines.length, 0)
+        : 0,
+  })
   return {
     file: (move ?? change.target).resource,
-    patch: createTwoFilesPatch(change.target.resource, (move ?? change.target).resource, change.before, change.after),
     status: change.type === "add" ? "added" : change.type === "delete" ? "deleted" : "modified",
-    ...counts,
+    ...diff,
   }
 }

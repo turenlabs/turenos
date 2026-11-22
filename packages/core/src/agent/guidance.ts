@@ -57,7 +57,7 @@ const render = (state: State) => {
       `Nested delegation is unavailable because this session is at the maximum subagent depth or was not granted orchestrate. Complete the assigned work directly and do not call ${spawnName} or ${spawnBatchName}.`,
       ...(state.tools.includes(SwarmRoomTool.readName)
         ? [
-            `Team coordination remains available in the swarm room: call ${SwarmRoomTool.readName} for the plan, claimed lanes, and sibling updates; ${SwarmRoomTool.claimName} a lane before starting it; post findings, status, and questions with ${SwarmRoomTool.postName}; park on ${SwarmRoomTool.waitName} once your lane is done so the swarm can still reach you. Each post queues an advisory the other members see at their next provider-turn boundary.`,
+            `For a team assignment with a named lane, use ${SwarmRoomTool.readName} and ${SwarmRoomTool.claimName} before starting. Post material findings with ${SwarmRoomTool.postName}, then park on ${SwarmRoomTool.waitName} when done. For a standalone assignment, return your report directly.`,
           ]
         : []),
       ...(state.tools.includes(listName) && state.tools.includes(sendName)
@@ -72,14 +72,14 @@ const render = (state: State) => {
     ].join("\n")
   const available = new Set(state.agents.map((agent) => agent.id))
   return [
-    "Use durable specialized subagents when independent work can run in parallel or when a separate review perspective materially improves confidence.",
+    "Work directly by default. Most requests need no subagents.",
     "<when_to_delegate>",
-    "  Delegate when the work splits into two or more independent lanes that each need more than a few tool calls, when raw output would flood your context and only a summary matters, or when an independent review of a high-risk change is worth having.",
-    "  Do not delegate a lookup you can finish in a few tool calls, work whose next step depends on the result, a single small edit, or work where two workers would touch the same files. Each child starts without your context, so delegating has a cost.",
+    "  Delegate only when a separate assignment materially reduces elapsed time or risk after briefing, coordination, and review. Parallel tool calls are usually enough for exploration. Do routine searches, edits, tests, and typechecks yourself.",
+    "  Start with one subagent when delegation pays off. Use more than one only for substantial, independent assignments or when the user requests a swarm. Do not assign duplicate work or block your own next step on a child.",
     "  Brief every child completely: the goal, the relevant file:line context, the exact deliverable and its format, and any write roots. It cannot see this conversation.",
     "</when_to_delegate>",
     "<subagent_workflow>",
-    `  1. Use ${spawnName} for independent exploration or research assignments in the same provider turn so they run in parallel; it returns after admission, not after child completion.`,
+    `  1. Use ${spawnName} for a single bounded assignment. It returns after admission, not after child completion.`,
     ...(state.limit === undefined
       ? []
       : [
@@ -87,22 +87,14 @@ const render = (state: State) => {
         ]),
     ...(state.tools.includes(spawnBatchName)
       ? [
-          [
-            `  For more than about 10 workers, use ${spawnBatchName} with one wave tag and wait by wave.`,
-            ...(state.orchestrator === true
-              ? []
-              : [
-                  "For more than about 50, spawn orchestrators (orchestrate: true), each owning one bounded slice of at most 50 workers and returning one synthesized report; orchestrators hold at most half the concurrency slots.",
-                ]),
-            "Parked workers hold slots, so post a room decision promptly when work is queued.",
-          ].join(" "),
+          `  Reserve ${spawnBatchName} and orchestration for substantial multi-agent work or an explicit swarm. Parked workers hold slots, so release them promptly when work is queued.`,
         ]
       : []),
     "  2. Split implementation into disjoint workers with non-overlapping write roots. Do not assign duplicate work.",
     "  When spawning, omit model unless a specific override is required; an omitted model uses the child agent's configured default, then inherits the parent session's model.",
     ...(state.tools.includes(SwarmRoomTool.postName) && state.tools.includes(SwarmRoomTool.readName)
       ? [
-          `  3. Keep working on non-overlapping work after spawning. The swarm room is the shared coordination surface: post a ${SwarmRoomTool.postName} kind "plan" with named lanes so workers can ${SwarmRoomTool.claimName} a lane instead of colliding, and watch the room for claims, findings, and questions. Children publish evidence, status, and leads into the room (cite file:line, URLs, and command output in the entry or evidence_refs). Each room entry, ${notifyParentName} advisory, and child settle notice arrives as a queued advisory message at your next provider-turn boundary — continue working; they do not interrupt in-flight work. Workers stay parked in the room after finishing a lane — run question rounds addressed to lanes (to: the lane key) to deliberate in the open, then post kind "decision" with the swarm's answer to release them to settle; use ${interruptName} on stragglers.`,
+          `  3. Keep working on non-overlapping work after spawning. For one standalone child, skip room setup and use its final report. For a coordinated team, post a ${SwarmRoomTool.postName} plan with named lanes so workers can ${SwarmRoomTool.claimName} them. Assign the lane in each brief. Post a decision to release parked workers. Room entries and child notices arrive as queued advisory messages at your next provider-turn boundary. They do not interrupt in-flight work.`,
         ]
       : [
           "  3. Keep working on non-overlapping work after spawning; do not block the parent just to monitor a child. A child's settle notice arrives as a queued advisory message at your next provider-turn boundary without interrupting in-flight work.",
@@ -124,17 +116,17 @@ const render = (state: State) => {
       : []),
     ...(available.has(AgentV2.ID.make("adversarial-review"))
       ? [
-          "  5. Use adversarial-review at most once per task, and only when the implemented change touches a concrete high-risk boundary such as authorization, persistence, concurrency, security isolation, destructive host behavior, or protocol compatibility. Skip it for routine local changes, documentation, tests, and low-risk refactors. Include the original requested outcomes and constraints, the exact changed paths and regions or a bounded diff, and relevant verification evidence; keep the writer's implementation summary separate so the reviewer can reconstruct actual behavior independently. Treat its evidence as input, not authority; repair only confirmed defects, and do not launch a second review after repairs.",
+          "  5. Consider adversarial-review at most once per task, and only when independent review materially reduces risk at a concrete high-risk boundary, such as authorization, persistence, concurrency, security isolation, destructive host behavior, or protocol compatibility. Skip it for routine local changes, documentation, tests, and low-risk refactors. Include the original requested outcomes and constraints, the exact changed paths and regions or a bounded diff, and relevant verification evidence. Keep the implementation summary separate so the reviewer can reconstruct actual behavior independently. Treat its evidence as input, not authority. Repair only confirmed defects, and do not launch a second review after repairs.",
         ]
       : [
-          "  5. When a listed specialist is suitable for independent review, ask it to challenge the result. Treat its evidence as input, not authority; repair only confirmed defects.",
+          "  5. Use a review specialist only if an independent check materially reduces a concrete risk. Treat its evidence as input, not authority. Repair only confirmed defects.",
         ]),
     ...(available.has(AgentV2.ID.make("qualification"))
       ? [
-          "  6. Delegate exact bounded verification to qualification, then synthesize the result and remaining blockers yourself.",
+          "  6. Run verification yourself unless the user requests independence or a substantial check can run in parallel with other necessary work. Give qualification only the exact commands it needs.",
         ]
       : [
-          "  6. When a listed specialist is suitable for verification, delegate exact bounded checks, then synthesize the result and remaining blockers yourself.",
+          "  6. Run verification yourself unless the user requests independence or a substantial check can run in parallel with other necessary work.",
         ]),
     ...(state.tools.includes(interruptName)
       ? [`  7. Use ${interruptName} when a child is obsolete or off track.`]

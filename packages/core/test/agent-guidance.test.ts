@@ -14,7 +14,15 @@ import { Prompt } from "@turenlabs/core/session/prompt"
 import { SessionSchema } from "@turenlabs/core/session/schema"
 import { SessionTaskV2 } from "@turenlabs/core/session/task"
 import { SystemContext } from "@turenlabs/core/system-context"
-import { interruptName, listName, peekName, sendName, spawnBatchName, spawnName, waitName } from "@turenlabs/core/tool/subagent"
+import {
+  interruptName,
+  listName,
+  peekName,
+  sendName,
+  spawnBatchName,
+  spawnName,
+  waitName,
+} from "@turenlabs/core/tool/subagent"
 import { SwarmRoomTool } from "@turenlabs/core/tool/swarm-room"
 import { location } from "./fixture/location"
 import { testEffect } from "./lib/effect"
@@ -77,15 +85,17 @@ describe("AgentGuidance", () => {
       const generation = yield* SystemContext.initialize(yield* context.guidance.load(selected))
 
       expect(generation.baseline).toContain("<when_to_delegate>")
-      expect(generation.baseline).toContain("two or more independent lanes")
-      expect(generation.baseline).toContain("Do not delegate a lookup you can finish in a few tool calls")
+      expect(generation.baseline).toContain("Work directly by default. Most requests need no subagents.")
+      expect(generation.baseline).toContain("Start with one subagent when delegation pays off")
+      expect(generation.baseline).toContain("For one standalone child, skip room setup")
+      expect(generation.baseline).toContain("Run verification yourself unless")
       expect(generation.baseline).toContain("Brief every child completely")
       expect(generation.baseline).toContain("<subagent_workflow>")
-      expect(generation.baseline).toContain("independent exploration or research assignments in the same provider turn")
+      expect(generation.baseline).toContain("for a single bounded assignment")
       expect(generation.baseline).toContain("returns after admission, not after child completion")
       expect(generation.baseline).toContain("non-overlapping write roots")
       expect(generation.baseline).toContain("explicit final-report barrier")
-      expect(generation.baseline).toContain("queued advisory message at your next provider-turn boundary")
+      expect(generation.baseline).toContain("queued advisory messages at your next provider-turn boundary")
       expect(generation.baseline).toContain("do not interrupt in-flight work")
       expect(generation.baseline).toContain("steer a running child mid-flight")
       expect(generation.baseline).toContain("tail a running child's transcript")
@@ -97,7 +107,7 @@ describe("AgentGuidance", () => {
       expect(generation.baseline).toContain("regions or a bounded diff")
       expect(generation.baseline).toContain("reconstruct actual behavior independently")
       expect(generation.baseline).toContain("Treat its evidence as input, not authority")
-      expect(generation.baseline).toContain("repair only confirmed defects")
+      expect(generation.baseline).toContain("Repair only confirmed defects")
       expect(generation.baseline).toContain("do not launch a second review after repairs")
       expect(generation.baseline).not.toContain("After implementation, delegate an adversarial-review pass")
       expect(generation.baseline).toContain("otherwise avoid nested delegation")
@@ -156,7 +166,7 @@ describe("AgentGuidance", () => {
 
       expect(generation.baseline).toContain("maximum subagent depth")
       expect(generation.baseline).not.toContain("<when_to_delegate>")
-      expect(generation.baseline).toContain("Team coordination remains available")
+      expect(generation.baseline).toContain("For a standalone assignment, return your report directly.")
       expect(generation.baseline).toContain(`<tool>${SwarmRoomTool.postName}</tool>`)
       expect(generation.baseline).toContain(`<tool>${SwarmRoomTool.readName}</tool>`)
       expect(generation.baseline).not.toContain(`<tool>${spawnName}</tool>`)
@@ -240,9 +250,11 @@ describe("AgentGuidance", () => {
       expect(generation.baseline).not.toContain("<id>research</id>")
       expect(generation.baseline).not.toContain("<id>qualification</id>")
       expect(generation.baseline).not.toContain("adversarial-review")
-      expect(generation.baseline).not.toContain("verification to qualification")
-      expect(generation.baseline).toContain("listed specialist is suitable for independent review")
-      expect(generation.baseline).toContain("listed specialist is suitable for verification")
+      expect(generation.baseline).not.toContain("Give qualification")
+      expect(generation.baseline).toContain(
+        "Use a review specialist only if an independent check materially reduces a concrete risk",
+      )
+      expect(generation.baseline).toContain("Run verification yourself unless")
     }),
   )
 
