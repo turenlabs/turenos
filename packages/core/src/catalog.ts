@@ -47,6 +47,7 @@ export type Draft = {
 export interface Interface extends State.Transformable<Draft> {
   readonly provider: {
     readonly get: (providerID: ProviderV2.ID) => Effect.Effect<ProviderV2.Info | undefined>
+    readonly isAvailable: (providerID: ProviderV2.ID) => Effect.Effect<boolean>
     readonly all: () => Effect.Effect<ProviderV2.Info[]>
     readonly available: () => Effect.Effect<ProviderV2.Info[]>
   }
@@ -175,6 +176,12 @@ const layer = Layer.effect(
       provider: {
         get: Effect.fn("CatalogV2.provider.get")(function* (providerID) {
           return state.get().providers.get(providerID)?.provider
+        }),
+
+        isAvailable: Effect.fn("CatalogV2.provider.isAvailable")(function* (providerID) {
+          const provider = state.get().providers.get(providerID)?.provider
+          if (!provider) return false
+          return available(provider, yield* integrations.get(provider.integrationID ?? Integration.ID.make(provider.id)))
         }),
 
         all: Effect.fn("CatalogV2.provider.all")(function* () {

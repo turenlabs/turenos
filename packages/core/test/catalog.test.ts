@@ -81,6 +81,7 @@ describe("CatalogV2", () => {
       })
 
       expect((yield* catalog.provider.available()).map((provider) => provider.id)).toEqual([ProviderV2.ID.make("test")])
+      expect(yield* catalog.provider.isAvailable(ProviderV2.ID.make("test"))).toBe(true)
       expect(required(yield* catalog.provider.get(ProviderV2.ID.make("test"))).request.body).toEqual({})
       yield* credentials.create({
         integrationID,
@@ -108,6 +109,7 @@ describe("CatalogV2", () => {
         yield* policy.load([new Policy.Info({ action: "provider.use", effect: "deny", resource: "test" })])
         yield* catalog.reload()
         expect(yield* catalog.provider.get(providerID)).toBeUndefined()
+        expect(yield* catalog.provider.isAvailable(providerID)).toBe(false)
         expect(yield* catalog.provider.available()).toEqual([])
 
         yield* policy.load([])
