@@ -92,6 +92,7 @@ export const TeamMessageTable = sqliteTable(
     uniqueIndex("team_message_room_seq_idx").on(table.room_id, table.seq),
     uniqueIndex("team_message_source_idx").on(table.source_key),
     index("team_message_room_time_idx").on(table.room_id, table.time_created),
+    index("team_message_run_idx").on(table.run_id).where(sql`${table.run_id} IS NOT NULL`),
   ],
 )
 
@@ -208,5 +209,6 @@ export const TeamFactoryRunTable = sqliteTable(
   (table) => [
     index("team_factory_run_room_status_idx").on(table.room_id, table.status),
     index("team_factory_run_room_time_idx").on(table.room_id, table.time_created),
+    index("team_factory_run_running_idx").on(table.id).where(sql`${table.status} = 'running'`),
   ],
 )

@@ -47,6 +47,23 @@ describe("Storage", () => {
     }),
   )
 
+  it.effect("selects live address pairs across batch boundaries without loading their values", () =>
+    Effect.gen(function* () {
+      const storage = yield* Storage.Service
+      const scope = Storage.Scope.make("storage-test/present")
+      const other = Storage.Scope.make("storage-test/other")
+      const first = { scope, key: Storage.Key.make("first") }
+      const last = { scope: other, key: Storage.Key.make("last") }
+      const removed = { scope, key: Storage.Key.make("removed") }
+      for (const address of [first, last, removed, { ...first, scope: other }])
+        yield* storage.set({ ...address, value: "stored" })
+      yield* storage.remove(removed)
+      const missing = Array.from({ length: 200 }, (_, index) => ({ scope, key: Storage.Key.make(`missing/${index}`) }))
+      expect(yield* storage.existing([])).toEqual([])
+      expect(yield* storage.existing([first, ...missing, removed, last])).toEqual([first, last])
+    }),
+  )
+
   it.effect("queries a bounded prefix page with a stable cursor", () =>
     Effect.gen(function* () {
       const storage = yield* Storage.Service

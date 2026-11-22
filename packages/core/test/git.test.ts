@@ -108,6 +108,33 @@ describe("Git worktrees", () => {
       expect((yield* git.worktree.list(repo)).some((entry) => entry.directory.endsWith("-git-worktree"))).toBe(false)
     }),
   )
+
+  it.live("discovers repositories when Git cannot return three path lines", () =>
+    Effect.gen(function* () {
+      const root = yield* Effect.acquireRelease(
+        Effect.promise(() => tmpdir()),
+        (dir) => Effect.promise(() => dir[Symbol.asyncDispose]()),
+      )
+      const git = yield* Git.Service
+      const bare = path.join(root.path, ".git")
+      yield* Effect.promise(() => runGit(root.path, "init", "--bare", bare))
+      expect(yield* git.repo.discover(AbsolutePath.make(root.path))).toMatchObject({
+        worktree: root.path,
+        gitDirectory: bare,
+        commonDirectory: bare,
+      })
+
+      if (process.platform === "win32") return
+      const directory = path.join(root.path, "checkout\nline")
+      yield* Effect.promise(() => fs.mkdir(directory))
+      yield* Effect.promise(() => runGit(directory, "init"))
+      expect(yield* git.repo.discover(AbsolutePath.make(directory))).toMatchObject({
+        worktree: directory,
+        gitDirectory: path.join(directory, ".git"),
+        commonDirectory: path.join(directory, ".git"),
+      })
+    }),
+  )
 })
 
 describe("Git trees", () => {
@@ -202,6 +229,48 @@ describe("Git trees", () => {
       expect(yield* read(path.join(root.path, "scope", "tracked.txt"))).toBe("one\n")
       expect(yield* read(path.join(root.path, "scope", "added.txt"))).toBe("added\n")
       expect(yield* read(path.join(root.path, "outside.txt"))).toBe("changed outside\n")
+    }),
+  )
+
+  it.live("captures nested checkout commit changes and deletions", () =>
+    Effect.gen(function* () {
+      const root = yield* Effect.acquireRelease(
+        Effect.promise(() => tmpdir()),
+        (dir) => Effect.promise(() => dir[Symbol.asyncDispose]()),
+      )
+      const project = path.join(root.path, "project")
+      const nested = path.join(project, "nested")
+      yield* Effect.promise(async () => {
+        await fs.mkdir(nested, { recursive: true })
+        await initRepo(project)
+        await initRepo(nested)
+        await fs.writeFile(path.join(nested, "file.txt"), "one\n")
+        await runGit(nested, "add", "file.txt")
+        await runGit(nested, "commit", "-m", "initial nested file")
+      })
+
+      const git = yield* Git.Service
+      const source = yield* git.repo.discover(AbsolutePath.make(project))
+      if (!source) throw new Error("Repository not found")
+      const repository = yield* git.repo.create({
+        worktree: source.worktree,
+        gitDirectory: AbsolutePath.make(path.join(root.path, "shadow")),
+        seed: source,
+      })
+      const capture = () => git.tree.capture({ repository, scopes: [RelativePath.make(".")], ignores: source })
+      const original = yield* capture()
+
+      yield* Effect.promise(() => fs.writeFile(path.join(nested, "file.txt"), "two\n"))
+      expect(yield* capture()).toBe(original)
+
+      yield* Effect.promise(() => runGit(nested, "commit", "-am", "update nested file"))
+      const updated = yield* capture()
+      expect(updated).not.toBe(original)
+      expect(yield* git.tree.files({ repository, from: original, to: updated })).toEqual([RelativePath.make("nested")])
+
+      yield* Effect.promise(() => fs.rm(nested, { recursive: true }))
+      const removed = yield* capture()
+      expect(yield* git.tree.files({ repository, from: updated, to: removed })).toEqual([RelativePath.make("nested")])
     }),
   )
 

@@ -47,7 +47,13 @@ export function setPolicyDependencies(dependencies: ProviderConnectionPolicy.Con
   policyDependencies = dependencies
 }
 
+let usingBuiltInCatalog = false
+
 export function sync(manifests: ReadonlyArray<Extension.Manifest>) {
+  const builtInCatalog = manifests === ExtensionCatalog.manifests
+  if (builtInCatalog && usingBuiltInCatalog) return
+  usingBuiltInCatalog = builtInCatalog
+
   catalogMcp.clear()
   for (const manifest of manifests) {
     for (const item of manifest.contributions) {

@@ -28,6 +28,8 @@ Build the Desktop application:
 bun --cwd packages/desktop build
 ```
 
+Apple silicon Desktop packaging uses Rust for the native shell parser. See the [Desktop build requirements](docs/operations/releases/automation.md#desktop-bundle-contents).
+
 Common checks:
 
 ```bash

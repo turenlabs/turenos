@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 import type { Part, ToolPart } from "@turenlabs/sdk/v2"
-import { contextToolSummary, groupParts, sameGroups } from "./message-part-group"
+import { contextToolSummary, groupParts, sameGroups, searchOutcome } from "./message-part-group"
 
 function tool(
   id: string,
@@ -40,6 +40,15 @@ test("a long run of reads and routine coordination stays one expandable group wi
     "spawn_agent",
     "send_agent",
     "wait_agents",
+    "code_search",
+    "memory_search",
+    "memory_read",
+    "room_read",
+    "room_post",
+    "room_claim",
+    "room_wait",
+    "spawn_agents",
+    "shell_job",
   ]
   const parts = Array.from({ length: 700 }, (_, index) => tool(`part-${index}`, names[index % names.length]))
   const groups = groupParts(parts)
@@ -51,8 +60,8 @@ test("a long run of reads and routine coordination stays one expandable group wi
   })
 })
 
-test("failed reads and coordination are individual error rows between routine groups", () => {
-  for (const name of ["read", "bash", "reflection_state", "board_post"]) {
+test("failed tools stay visible between routine groups", () => {
+  for (const name of ["read", "bash", "grep", "reflection_state", "room_post", "code_search", "shell_job"]) {
     const groups = groupParts([tool("before", "read"), tool("failure", name, "error"), tool("after", "board_read")])
     expect(groups.map((group) => group.type)).toEqual(["context", "part", "context"])
     expect(groups[1]).toEqual({
@@ -63,10 +72,52 @@ test("failed reads and coordination are individual error rows between routine gr
   }
 })
 
+test("missing grep paths share the activity group, while regex and backend errors stay visible", () => {
+  const input = { path: "src/missing", pattern: "needle" }
+  const missing = tool("missing", "grep", "error", "Search path not found: src/missing")
+  missing.part.state.input = input
+  const saved = tool(
+    "saved",
+    "grep",
+    "error",
+    "Unable to grep for needle in src/missing: NotFound: FileSystem.stat (/project/src/missing)",
+  )
+  saved.part.state.input = input
+  const parts = [tool("before", "memory_search"), missing, saved, tool("after", "room_read")]
+  expect(groupParts(parts).map((group) => group.type)).toEqual(["context"])
+  expect(contextToolSummary(parts.map((item) => item.part))).toMatchObject({ search: 3, missing: 2, coordination: 1 })
+
+  for (const message of [
+    "Search failed: regex parse error",
+    "Search failed: backend offline",
+    "Permission denied: grep .",
+  ]) {
+    expect(groupParts([missing, tool("error", "grep", "error", message), saved]).map((group) => group.type)).toEqual([
+      "context",
+      "part",
+      "context",
+    ])
+  }
+})
+
+test("only an empty grep result is labeled no matches", () => {
+  for (const output of ["No matches found", "No files found"]) {
+    const grep = tool("empty", "grep").part
+    const other = tool("other", "code_search").part
+    if (grep.state.status !== "completed" || other.state.status !== "completed")
+      throw new Error("Expected completed fixtures")
+    grep.state.output = other.state.output = output
+    expect(searchOutcome(grep)).toBe("no-matches")
+    expect(searchOutcome(other)).toBeUndefined()
+  }
+})
+
 test("a run of identical tool rejections collapses into one failure group", () => {
   const parts = [
     tool("before", "read"),
-    ...Array.from({ length: 5 }, (_, index) => tool(`fail-${index}`, "bash", "error", "Session active shell job limit reached")),
+    ...Array.from({ length: 5 }, (_, index) =>
+      tool(`fail-${index}`, "bash", "error", "Session active shell job limit reached"),
+    ),
     tool("after", "read"),
   ]
   const groups = groupParts(parts)
@@ -118,6 +169,7 @@ test("shell commands share a counted group with reads and running tools", () => 
     list: 0,
     shell: 2,
     coordination: 0,
+    missing: 0,
   })
 })
 
@@ -136,6 +188,7 @@ test("agent operations are counted as session activity", () => {
     list: 0,
     shell: 0,
     coordination: 3,
+    missing: 0,
   })
 })
 
@@ -156,6 +209,7 @@ test("context tool summaries count each category independently", () => {
     list: 1,
     shell: 1,
     coordination: 2,
+    missing: 0,
   })
 })
 
@@ -168,6 +222,7 @@ test("context tool summaries skip sparse slots", () => {
     list: 0,
     shell: 0,
     coordination: 0,
+    missing: 0,
   })
 })
 

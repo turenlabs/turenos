@@ -5,7 +5,7 @@ import { ModelV2 } from "@turenlabs/core/model"
 import { ProviderV2 } from "@turenlabs/core/provider"
 import { SessionMessage } from "@turenlabs/core/session/message"
 import { SessionMessagesQuery } from "@turenlabs/protocol/groups/message"
-import { leanSessionMessage } from "./message"
+import { SessionLeanMessage } from "@turenlabs/core/session/lean-message"
 
 const assistant = (content: SessionMessage.AssistantContent[]): SessionMessage.Assistant => ({
   type: "assistant",
@@ -39,7 +39,7 @@ const completedTool = (input: {
 
 const large = "x".repeat(70 * 1024)
 
-describe("leanSessionMessage", () => {
+describe("SessionLeanMessage.trim", () => {
   test("leaves non-assistant messages untouched", () => {
     const user: SessionMessage.Message = {
       type: "user",
@@ -47,17 +47,17 @@ describe("leanSessionMessage", () => {
       text: "hi",
       time: { created: DateTime.makeUnsafe(1) },
     }
-    expect(leanSessionMessage(user)).toBe(user)
+    expect(SessionLeanMessage.trim(user)).toBe(user)
   })
 
   test("leaves tools at or under the threshold untouched", () => {
     const message = assistant([completedTool({ text: "small", structured: { exit: 0 } })])
-    expect(leanSessionMessage(message)).toBe(message)
+    expect(SessionLeanMessage.trim(message)).toBe(message)
   })
 
   test("replaces an oversized body with a truncated marker", () => {
     const message = assistant([completedTool({ text: large, result: { type: "text", value: large } })])
-    const tool = (leanSessionMessage(message) as SessionMessage.Assistant).content[0]
+    const tool = (SessionLeanMessage.trim(message) as SessionMessage.Assistant).content[0]
     if (tool?.type !== "tool") throw new Error("expected tool")
     expect(tool.truncated?.bytes).toBeGreaterThan(70 * 1024)
     if (tool.state.status !== "completed") throw new Error("expected completed")
@@ -68,9 +68,28 @@ describe("leanSessionMessage", () => {
     expect(tool.state.outputPaths).toEqual(["/tmp/a"])
   })
 
+  test("counts duplicated text and arbitrary result bodies at their exact JSON byte size", () => {
+    const text = '\u0000\uD800 "révision 🦀"\\\n'.repeat(6_000)
+    const structured = { exit: 1 }
+    for (const result of [
+      { value: text, type: "text" },
+      { type: "text", value: text, extra: "another field" },
+      { type: "text", value: "different" },
+    ]) {
+      const message = assistant([completedTool({ text, result, structured })])
+      const trimmed = SessionLeanMessage.trim(message)
+      if (trimmed.type !== "assistant" || trimmed.content[0]?.type !== "tool") throw new Error("expected tool")
+      const bytes = [structured, [{ type: "text", text }], result].reduce(
+        (total, field) => total + Buffer.byteLength(JSON.stringify(field)),
+        0,
+      )
+      expect(trimmed.content[0].truncated).toEqual({ bytes })
+    }
+  })
+
   test("keeps a small structured record while eliding the oversized content", () => {
     const message = assistant([completedTool({ text: large, structured: { exit: 0, timeout: false } })])
-    const tool = (leanSessionMessage(message) as SessionMessage.Assistant).content[0]
+    const tool = (SessionLeanMessage.trim(message) as SessionMessage.Assistant).content[0]
     if (tool?.type !== "tool" || tool.state.status !== "completed") throw new Error("expected completed tool")
     expect(tool.truncated).toBeDefined()
     expect(tool.state.content).toEqual([])
@@ -86,7 +105,7 @@ describe("leanSessionMessage", () => {
       time: { created: DateTime.makeUnsafe(1) },
     }
     const message = assistant([tool])
-    expect(leanSessionMessage(message)).toBe(message)
+    expect(SessionLeanMessage.trim(message)).toBe(message)
   })
 
   test("leaves running tools untouched: the streamed output is being rendered live", () => {
@@ -103,7 +122,7 @@ describe("leanSessionMessage", () => {
       time: { created: DateTime.makeUnsafe(1), ran: DateTime.makeUnsafe(1) },
     }
     const message = assistant([tool])
-    expect(leanSessionMessage(message)).toBe(message)
+    expect(SessionLeanMessage.trim(message)).toBe(message)
   })
 
   test("keeps the error message while eliding an oversized error body", () => {
@@ -120,7 +139,7 @@ describe("leanSessionMessage", () => {
       },
       time: { created: DateTime.makeUnsafe(1), ran: DateTime.makeUnsafe(1), completed: DateTime.makeUnsafe(2) },
     }
-    const next = (leanSessionMessage(assistant([tool])) as SessionMessage.Assistant).content[0]
+    const next = (SessionLeanMessage.trim(assistant([tool])) as SessionMessage.Assistant).content[0]
     if (next?.type !== "tool" || next.state.status !== "error") throw new Error("expected error tool")
     expect(next.truncated).toBeDefined()
     expect(next.state.error.message).toBe("boom")

@@ -154,6 +154,7 @@ Each row identifies a resolved package and version, its declared license, and it
 | `@internationalized/number` | `3.6.7` | Apache-2.0 | [source](https://github.com/adobe/react-spectrum) |
 | `@ioredis/commands` | `1.10.0` | MIT | [source](https://github.com/ioredis/commands.git) |
 | `@isaacs/fs-minipass` | `4.0.1` | ISC | [source](https://github.com/npm/fs-minipass.git) |
+| `@isaacs/nonrecursive-glob-match` | `1.0.3` | BlueOak-1.0.0 | Not declared |
 | `@isaacs/string-locale-compare` | `1.1.0` | ISC | [source](git+https://github.com/isaacs/string-locale-compare) |
 | `@kobalte/core` | `0.13.11` | MIT | [source](git+https://github.com/kobaltedev/kobalte.git) |
 | `@kobalte/utils` | `0.9.1` | MIT | [source](git+https://github.com/kobaltedev/kobalte.git) |
@@ -167,6 +168,7 @@ Each row identifies a resolved package and version, its declared license, and it
 | `@modelcontextprotocol/sdk` | `1.32.0` | MIT | [source](git+https://github.com/modelcontextprotocol/typescript-sdk.git) |
 | `@msgpackr-extract/msgpackr-extract-linux-x64` | `3.0.4` | MIT | [source](http://github.com/kriszyp/msgpackr-extract) |
 | `@nodable/entities` | `2.1.1` | MIT | [source](git+https://github.com/nodable/val-parsers.git) |
+| `@nodable/entities` | `3.1.0` | MIT | [source](git+https://github.com/nodable/val-parsers.git) |
 | `@npmcli/agent` | `4.0.2` | ISC | [source](git+https://github.com/npm/agent.git) |
 | `@npmcli/arborist` | `9.4.0` | ISC | [source](git+https://github.com/npm/cli.git) |
 | `@npmcli/config` | `10.8.1` | ISC | [source](git+https://github.com/npm/cli.git) |
@@ -412,6 +414,7 @@ Each row identifies a resolved package and version, its declared license, and it
 | `animejs` | `4.5.0` | MIT | [source](git+https://github.com/juliangarnier/anime.git) |
 | `ansi-regex` | `6.2.2` | MIT | [source](chalk/ansi-regex) |
 | `ansi-styles` | `6.2.3` | MIT | [source](chalk/ansi-styles) |
+| `anynum` | `1.0.1` | MIT | [source](https://github.com/NaturalIntelligence/anynum) |
 | `argparse` | `1.0.10` | MIT | [source](nodeca/argparse) |
 | `argparse` | `2.0.1` | Python-2.0 | [source](nodeca/argparse) |
 | `aria-hidden` | `1.2.6` | MIT | [source](git+https://github.com/theKashey/aria-hidden.git) |
@@ -585,6 +588,8 @@ Each row identifies a resolved package and version, its declared license, and it
 | `fast-uri` | `3.1.8` | BSD-3-Clause | [source](git+https://github.com/fastify/fast-uri.git) |
 | `fast-uri` | `4.1.5` | BSD-3-Clause | [source](git+https://github.com/fastify/fast-uri.git) |
 | `fast-xml-builder` | `1.2.0` | MIT | [source](git+https://github.com/NaturalIntelligence/fast-xml-builder.git) |
+| `fast-xml-builder` | `1.3.2` | MIT | [source](git+https://github.com/NaturalIntelligence/fast-xml-builder.git) |
+| `fast-xml-parser` | `5.12.0` | MIT | [source](git+https://github.com/NaturalIntelligence/fast-xml-parser.git) |
 | `fast-xml-parser` | `5.7.3` | MIT | [source](git+https://github.com/NaturalIntelligence/fast-xml-parser.git) |
 | `fastdom` | `1.0.12` | MIT | [source](git://github.com/wilsonpage/fastdom.git) |
 | `fastify` | `5.12.5` | MIT | [source](git+https://github.com/fastify/fastify.git) |
@@ -662,6 +667,7 @@ Each row identifies a resolved package and version, its declared license, and it
 | `is-inside-container` | `1.0.0` | MIT | [source](sindresorhus/is-inside-container) |
 | `is-plain-obj` | `1.1.0` | MIT | [source](sindresorhus/is-plain-obj) |
 | `is-promise` | `4.0.0` | MIT | [source](https://github.com/then/is-promise.git) |
+| `is-unsafe` | `2.0.3` | MIT | [source](https://github.com/NaturalIntelligence/is-unsafe) |
 | `is-wsl` | `3.1.1` | MIT | [source](sindresorhus/is-wsl) |
 | `isexe` | `2.0.0` | ISC | [source](git+https://github.com/isaacs/isexe.git) |
 | `isexe` | `4.0.0` | BlueOak-1.0.0 | [source](https://github.com/isaacs/isexe) |
@@ -728,6 +734,7 @@ Each row identifies a resolved package and version, its declared license, and it
 | `mime-types` | `3.0.2` | MIT | [source](jshttp/mime-types) |
 | `mimic-function` | `5.0.1` | MIT | [source](sindresorhus/mimic-function) |
 | `minimatch` | `10.2.6` | BlueOak-1.0.0 | [source](git@github.com:isaacs/minimatch) |
+| `minimatch` | `11.0.1` | BlueOak-1.0.0 | [source](git@github.com:isaacs/minimatch) |
 | `minimist` | `1.2.8` | MIT | [source](git://github.com/minimistjs/minimist.git) |
 | `minipass` | `3.3.6` | ISC | [source](git+https://github.com/isaacs/minipass.git) |
 | `minipass` | `7.1.3` | BlueOak-1.0.0 | [source](https://github.com/isaacs/minipass) |
@@ -793,6 +800,7 @@ Each row identifies a resolved package and version, its declared license, and it
 | `path-data-parser` | `0.1.0` | MIT | [source](git+https://github.com/pshihn/path-data-parser.git) |
 | `path-exists` | `5.0.0` | MIT | [source](sindresorhus/path-exists) |
 | `path-expression-matcher` | `1.5.0` | MIT | [source](https://github.com/NaturalIntelligence/path-expression-matcher) |
+| `path-expression-matcher` | `1.6.2` | MIT | [source](https://github.com/NaturalIntelligence/path-expression-matcher) |
 | `path-key` | `3.1.1` | MIT | [source](sindresorhus/path-key) |
 | `path-scurry` | `2.0.2` | BlueOak-1.0.0 | [source](git+https://github.com/isaacs/path-scurry) |
 | `path-to-regexp` | `8.4.2` | MIT | [source](https://github.com/pillarjs/path-to-regexp.git) |
@@ -918,6 +926,7 @@ Each row identifies a resolved package and version, its declared license, and it
 | `strip-ansi` | `7.1.2` | MIT | [source](chalk/strip-ansi) |
 | `strip-bom-string` | `1.0.0` | MIT | [source](jonschlinkert/strip-bom-string) |
 | `strnum` | `2.3.0` | MIT | [source](https://github.com/NaturalIntelligence/strnum) |
+| `strnum` | `2.5.1` | MIT | [source](https://github.com/NaturalIntelligence/strnum) |
 | `stubborn-fs` | `2.0.0` | MIT | [source](github:fabiospampinato/stubborn-fs) |
 | `stubborn-utils` | `1.0.2` | MIT | [source](github:fabiospampinato/stubborn-utils) |
 | `stylis` | `4.4.0` | MIT | [source](https://github.com/thysultan/stylis.js) |
@@ -1001,6 +1010,7 @@ Each row identifies a resolved package and version, its declared license, and it
 | `wsl-utils` | `0.1.0` | MIT | [source](sindresorhus/wsl-utils) |
 | `xdg-basedir` | `5.1.0` | MIT | [source](sindresorhus/xdg-basedir) |
 | `xml-naming` | `0.1.0` | MIT | [source](https://github.com/NaturalIntelligence/xml-naming) |
+| `xml-naming` | `0.3.0` | MIT | [source](https://github.com/NaturalIntelligence/xml-naming) |
 | `xmlhttprequest-ssl` | `2.1.2` | MIT | [source](git://github.com/mjwwit/node-XMLHttpRequest.git) |
 | `y18n` | `5.0.8` | ISC | [source](yargs/y18n) |
 | `yallist` | `4.0.0` | ISC | [source](git+https://github.com/isaacs/yallist.git) |
@@ -1015,6 +1025,6 @@ Each row identifies a resolved package and version, its declared license, and it
 | `zustand` | `4.5.7` | MIT | [source](git+https://github.com/pmndrs/zustand.git) |
 | `zwitch` | `2.0.4` | MIT | [source](wooorm/zwitch) |
 
-Inventory total: **993 resolved packages**.
+Inventory total: **1003 resolved packages**.
 
 This file is regenerated during the desktop prebuild. Do not edit generated inventory content by hand.

@@ -39,7 +39,7 @@ type ModelOutput = typeof Output.Encoded
 
 /** Format raw search matches into the familiar concise model output. */
 export const toModelOutput = (output: ModelOutput) => {
-  const lines = output.length === 0 ? ["No files found"] : [`Found ${output.length} matches`]
+  const lines = output.length === 0 ? ["No matches found"] : [`Found ${output.length} matches`]
   let current = ""
   for (const match of output) {
     if (current !== match.entry.path) {
@@ -111,7 +111,13 @@ const layer = Layer.effectDiscard(
                 source,
               })
               const target = resolved.canonical
-              const info = yield* fs.stat(target)
+              const info = yield* fs
+                .stat(target)
+                .pipe(
+                  Effect.catchReason("PlatformError", "NotFound", () =>
+                    Effect.fail(new ToolFailure({ message: `Search path not found: ${input.path ?? "."}` })),
+                  ),
+                )
               if (info.type !== "Directory" && info.type !== "File")
                 return yield* Effect.fail(
                   new ToolFailure({ message: `Search path is not a file or directory: ${input.path ?? "."}` }),
@@ -150,18 +156,19 @@ const layer = Layer.effectDiscard(
                   ),
                 )
             }).pipe(
-              Effect.mapError(
-                (error) =>
-                  new ToolFailure({
-                    message:
-                      error instanceof PermissionV2.BlockedError
-                        ? `Permission denied: grep ${input.path ?? "."}`
-                        : error instanceof PermissionV2.CorrectedError
-                          ? error.feedback
-                          : error instanceof LocationMutation.PathError
-                            ? `Invalid search path ${input.path ?? "."}: ${error.reason}`
-                            : `Unable to grep for ${input.pattern} in ${input.path ?? "."}: ${error.message}`,
-                  }),
+              Effect.mapError((error) =>
+                error instanceof ToolFailure
+                  ? error
+                  : new ToolFailure({
+                      message:
+                        error instanceof PermissionV2.BlockedError
+                          ? `Permission denied: grep ${input.path ?? "."}`
+                          : error instanceof PermissionV2.CorrectedError
+                            ? error.feedback
+                            : error instanceof LocationMutation.PathError
+                              ? `Invalid search path ${input.path ?? "."}: ${error.reason}`
+                              : `Search failed: ${error.message}`,
+                    }),
               ),
             ),
         }),

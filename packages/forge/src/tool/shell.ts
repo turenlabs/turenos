@@ -5,7 +5,7 @@ import * as Tool from "./tool"
 import path from "path"
 import { containsPath, type InstanceContext } from "../project/instance-context"
 import { InstanceState } from "@/effect/instance-state"
-import type { Node } from "web-tree-sitter"
+import type { Node } from "@turenlabs/core/shell-tree"
 
 import { FSUtil } from "@turenlabs/core/fs-util"
 import { Config } from "@/config/config"

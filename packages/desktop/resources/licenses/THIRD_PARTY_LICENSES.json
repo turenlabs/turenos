@@ -1183,6 +1183,14 @@
       ]
     },
     {
+      "name": "@isaacs/nonrecursive-glob-match",
+      "version": "1.0.3",
+      "license": "BlueOak-1.0.0",
+      "licenseFiles": [
+        "LICENSE.md"
+      ]
+    },
+    {
       "name": "@isaacs/string-locale-compare",
       "version": "1.1.0",
       "license": "ISC",
@@ -1294,6 +1302,13 @@
     {
       "name": "@nodable/entities",
       "version": "2.1.1",
+      "license": "MIT",
+      "source": "git+https://github.com/nodable/val-parsers.git",
+      "licenseFiles": []
+    },
+    {
+      "name": "@nodable/entities",
+      "version": "3.1.0",
       "license": "MIT",
       "source": "git+https://github.com/nodable/val-parsers.git",
       "licenseFiles": []
@@ -3441,6 +3456,15 @@
       ]
     },
     {
+      "name": "anynum",
+      "version": "1.0.1",
+      "license": "MIT",
+      "source": "https://github.com/NaturalIntelligence/anynum",
+      "licenseFiles": [
+        "LICENSE"
+      ]
+    },
+    {
       "name": "argparse",
       "version": "1.0.10",
       "license": "MIT",
@@ -4991,6 +5015,24 @@
       ]
     },
     {
+      "name": "fast-xml-builder",
+      "version": "1.3.2",
+      "license": "MIT",
+      "source": "git+https://github.com/NaturalIntelligence/fast-xml-builder.git",
+      "licenseFiles": [
+        "LICENSE"
+      ]
+    },
+    {
+      "name": "fast-xml-parser",
+      "version": "5.12.0",
+      "license": "MIT",
+      "source": "git+https://github.com/NaturalIntelligence/fast-xml-parser.git",
+      "licenseFiles": [
+        "LICENSE"
+      ]
+    },
+    {
       "name": "fast-xml-parser",
       "version": "5.7.3",
       "license": "MIT",
@@ -5678,6 +5720,15 @@
       ]
     },
     {
+      "name": "is-unsafe",
+      "version": "2.0.3",
+      "license": "MIT",
+      "source": "https://github.com/NaturalIntelligence/is-unsafe",
+      "licenseFiles": [
+        "LICENSE"
+      ]
+    },
+    {
       "name": "is-wsl",
       "version": "3.1.1",
       "license": "MIT",
@@ -6264,6 +6315,15 @@
       ]
     },
     {
+      "name": "minimatch",
+      "version": "11.0.1",
+      "license": "BlueOak-1.0.0",
+      "source": "git@github.com:isaacs/minimatch",
+      "licenseFiles": [
+        "LICENSE.md"
+      ]
+    },
+    {
       "name": "minimist",
       "version": "1.2.8",
       "license": "MIT",
@@ -6841,6 +6901,15 @@
     {
       "name": "path-expression-matcher",
       "version": "1.5.0",
+      "license": "MIT",
+      "source": "https://github.com/NaturalIntelligence/path-expression-matcher",
+      "licenseFiles": [
+        "LICENSE"
+      ]
+    },
+    {
+      "name": "path-expression-matcher",
+      "version": "1.6.2",
       "license": "MIT",
       "source": "https://github.com/NaturalIntelligence/path-expression-matcher",
       "licenseFiles": [
@@ -7960,6 +8029,15 @@
       ]
     },
     {
+      "name": "strnum",
+      "version": "2.5.1",
+      "license": "MIT",
+      "source": "https://github.com/NaturalIntelligence/strnum",
+      "licenseFiles": [
+        "LICENSE"
+      ]
+    },
+    {
       "name": "stubborn-fs",
       "version": "2.0.0",
       "license": "MIT",
@@ -8695,7 +8773,18 @@
       "version": "0.1.0",
       "license": "MIT",
       "source": "https://github.com/NaturalIntelligence/xml-naming",
-      "licenseFiles": []
+      "licenseFiles": [
+        "LICENSE (from xml-naming@0.3.0)"
+      ]
+    },
+    {
+      "name": "xml-naming",
+      "version": "0.3.0",
+      "license": "MIT",
+      "source": "https://github.com/NaturalIntelligence/xml-naming",
+      "licenseFiles": [
+        "LICENSE"
+      ]
     },
     {
       "name": "xmlhttprequest-ssl",

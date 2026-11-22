@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url"
 import { promisify } from "node:util"
 
 import { extractFile } from "@electron/asar"
-import type { Configuration } from "electron-builder"
+import { Arch, type Configuration } from "electron-builder"
 import { missingTreeSitterAssets, referencedWasmAssets } from "./scripts/wasm-assets"
 
 const execFileAsync = promisify(execFile)
@@ -160,12 +160,21 @@ const verifyPackage: NonNullable<Configuration["afterPack"]> = async (context) =
       ? `${context.packager.appInfo.productFilename}.app/Contents/Resources`
       : "resources",
   )
+  const scanner = "snapshot-scan/turen-snapshot"
+  const hasScanner = await access(path.join(packageDir, "resources", scanner)).then(
+    () => true,
+    () => false,
+  )
   await Promise.all(
     [
+      ...(hasScanner ? [scanner, "snapshot-scan/snapshot-scan.gitconfig", "snapshot-scan/licenses"] : []),
       context.electronPlatformName === "win32" ? "bun.exe" : "bun",
       "server/sidecar.js",
       "server/node.js",
       "server/native-check.js",
+      ...(context.electronPlatformName === "darwin" && context.arch === Arch.arm64
+        ? ["server/libturen_shell_parser.dylib", "server/shell-parser-licenses.txt"]
+        : []),
       "server/node_modules/@ff-labs/fff-bun/package.json",
       "decompiler/decompiler-worker.js",
       "decompiler/ghidra-decompiler/package.json",
@@ -410,6 +419,7 @@ const getBase = (appId: string): Configuration => ({
     "resources/**/*",
     "!resources/bun*",
     "!resources/forge-cli*",
+    "!resources/snapshot-scan/**",
   ],
   extraResources: [
     {
@@ -427,7 +437,7 @@ const getBase = (appId: string): Configuration => ({
     {
       from: "resources/",
       to: ".",
-      filter: ["forge-cli*", "bun*", "vigil/**"],
+      filter: ["forge-cli*", "bun*", "vigil/**", "snapshot-scan/**"],
     },
     {
       from: "native/",

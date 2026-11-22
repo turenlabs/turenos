@@ -1137,6 +1137,9 @@ const layer = (allowUnmanaged: boolean, managedRetryMs = MANAGED_RETRY_MS) =>
             Effect.gen(function* () {
               const current = s.status[definition.id]?.status
               if (current === "connected" || current === "connecting") return
+              // The catalog snapshot may predate a disable. Check before updating retry state.
+              const desired = yield* extensions.desired(manifest.id)
+              if (!desired?.enabled) return
               if (s.config[definition.id]) {
                 // Admission already ran for this directory. `needs_auth` clears only
                 // after OAuth tokens are committed -- process-global in McpAuth and
@@ -1163,8 +1166,6 @@ const layer = (allowUnmanaged: boolean, managedRetryMs = MANAGED_RETRY_MS) =>
                   s.managedRetry[gate] = Date.now()
                 }
               }
-              const desired = yield* extensions.desired(manifest.id)
-              if (!desired?.enabled) return
               const declaredSecrets = manifest.contributions.flatMap((contribution) => contribution.secrets)
               const secrets = Object.fromEntries(
                 yield* Effect.forEach(declaredSecrets, (secret) =>

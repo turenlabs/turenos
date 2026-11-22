@@ -1,21 +1,43 @@
 import type { Part, ToolPart } from "@turenlabs/sdk/v2"
 
-const CONTEXT_GROUP_TOOLS = new Set(["read", "glob", "grep", "list", "bash"])
+const READ_TOOLS = new Set(["read", "memory_read"])
+const SEARCH_TOOLS = new Set(["glob", "grep", "code_search", "memory_search"])
+const SHELL_TOOLS = new Set(["bash", "shell_job"])
 const COORDINATION_TOOLS = new Set([
   "reflection_read",
   "reflection_state",
   "reflection_complete",
   "board_read",
   "board_post",
+  "room_read",
+  "room_post",
+  "room_claim",
+  "room_wait",
   "spawn_agent",
+  "spawn_agents",
   "send_agent",
   "wait_agents",
   "interrupt_agent",
   "list_agents",
+  "peek_agent",
+  "notify_parent",
 ])
 
-export function isCoordinationTool(tool: string) {
-  return COORDINATION_TOOLS.has(tool)
+export function searchOutcome(part: ToolPart) {
+  const state = part.state
+  if (part.tool !== "grep") return
+  if (state.status === "completed" && (state.output === "No matches found" || state.output === "No files found"))
+    return "no-matches"
+  if (state.status !== "error") return
+  if (state.error.startsWith("Search path not found: ")) return "missing-path"
+  // Older saved transcripts include the filesystem error after the original search input.
+  const path = typeof state.input.path === "string" ? state.input.path : "."
+  const pattern = state.input.pattern
+  if (
+    typeof pattern === "string" &&
+    state.error.startsWith(`Unable to grep for ${pattern} in ${path}: NotFound: FileSystem.stat (`)
+  )
+    return "missing-path"
 }
 
 export function isContextGroupTool(part: Part): part is ToolPart {
@@ -29,34 +51,27 @@ export function isContextGroupTool(part: Part): part is ToolPart {
     )
       return false
   }
-  // Failures stay in the main transcript as individual error cards, even when
-  // surrounding successful tools collapse into a group.
+  // A missing search path is an ordinary probe outcome. Other failures stay visible.
   return (
     part.type === "tool" &&
-    part.state.status !== "error" &&
-    (CONTEXT_GROUP_TOOLS.has(part.tool) || isCoordinationTool(part.tool))
+    (part.state.status !== "error" || searchOutcome(part) === "missing-path") &&
+    (READ_TOOLS.has(part.tool) ||
+      SEARCH_TOOLS.has(part.tool) ||
+      SHELL_TOOLS.has(part.tool) ||
+      part.tool === "list" ||
+      COORDINATION_TOOLS.has(part.tool))
   )
 }
 
 export function contextToolSummary(parts: ToolPart[]) {
-  const summary = { read: 0, search: 0, list: 0, shell: 0, coordination: 0 }
+  const summary = { read: 0, search: 0, list: 0, shell: 0, coordination: 0, missing: 0 }
   parts.forEach((part) => {
-    switch (part.tool) {
-      case "read":
-        summary.read++
-        break
-      case "glob":
-      case "grep":
-        summary.search++
-        break
-      case "list":
-        summary.list++
-        break
-      case "bash":
-        summary.shell++
-        break
-    }
-    if (isCoordinationTool(part.tool)) summary.coordination++
+    if (READ_TOOLS.has(part.tool)) summary.read++
+    if (SEARCH_TOOLS.has(part.tool)) summary.search++
+    if (SHELL_TOOLS.has(part.tool)) summary.shell++
+    if (part.tool === "list") summary.list++
+    if (COORDINATION_TOOLS.has(part.tool)) summary.coordination++
+    if (searchOutcome(part) === "missing-path") summary.missing++
   })
   return summary
 }

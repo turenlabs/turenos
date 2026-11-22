@@ -5,6 +5,7 @@ import { copyBinaryToSidecarFolder, getCurrentSidecar, resolveChannel, windowsif
 
 const channel = resolveChannel()
 await $`bun ./scripts/stage-bun.ts`
+await $`bun ./scripts/stage-snapshot-scan.ts`
 await $`bun ../../script/license-audit.ts --write`
 await $`bun ./scripts/copy-icons.ts ${channel}`
 await $`bun ./scripts/copy-metainfo.ts ${channel}`
@@ -15,3 +16,4 @@ await $`cd ../forge && bun script/build.ts ${flags}`
 await copyBinaryToSidecarFolder(windowsify(`../forge/dist/${binary}/bin/forge`))
 await $`cd ../forge && bun script/build-node.ts`
 await $`bun ./scripts/build-sidecar.ts`
+await $`bun ./scripts/stage-shell-parser.ts`

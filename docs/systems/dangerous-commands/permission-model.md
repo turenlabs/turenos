@@ -11,18 +11,17 @@ then asserts `external_directory` once for each external directory referenced by
 action last:
 
 ```
-const commands = yield* ShellSafety.commands({ command: input.command, shell: ShellSafety.kind(shell) })
 yield* permission.assert({
   action: name,
-  resources: commands,
-  save: commands,
+  resources: analysis.commands,
+  save: analysis.commands,
   metadata: { workdir: target.resource },
   ...
 })
 ```
 
-`resources` and `save` are the simple commands the line runs, not the raw line. `ShellSafety.commands` parses the command
-with the same tree-sitter grammar the deletion check uses and returns the text of every `command` node — the commands on
+`resources` and `save` contain the simple commands the line runs. For Bash and PowerShell, `ShellSafety.commandsParsed`
+uses the tree from the deletion check and returns the text of every `command` node — the commands on
 each side of `;`, `&&`, `||`, `|`, and newlines, and those nested in `$(...)`, subshells, loop bodies, and function bodies
 — with a command's redirections kept attached to it. The whole-line resource would otherwise be matched as one string, so
 `{ action: "bash", resource: "git *", effect: "allow" }` would also approve `git status; cp .env /tmp/leak`,

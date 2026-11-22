@@ -1,6 +1,7 @@
 import { describe, expect } from "bun:test"
 import { AppNodeBuilder } from "@turenlabs/core/effect/app-node-builder"
 import { ExtensionRuntime } from "@turenlabs/core/extension"
+import { SecretOutput } from "@turenlabs/core/secret-output"
 import { Extension } from "@turenlabs/schema"
 import { Effect, Exit } from "effect"
 import { Storage } from "@turenlabs/core/storage"
@@ -64,8 +65,32 @@ const catalogSkill = (version = "1.0.0", profile: Extension.SkillAgentProfile = 
   })
 
 const it = testEffect(AppNodeBuilder.build(LayerNode.group([ExtensionRuntime.node, Storage.node])))
+const protectedIt = testEffect(AppNodeBuilder.build(LayerNode.group([ExtensionRuntime.node, SecretOutput.node])))
 
 describe("ExtensionRuntime", () => {
+  protectedIt.effect("protects a stored secret on a disabled extension and refreshes after removal", () =>
+    Effect.gen(function* () {
+      const extensions = yield* ExtensionRuntime.Service
+      const output = yield* SecretOutput.Service
+      const id = Extension.ID.make("turenlabs", "pagerduty")
+      const name = "PAGERDUTY_CLIENT_SECRET"
+      const value = "opaque.night.glass.37"
+      yield* extensions.update(id, { enabled: false, secrets: { [name]: value } }, { local: true })
+      expect(
+        yield* extensions.storedSecretFields([
+          { id, name: "absent" },
+          { id, name },
+        ]),
+      ).toEqual([{ id, name }])
+      const first = yield* output.snapshot()
+      expect(first.text(value)).not.toContain(value)
+
+      yield* extensions.update(id, { enabled: false, secrets: { [name]: "" } }, { local: true })
+      const next = yield* output.snapshot()
+      expect(next.text(value)).toBe(value)
+      expect(first.text(value)).not.toContain(value)
+    }),
+  )
   it.effect("uses manifest defaults and persists fail-forward activation", () =>
     Effect.gen(function* () {
       const extensions = yield* ExtensionRuntime.Service
@@ -88,6 +113,7 @@ describe("ExtensionRuntime", () => {
       const skill = ExtensionCatalog.get(Extension.ID.make("turenlabs", "customize-forge"))!
       const connector = hosted()
       const before = yield* extensions.manifestSnapshot()
+      expect(before.manifests).toBe(ExtensionCatalog.manifests)
       expect(before.enabled(skill)).toBe(true)
       expect(before.manifests.some((manifest) => manifest.id === connector.id)).toBe(false)
 
@@ -349,6 +375,11 @@ describe("ExtensionRuntime", () => {
       )
       expect(enabled?.manifest.trust).toBe("official")
       expect(enabled?.contribution.source).toMatchObject({ type: "catalog" })
+
+      yield* extensions.update(review, { enabled: false })
+      expect((yield* ExtensionRuntime.enabledSkills(extensions)).some((item) => item.manifest.id === review)).toBe(
+        false,
+      )
     }),
   )
 })

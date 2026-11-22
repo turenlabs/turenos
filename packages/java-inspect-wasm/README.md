@@ -14,8 +14,8 @@ parser was chosen because (a) the JVMS class-file format is compact and
 stable, (b) we need lenient constant-pool *resolution* — unresolvable
 indices degrade to `<bad ref #N>` strings plus a warning instead of failing
 the whole parse — which neither crate exposes, and (c) it keeps the
-dependency closure minimal. JAR (ZIP) reading delegates to the pinned `zip`
-crate with its pure-Rust deflate backend (`flate2`/`miniz_oxide`); entries
+dependency closure minimal. JAR (ZIP) reading delegates to `zip` 9.0.5 (MIT)
+with `flate2` and its pure-Rust `zlib-rs` 0.6.7 deflate backend (Zlib); entries
 are read one at a time and never written to disk.
 
 ## Operations

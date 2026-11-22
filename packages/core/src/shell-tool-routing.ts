@@ -2,7 +2,7 @@ export * as ShellToolRouting from "./shell-tool-routing"
 
 import path from "node:path"
 import { Effect } from "effect"
-import type { Node, Tree } from "web-tree-sitter"
+import type { Node, Tree } from "./shell-tree"
 import { ShellSafety } from "./shell-safety"
 
 export type Tool = "grep" | "glob" | "edit" | "apply_patch"
@@ -334,37 +334,41 @@ export const patchHeredoc = Effect.fn("ShellToolRouting.patchHeredoc")(function*
   if (input.shell === "cmd") return
   const tree = yield* ShellSafety.parse({ command: input.command, shell: input.shell })
   try {
-    const root = tree.rootNode
-    if (root.childCount !== 1 || root.child(0)?.type !== "redirected_statement") return
-    const stmt = root.child(0)!
-    let cmd: Node | undefined
-    let redirect: Node | undefined
-    for (let index = 0; index < stmt.childCount; index++) {
-      const child = stmt.child(index)!
-      if (child.type === "command") cmd = child
-      else if (child.type === "heredoc_redirect") redirect = child
-      else return
-    }
-    if (!cmd || !redirect) return
-    // exactly `apply_patch`, no arguments
-    if (cmd.childCount !== 1 || cmd.child(0)?.type !== "command_name") return
-    if (executable(cmd.child(0)!.text) !== "apply_patch") return
-    const start = redirect.descendantsOfType("heredoc_start")[0]
-    const end = redirect.descendantsOfType("heredoc_end")[0]
-    if (!start || !end) return
-    const bodyStart = input.command.indexOf("\n", start.endIndex)
-    if (bodyStart === -1) return
-    const bodyEnd = input.command.lastIndexOf("\n", end.startIndex - 1)
-    if (bodyEnd < bodyStart) return
-    const body = input.command.slice(bodyStart + 1, bodyEnd)
-    // `<<-` strips leading tabs from every line, shell-style
-    return redirect.text.startsWith("<<-")
-      ? body
-          .split("\n")
-          .map((line) => line.replace(/^\t+/, ""))
-          .join("\n")
-      : body
+    return patchHeredocParsed({ tree, command: input.command })
   } finally {
     tree.delete()
   }
 })
+
+export const patchHeredocParsed = (input: { readonly tree: Tree; readonly command: string }) => {
+  const root = input.tree.rootNode
+  if (root.childCount !== 1 || root.child(0)?.type !== "redirected_statement") return
+  const stmt = root.child(0)!
+  let cmd: Node | undefined
+  let redirect: Node | undefined
+  for (let index = 0; index < stmt.childCount; index++) {
+    const child = stmt.child(index)!
+    if (child.type === "command") cmd = child
+    else if (child.type === "heredoc_redirect") redirect = child
+    else return
+  }
+  if (!cmd || !redirect) return
+  // exactly `apply_patch`, no arguments
+  if (cmd.childCount !== 1 || cmd.child(0)?.type !== "command_name") return
+  if (executable(cmd.child(0)!.text) !== "apply_patch") return
+  const start = redirect.descendantsOfType("heredoc_start")[0]
+  const end = redirect.descendantsOfType("heredoc_end")[0]
+  if (!start || !end) return
+  const bodyStart = input.command.indexOf("\n", start.endIndex)
+  if (bodyStart === -1) return
+  const bodyEnd = input.command.lastIndexOf("\n", end.startIndex - 1)
+  if (bodyEnd < bodyStart) return
+  const body = input.command.slice(bodyStart + 1, bodyEnd)
+  // `<<-` strips leading tabs from every line, shell-style
+  return redirect.text.startsWith("<<-")
+    ? body
+        .split("\n")
+        .map((line) => line.replace(/^\t+/, ""))
+        .join("\n")
+    : body
+}

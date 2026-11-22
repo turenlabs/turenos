@@ -10,6 +10,9 @@ import { AppProcess } from "./process"
 import { makeGlobalNode } from "./effect/app-node"
 import { File } from "./file"
 import { KeyedMutex } from "./effect/keyed-mutex"
+import { Global } from "./global"
+import { SnapshotScanner } from "./snapshot/scanner"
+import { SnapshotShadow } from "./snapshot/shadow"
 
 export class Repository extends Schema.Class<Repository>("Git.Repository")({
   worktree: AbsolutePath,
@@ -180,6 +183,14 @@ const layer = Layer.effect(
   Effect.gen(function* () {
     const fs = yield* FSUtil.Service
     const proc = yield* AppProcess.Service
+    const global = yield* Global.Service
+    const scanner = SnapshotScanner.make({ shadowRoot: SnapshotShadow.root(global.data) })
+    if (scanner)
+      yield* Effect.addFinalizer(() =>
+        Effect.promise(async () => {
+          await scanner.close()
+        }),
+      )
     const locks = KeyedMutex.makeUnsafe<string>()
     const locked = <A, E, R>(repository: Repository, effect: Effect.Effect<A, E, R>) =>
       locks.withLock(repository.gitDirectory)(effect)
@@ -193,6 +204,17 @@ const layer = Layer.effect(
 
       const cwd = path.dirname(dotgit)
       const git = run(cwd, proc)
+      const combined = yield* git(["rev-parse", "--show-toplevel", "--git-dir", "--git-common-dir"])
+      const paths = combined.text.split("\n")
+      if (combined.exitCode === 0 && paths.length === 4 && paths[3] === "" && paths[0] && paths[1] && paths[2]) {
+        return new Repository({
+          worktree: AbsolutePath.make(resolvePath(cwd, paths[0])),
+          gitDirectory: AbsolutePath.make(resolvePath(cwd, paths[1])),
+          commonDirectory: AbsolutePath.make(resolvePath(cwd, paths[2])),
+        })
+      }
+
+      // A path can contain a newline, and bare repositories have no top level.
       const topLevel = yield* git(["rev-parse", "--show-toplevel"])
       const gitDir = yield* git(["rev-parse", "--git-dir"])
       const commonDir = yield* git(["rev-parse", "--git-common-dir"])
@@ -423,9 +445,10 @@ const layer = Layer.effect(
               }),
           ),
         )
-      yield* fs
-        .copyFile(path.join(input.seed.gitDirectory, "index"), path.join(input.gitDirectory, "index"))
-        .pipe(Effect.catch(() => Effect.void))
+      const index = path.join(input.gitDirectory, "index")
+      if (!(yield* fs.existsSafe(index))) {
+        yield* fs.copyFile(path.join(input.seed.gitDirectory, "index"), index).pipe(Effect.ignore)
+      }
       return repository
     })
 
@@ -435,17 +458,38 @@ const layer = Layer.effect(
       ignores?: Repository
       maximumUntrackedFileBytes?: number
     }) {
+      // Concurrent sessions already run independent scans. Keep each scan from starting its own index worker pool.
       const list = (args: string[]) =>
-        repositoryOperation("refresh", input.repository, args).pipe(
-          Effect.map((result) => result.text.split("\0").filter(Boolean)),
-        )
-      const [tracked, untracked] = yield* Effect.all(
-        [
-          list(["diff-files", "--name-only", "-z", "--", input.scope]),
-          list(["ls-files", "--others", "--exclude-standard", "-z", "--", input.scope]),
-        ],
-        { concurrency: 2 },
-      )
+        repositoryOperation("refresh", input.repository, [
+          "-c",
+          "index.threads=1",
+          "-c",
+          "core.preloadIndex=false",
+          ...args,
+        ]).pipe(Effect.map((result) => result.text.split("\0").filter(Boolean)))
+      const native =
+        scanner && input.ignores
+          ? yield* Effect.promise((signal) =>
+              scanner.scan(
+                {
+                  gitDirectory: input.repository.gitDirectory,
+                  worktree: input.repository.worktree,
+                  scope: input.scope,
+                },
+                signal,
+              ),
+            )
+          : undefined
+      const [tracked, untracked] =
+        native ??
+        (yield* Effect.all(
+          [
+            // A gitlink records only the nested checkout's HEAD.
+            list(["diff-files", "--ignore-submodules=dirty", "--name-only", "-z", "--", input.scope]),
+            list(["ls-files", "--others", "--exclude-standard", "-z", "--", input.scope]),
+          ],
+          { concurrency: 2 },
+        ))
       const candidates = Array.from(new Set([...tracked, ...untracked]))
       if (!candidates.length) return { skipped: [] }
       // NUL delimiters preserve filename bytes, not pathspec semantics. These
@@ -583,7 +627,10 @@ const layer = Layer.effect(
             Effect.gen(function* () {
               const acquiredAt = Date.now()
               yield* Effect.forEach(input.scopes, (scope) => refresh({ ...input, scope }), { discard: true })
-              const tree = yield* writeTree(input.repository)
+              const native = scanner
+                ? yield* Effect.promise((signal) => scanner.writeTree(input.repository.gitDirectory, signal))
+                : undefined
+              const tree = native ? TreeID.make(native) : yield* writeTree(input.repository)
               yield* Effect.logInfo("Git tree capture", {
                 gitDirectory: input.repository.gitDirectory,
                 lockWaitMs: acquiredAt - requestedAt,
@@ -1000,7 +1047,11 @@ const layer = Layer.effect(
   }),
 )
 
-export const node = makeGlobalNode({ service: Service, layer: layer, deps: [FSUtil.node, AppProcess.node] })
+export const node = makeGlobalNode({
+  service: Service,
+  layer: layer,
+  deps: [FSUtil.node, AppProcess.node, Global.node],
+})
 
 interface Result {
   readonly exitCode: number

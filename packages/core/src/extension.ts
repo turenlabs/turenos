@@ -49,8 +49,10 @@ export interface Interface {
   readonly get: (id: Extension.ID | string) => Effect.Effect<Extension.Manifest | undefined>
   readonly desired: (id: Extension.ID | string) => Effect.Effect<Desired | undefined>
   readonly enabled: (id: Extension.ID | string) => Effect.Effect<boolean>
+  readonly enabledSkills: () => Effect.Effect<ReadonlyArray<EnabledSkill>>
   readonly configuration: (id: Extension.ID | string) => Effect.Effect<Record<string, string>>
   readonly secret: (id: Extension.ID | string, name: string) => Effect.Effect<string | undefined>
+  readonly storedSecretFields: (fields: ReadonlyArray<SecretField>) => Effect.Effect<ReadonlyArray<SecretField>>
   readonly secretsSet: (id: Extension.ID | string) => Effect.Effect<Record<string, boolean>>
   readonly update: (
     id: Extension.ID | string,
@@ -69,27 +71,9 @@ export type EnabledSkill = {
   readonly contribution: Extension.Skill
 }
 
-export const enabledSkills = Effect.fn("Extension.enabledSkills")(function* (runtime: Interface) {
-  const manifests = (yield* runtime.manifests()).filter((manifest) =>
-    manifest.contributions.some((contribution) => contribution.type === "skill"),
-  )
-  return (yield* Effect.forEach(
-    manifests,
-    (manifest) =>
-      runtime
-        .enabled(manifest.id)
-        .pipe(
-          Effect.map((enabled) =>
-            enabled
-              ? manifest.contributions.flatMap((contribution) =>
-                  contribution.type === "skill" ? [{ manifest, contribution }] : [],
-                )
-              : [],
-          ),
-        ),
-    { concurrency: 8 },
-  )).flat()
-})
+export type SecretField = { readonly id: string; readonly name: string }
+
+export const enabledSkills = (runtime: Interface) => runtime.enabledSkills()
 
 export class Service extends Context.Service<Service, Interface>()("@forge/Extension") {}
 
@@ -111,10 +95,10 @@ export const layer = Layer.effect(
         const manifest = Option.getOrUndefined(decodeManifest(entry.value))
         return manifest ? [manifest] : []
       })
-    const catalog = (entries: ReadonlyArray<Storage.State>) => [
-      ...ExtensionCatalog.manifests,
-      ...installed(entries).filter((manifest) => !ExtensionCatalog.get(manifest.id)),
-    ]
+    const catalog = (entries: ReadonlyArray<Storage.State>) => {
+      const additions = installed(entries).filter((manifest) => !ExtensionCatalog.get(manifest.id))
+      return additions.length ? [...ExtensionCatalog.manifests, ...additions] : ExtensionCatalog.manifests
+    }
     const manifests = Effect.fn("Extension.manifests")(function* () {
       return catalog(yield* storage.list({ scope }))
     })
@@ -138,6 +122,21 @@ export const layer = Layer.effect(
       const builtin = ExtensionCatalog.get(id)
       if (builtin) return builtin
       return installed(yield* storage.list({ scope })).find((manifest) => manifest.id === id)
+    })
+    const enabledSkills = Effect.fn("Extension.enabledSkills")(function* () {
+      // Installed manifests and desired state share this storage scope.
+      const entries = yield* storage.list({ scope })
+      const desired = new Map(entries.map((entry) => [entry.key, entry.value]))
+      return catalog(entries).flatMap((manifest) => {
+        const skills = manifest.contributions.filter((item) => item.type === "skill")
+        if (!skills.length) return []
+        const value = desired.get(desiredKey(manifest.id))
+        const enabled =
+          value === undefined
+            ? defaultEnabled(manifest)
+            : Option.getOrUndefined(decodeDesired(value))?.enabled === true
+        return enabled ? skills.map((contribution) => ({ manifest, contribution })) : []
+      })
     })
     const read = Effect.fn("Extension.readDesired")(function* (
       id: Extension.ID | string,
@@ -179,6 +178,15 @@ export const layer = Layer.effect(
       const stored = yield* storage.get(address)
       if (!stored || !vault.isSealed(stored.value)) return undefined
       return yield* vault.open(address.scope, address.key, stored.value)
+    })
+    const storedSecretFields = Effect.fn("Extension.storedSecretFields")(function* (
+      fields: ReadonlyArray<SecretField>,
+    ) {
+      const requested = fields.map((field) => ({ field, address: secretAddress(field.id, field.name) }))
+      const rows = yield* storage.existing(requested.map((item) => item.address))
+      const identity = (address: Storage.Address) => JSON.stringify([address.scope, address.key])
+      const stored = new Set(rows.map(identity))
+      return requested.filter((item) => stored.has(identity(item.address))).map((item) => item.field)
     })
     const secretsSet = Effect.fn("Extension.secretsSet")(function* (id: Extension.ID | string) {
       const manifest = yield* get(id)
@@ -317,8 +325,10 @@ export const layer = Layer.effect(
       get,
       desired,
       enabled,
+      enabledSkills,
       configuration,
       secret,
+      storedSecretFields,
       secretsSet,
       update,
     })
