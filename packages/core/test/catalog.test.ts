@@ -49,6 +49,46 @@ const catalogLayer = AppNodeBuilder.build(
 const it = testEffect(catalogLayer)
 
 describe("CatalogV2", () => {
+  it.effect("keeps edits to shared model templates local to a catalog draft", () =>
+    Effect.gen(function* () {
+      const providerID = ProviderV2.ID.make("seeded")
+      const modelID = ModelV2.ID.make("chat")
+      const template = Catalog.modelTemplate(providerID, modelID, (model) => {
+        model.request.body.thinking = { enabled: true }
+        model.variants.push({ id: ModelV2.VariantID.make("high"), headers: {}, body: { effort: "high" } })
+      })
+
+      const catalog = yield* Catalog.Service
+      yield* catalog.transform((editor) => {
+        editor.model.seed(template)
+      })
+
+      const before = yield* catalog.model.get(providerID, modelID)
+      expect(before?.request.body.thinking).not.toBe(template.request.body.thinking)
+      expect(before?.variants[0].body).not.toBe(template.variants[0].body)
+      const registration = yield* catalog.transform((editor) => {
+        const provider = required(editor.provider.get(providerID))
+        provider.models.forEach((model) => {
+          model.variants[0].body.effort = "low"
+        })
+        editor.model.update(providerID, modelID, (model) => {
+          model.request.body.thinking = { enabled: false }
+        })
+      })
+
+      expect(yield* catalog.model.get(providerID, modelID)).toMatchObject({
+        request: { body: { thinking: { enabled: false } } },
+        variants: [{ body: { effort: "low" } }],
+      })
+      expect(before?.variants[0].body.effort).toBe("high")
+      expect(template.variants[0].body.effort).toBe("high")
+      expect(template.request.body.thinking).toEqual({ enabled: true })
+
+      yield* registration.dispose
+      expect(yield* catalog.model.get(providerID, modelID)).toEqual(before)
+    }),
+  )
+
   it.effect("publishes an updated event after catalog changes", () =>
     Effect.gen(function* () {
       const catalog = yield* Catalog.Service
