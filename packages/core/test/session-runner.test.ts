@@ -1593,7 +1593,7 @@ describe("SessionRunnerLLM", () => {
           .get()
           .pipe(Effect.orDie)
         expect(row).toMatchObject({ generation: index + 1, reason: index === 0 ? "initial" : "configuration" })
-        const frame = yield* Schema.decodeUnknownEffect(SessionContextRequest.Frame)(row!.data)
+        const frame = (yield* SessionContextRequest.load(database.db, sessionID))!.frame
         expect(SessionCompaction.needsPruning({ entries: frame.entries, model: currentModel, request })).toBe(false)
       }
       expect(requests).toHaveLength(2)
@@ -1657,7 +1657,7 @@ describe("SessionRunnerLLM", () => {
           .get()
           .pipe(Effect.orDie)
         expect(row).toMatchObject({ generation: 2, reason: "pressure" })
-        const frame = yield* Schema.decodeUnknownEffect(SessionContextRequest.Frame)(row!.data)
+        const frame = (yield* SessionContextRequest.load(database.db, sessionID))!.frame
         expect(frame.messages).toEqual(requests[1]!.messages)
         expect(
           frame.entries
@@ -7053,14 +7053,9 @@ describe("SessionRunnerLLM provider retry", () => {
 
       expect(requests).toHaveLength(2)
       expectStablePrefix(requests[0]!, requests[1]!)
-      const row = yield* database.db
-        .select()
-        .from(SessionContextRequestTable)
-        .where(eq(SessionContextRequestTable.session_id, sessionID))
-        .get()
-        .pipe(Effect.orDie)
-      expect(row).toBeDefined()
-      const frame = yield* Schema.decodeUnknownEffect(SessionContextRequest.Frame)(row!.data)
+      const loaded = yield* SessionContextRequest.load(database.db, sessionID)
+      expect(loaded).toBeDefined()
+      const frame = loaded!.frame
       const budget = frame.entries.at(-1)!.message
       expect(budget.type).toBe("synthetic")
       if (budget.type !== "synthetic") return yield* Effect.die("Missing runtime budget row")

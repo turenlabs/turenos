@@ -1,9 +1,11 @@
 export * as SessionContextRequest from "./context-request"
 
 import { createHash } from "node:crypto"
+import { promisify } from "node:util"
+import { brotliCompress, brotliDecompress, constants } from "node:zlib"
 import { Message } from "@turenlabs/llm"
 import { and, eq, inArray, sql } from "drizzle-orm"
-import { Effect, Schema } from "effect"
+import { Effect, Option, Schema } from "effect"
 import type { Database } from "../database/database"
 import { SessionMessage } from "./message"
 import type { SessionSchema } from "./schema"
@@ -36,13 +38,32 @@ const marker = "forge_context_blobs"
 const refPattern = /^forge-context-blob:sha256:([0-9a-f]{64})$/
 // Statement variable limits cap IN lists well below SQLite's default.
 const chunkSize = 500
+const packedMarker = "forge_context_brotli"
+const packMinimum = 128 * 1024
+const packMaximum = 16 * 1024 * 1024
+const compress = promisify(brotliCompress)
+const decompress = promisify(brotliDecompress)
+const decodeJson = Schema.decodeUnknownOption(Schema.UnknownFromJsonString)
+
+const unpack = Effect.fnUntraced(function* (packed: unknown) {
+  if (typeof packed !== "string" || packed.length > packMaximum) return undefined
+  const decoded = Effect.tryPromise({
+    try: () => decompress(Buffer.from(packed, "base64"), { maxOutputLength: packMaximum }),
+    catch: () => undefined,
+  })
+  return (yield* Effect.option(decoded)).pipe(
+    Option.flatMap((buffer) => decodeJson(buffer.toString("utf8"))),
+    Option.getOrUndefined,
+  )
+})
+
 
 /**
  * The frame this process last saved for a Session, with the stored row's shape at that moment. The next prepare
  * reads only the row's small columns and its byte size; when they still match it reuses this frame instead of
  * reading, parsing, rehydrating and schema-decoding megabytes it wrote a moment ago. Nothing but `save` writes
  * the row, so a match means the stored frame is the one cached. A miss, including another process having saved,
- * simply loads from the database as before. The byte budget counts the encoded frame and its distinct blobs.
+ * simply loads from the database as before. The byte budget counts the uncompressed frame and its distinct blobs.
  */
 type Cached = {
   readonly generation: number
@@ -152,8 +173,8 @@ const blobCount = (db: DatabaseService, sessionID: SessionSchema.ID) =>
       Effect.orDie,
     )
 
-/** Reads, rehydrates and decodes the stored frame; undefined when a referenced blob is gone. */
-const load = Effect.fnUntraced(function* (db: DatabaseService, sessionID: SessionSchema.ID) {
+/** Reads and rehydrates the persisted frame. An unreadable packed frame or missing blob requires a rebuild. */
+export const load = Effect.fnUntraced(function* (db: DatabaseService, sessionID: SessionSchema.ID) {
   const stored = yield* db
     .select({ data: SessionContextRequestTable.data })
     .from(SessionContextRequestTable)
@@ -161,7 +182,10 @@ const load = Effect.fnUntraced(function* (db: DatabaseService, sessionID: Sessio
     .get()
     .pipe(Effect.orDie)
   if (!stored) return undefined
-  const data: unknown = stored.data
+  const row = stored.data
+  const isPacked = typeof row === "object" && row !== null && packedMarker in row
+  const data = isPacked ? yield* unpack(row[packedMarker]) : row
+  if (data === undefined) return
   const envelope = typeof data === "object" && data !== null && marker in data && "frame" in data ? data : undefined
   const wrapped = envelope !== undefined
   const body = envelope ? envelope.frame : data
@@ -189,14 +213,16 @@ const load = Effect.fnUntraced(function* (db: DatabaseService, sessionID: Sessio
     for (const row of rows) blobs.set(row.sha256, row.data)
   }
   if (blobs.size < refs.size) return undefined
-  const frame = yield* Schema.decodeUnknownEffect(Frame)(
+  const decoded = Schema.decodeUnknownEffect(Frame)(
     wrapped
       ? rewrite(body, (value) => {
           const sha256 = refPattern.exec(value)?.[1]
           return sha256 ? blobs.get(sha256)! : value
         })
       : body,
-  ).pipe(Effect.orDie)
+  )
+  const frame = yield* isPacked ? Effect.map(Effect.option(decoded), Option.getOrUndefined) : Effect.orDie(decoded)
+  if (!frame) return
   return { frame, known: new Map([...blobs].map(([sha256, value]) => [value, sha256])) }
 })
 
@@ -243,8 +269,32 @@ export const save = Effect.fn("SessionContextRequest.save")(function* (
     sources: input.frame.sources,
     turn: input.frame.turn,
   }
+  // Serialize before acquiring SQLite's writer lock. The upsert reuses the same bound value on conflict.
+  const json = JSON.stringify(blobs.size > 0 ? { [marker]: 1, frame: data } : data)
+  const size = Buffer.byteLength(json)
+  const packed =
+    size >= packMinimum && size <= packMaximum
+      ? yield* Effect.option(
+          Effect.tryPromise({
+            try: () => compress(json, { params: { [constants.BROTLI_PARAM_QUALITY]: 0 } }),
+            catch: () => undefined,
+          }),
+        )
+      : Option.none()
+  // Leave room for base64 and the compatibility envelope before preferring a compressed row.
+  const encoded =
+    Option.isSome(packed) && packed.value.length * 1.5 < size
+      ? JSON.stringify({
+          [packedMarker]: packed.value.toString("base64"),
+          // Readers that only know the plain frame schema rebuild when a source digest differs.
+          entries: [],
+          messages: [],
+          sources: [{ seq: 0, digest: "" }],
+          turn: "",
+        })
+      : json
   const values = {
-    data: blobs.size > 0 ? { [marker]: 1, frame: data } : data,
+    data: sql`${encoded}`,
     generation: input.generation,
     identity: input.identity,
     baseline_seq: input.baselineSeq,
@@ -271,7 +321,11 @@ export const save = Effect.fn("SessionContextRequest.save")(function* (
           .onConflictDoUpdate({
             target: SessionContextRequestTable.session_id,
             // Stable appends retain the last rebuild reason for inspection.
-            set: { ...values, ...(input.reason === undefined ? {} : { reason: input.reason }) },
+            set: {
+              ...values,
+              data: sql`excluded.data`,
+              ...(input.reason === undefined ? {} : { reason: input.reason }),
+            },
           })
           .run()
         // Only blobs the frame just written no longer references are removed.
@@ -296,7 +350,7 @@ export const save = Effect.fn("SessionContextRequest.save")(function* (
     .get()
     .pipe(Effect.orDie)
   if (written) {
-    const bytes = [...blobs.values()].reduce((total, blob) => total + Buffer.byteLength(blob), written.size)
+    const bytes = [...blobs.values()].reduce((total, blob) => total + Buffer.byteLength(blob), size)
     remember(sessionID, {
       generation: input.generation,
       identity: input.identity,
@@ -308,7 +362,6 @@ export const save = Effect.fn("SessionContextRequest.save")(function* (
     })
   }
 })
-
 
 /** Copies JSON-shaped data with every string leaf passed through `map`; object keys and other values are kept. */
 function rewrite(value: unknown, map: (value: string) => string): unknown {

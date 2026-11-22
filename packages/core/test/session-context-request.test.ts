@@ -1,4 +1,5 @@
 import { describe, expect } from "bun:test"
+import { brotliCompressSync, constants } from "node:zlib"
 import { eq } from "drizzle-orm"
 import { DateTime, Effect, Schema } from "effect"
 import { LLM, Message, Model } from "@turenlabs/llm"
@@ -339,6 +340,77 @@ describe("SessionContextRequest", () => {
       yield* SessionContextRequest.save(db, sessionID, { ...configuration, ...prepared, frame: prepared.frame! })
       expect(yield* blobRows(db)).toHaveLength(1)
       expect((yield* rowText(db)).length).toBeLessThan(10 * 1024)
+    }),
+  )
+
+  it.effect("reloads a compact request frame byte-for-byte with its externalized attachment", () =>
+    Effect.gen(function* () {
+      const db = yield* setup
+      const uri = largeURI(100 * 1024)
+      const entries = [attachmentEntry(1, uri)]
+      const frame = attachmentFrame(entries, uri, "compact-turn")
+      const saved = yield* saveFrame(db, entries, {
+        ...frame,
+        messages: [
+          ...frame.messages,
+          ...Array.from({ length: 30 }, (_, index) => Message.assistant(`${index}\n${'λ\nquote: "hi"\n'.repeat(700)}`)),
+          Message.user("lone surrogate: \ud800"),
+        ],
+      })
+      const row = yield* db.select().from(SessionContextRequestTable).get()
+      expect(row?.data).toMatchObject({ forge_context_brotli: expect.any(String) })
+      const serialized = yield* rowText(db)
+      expect(serialized).not.toContain(uri)
+      expect(serialized.length).toBeLessThan(JSON.stringify(encodeFrame(saved)).length / 2)
+      expect(yield* blobRows(db)).toHaveLength(1)
+
+      // Bypass the in-process frame so this exercises the stored representation and blob hydration.
+      yield* db.update(SessionContextRequestTable).set({ generation: 2 }).run()
+      const reloaded = yield* SessionContextRequest.prepare(db, sessionID, { ...configuration, history: entries })
+      expect(reloaded).toMatchObject({ generation: 2, reason: undefined })
+      expect(JSON.stringify(encodeFrame(reloaded.frame))).toBe(JSON.stringify(encodeFrame(saved)))
+      expect(Schema.decodeUnknownSync(SessionContextRequest.Frame)(row?.data).sources).toEqual([{ seq: 0, digest: "" }])
+    }),
+  )
+
+  it.effect("counts a compact frame and attachment at their hydrated sizes for caching", () =>
+    Effect.gen(function* () {
+      const db = yield* setup
+      const uri = largeURI(15 * 1024 * 1024)
+      const entries = [attachmentEntry(1, uri)]
+      const frame = attachmentFrame(entries, uri, "compact-oversized")
+      const saved = yield* saveFrame(db, entries, {
+        ...frame,
+        messages: [
+          ...frame.messages,
+          ...Array.from({ length: 32 }, (_, index) => Message.assistant(index + "x".repeat(40 * 1024))),
+        ],
+      })
+      const row = yield* db.select().from(SessionContextRequestTable).get()
+      expect(row?.data).toMatchObject({ forge_context_brotli: expect.any(String) })
+      const loaded = yield* SessionContextRequest.prepare(db, sessionID, { ...configuration, history: entries })
+      expect(loaded.frame).not.toBe(saved)
+      expect(loaded.frame).toEqual(saved)
+    }),
+  )
+
+  it.effect("rebuilds when a compact frame is unreadable or exceeds the decode limit", () =>
+    Effect.gen(function* () {
+      const db = yield* setup
+      yield* seed(db)
+      const options = { params: { [constants.BROTLI_PARAM_QUALITY]: 0 } }
+      for (const payload of [
+        "broken",
+        brotliCompressSync("{}", options).toString("base64"),
+        brotliCompressSync(Buffer.alloc(16 * 1024 * 1024 + 1, 32), options).toString("base64"),
+      ]) {
+        yield* db
+          .update(SessionContextRequestTable)
+          .set({ data: { forge_context_brotli: payload } })
+          .run()
+        const reloaded = yield* SessionContextRequest.prepare(db, sessionID, { ...configuration, history })
+        expect(reloaded).toMatchObject({ generation: 2, reason: "history", frame: undefined })
+      }
     }),
   )
 
