@@ -7,16 +7,67 @@ import { TestClock } from "effect/testing"
 import { Database } from "@turenlabs/core/database/database"
 import { AppNodeBuilder } from "@turenlabs/core/effect/app-node-builder"
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
+import { FSUtil } from "@turenlabs/core/fs-util"
 import { Git } from "@turenlabs/core/git"
 import { Global } from "@turenlabs/core/global"
 import { Location } from "@turenlabs/core/location"
 import { AbsolutePath, RelativePath } from "@turenlabs/core/schema"
 import { Snapshot } from "@turenlabs/core/snapshot"
+import { SnapshotShadow } from "@turenlabs/core/snapshot/shadow"
 import { Hash } from "@turenlabs/core/util/hash"
 import { tmpdir } from "./fixture/tmpdir"
 import { testEffect } from "./lib/effect"
 
 describe("Snapshot", () => {
+  testEffect(Layer.empty).live("captures every first turn on the same checkout", () =>
+    Effect.gen(function* () {
+      const tmp = yield* Effect.acquireRelease(
+        Effect.promise(() => tmpdir()),
+        (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+      )
+      const project = path.join(tmp.path, "project")
+      const expected = yield* Effect.promise(async () => {
+        await fs.mkdir(project)
+        await fs.writeFile(path.join(project, "tracked.txt"), "one\n")
+        await $`git init`.cwd(project).quiet()
+        await $`git add .`.cwd(project).quiet()
+        await $`git -c user.email=test@forge.test -c user.name=Test -c commit.gpgsign=false commit -m initial`
+          .cwd(project)
+          .quiet()
+        return (await $`git rev-parse HEAD^{tree}`.cwd(project).text()).trim()
+      })
+
+      const captures = yield* Effect.gen(function* () {
+        const snapshot = yield* Snapshot.Service
+        return yield* Effect.forEach(Array.from({ length: 5 }), () => snapshot.capture(), { concurrency: 5 })
+      }).pipe(Effect.provide(snapshotLayer(tmp.path, project)))
+
+      expect(captures).toEqual(Array(5).fill(expected))
+    }),
+  )
+
+  testEffect(LayerNode.compile(FSUtil.node)).live("retries a failed shadow init after Git created HEAD", () =>
+    Effect.gen(function* () {
+      const tmp = yield* Effect.acquireRelease(
+        Effect.promise(() => tmpdir()),
+        (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+      )
+      const gitdir = path.join(tmp.path, "shadow")
+      const files = yield* FSUtil.Service
+      const init = (directory: string) => Effect.promise(() => $`git init --bare ${directory}`.quiet())
+      const first = yield* SnapshotShadow.initialize(files, gitdir, (directory) =>
+        init(directory).pipe(Effect.andThen(Effect.fail("interrupted before configuration"))),
+      ).pipe(SnapshotShadow.withLock(gitdir), Effect.result)
+
+      expect(first).toMatchObject({ _tag: "Failure", failure: "interrupted before configuration" })
+      expect(yield* files.readDirectory(tmp.path)).toEqual([])
+
+      yield* SnapshotShadow.initialize(files, gitdir, init).pipe(SnapshotShadow.withLock(gitdir))
+      expect(yield* files.readDirectory(tmp.path)).toEqual(["shadow"])
+      expect(yield* files.exists(path.join(gitdir, "config"))).toBe(true)
+    }),
+  )
+
   testEffect(Layer.empty).live("keeps tracked entries when an oversized filename resembles a pathspec", () =>
     Effect.acquireUseRelease(
       Effect.promise(() => tmpdir()),
