@@ -4,7 +4,7 @@ import os from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { Effect } from "effect"
-import type { Node, Tree } from "web-tree-sitter"
+import type { Node, Tree } from "./shell-tree"
 import { lazy } from "./util/lazy"
 
 export type Kind = "bash" | "powershell" | "cmd"
@@ -68,7 +68,15 @@ const parsers = {
   ),
 }
 
-const parseText = async (command: string, shell: Exclude<Kind, "cmd">) => {
+const nativeParser = lazy(async () => {
+  if (process.platform !== "darwin" || process.arch !== "arm64" || !process.versions.bun) return
+  const { ShellNative } = await import("./shell-native")
+  return ShellNative.open()
+})
+
+const parseText = async (command: string, shell: Exclude<Kind, "cmd">): Promise<Tree> => {
+  const native = (await nativeParser())?.parse(command, shell)
+  if (native) return native
   const tree = (await parsers[shell]()).parse(command)
   if (!tree) throw new Error("Unable to parse shell command for safety validation")
   return tree

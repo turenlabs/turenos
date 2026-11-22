@@ -156,6 +156,11 @@ Main and preload get no maps. `electron-builder.config.ts` excludes `out/**/*.ma
 `packages/desktop/scripts/verify-no-sourcemaps.ts`, the last step of `bun run build`, fails if any map is left in `out/`
 other than the third-party wasm maps shipped through `extraResources`.
 
+The Apple silicon Desktop build uses Rust 1.93.0 in release CI to compile the shell parser with Cargo's locked
+dependencies. For a local Apple silicon build, install Rust 1.90 or later and the arm64 macOS target. The Desktop
+prebuild stages the library and its dependency notices in the sidecar bundle, and the package check requires
+both files. The library stays within the Desktop bundle's signing scope.
+
 ## Local verification and tests
 
 A read-only diagnostic can recheck an existing published release and formula:
