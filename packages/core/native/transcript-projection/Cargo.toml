@@ -1,0 +1,23 @@
+# From this directory, regenerate the bundled kernel with Rust 1.97.1:
+# RUSTFLAGS="-C target-feature=+simd128" cargo build --locked --release --target wasm32-unknown-unknown
+# cp target/wasm32-unknown-unknown/release/turen_transcript_projection.wasm projection.wasm
+[package]
+name = "turen-transcript-projection"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+memchr = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["raw_value"] }
+
+[profile.release]
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true
