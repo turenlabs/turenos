@@ -111,5 +111,6 @@ export const migrations = (
     import("./migration/20261008124415_team-room-lifecycle"),
     import("./migration/20261012142833_team-history-indexes"),
     import("./migration/20261012183644_team-attachments"),
+    import("./migration/20261122210727_team-runtime-poll"),
   ])
 ).map((module) => module.default) satisfies DatabaseMigration.Migration[]

@@ -3,7 +3,22 @@ export * as TeamWorkspace from "./workspace"
 import { Team } from "@turenlabs/schema/team"
 import { parseFactoryOutput } from "@turenlabs/schema/team-output"
 import { createHash } from "node:crypto"
-import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lt, lte, notInArray, or, sql } from "drizzle-orm"
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  exists,
+  gt,
+  inArray,
+  isNull,
+  lt,
+  lte,
+  notExists,
+  notInArray,
+  or,
+  sql,
+} from "drizzle-orm"
 import { Context, Effect, Layer, Schema } from "effect"
 import { Database } from "../database/database"
 import { makeGlobalNode } from "../effect/app-node"
@@ -1047,14 +1062,24 @@ const layer = Layer.effect(
           }),
         { behavior: "immediate" },
       )
+    const runningFactory = sql`${TeamFactoryRunTable.status} = 'running'`
+    const hasRunningFactory = db
+      .select({ id: TeamFactoryRunTable.id })
+      .from(TeamFactoryRunTable)
+      .where(runningFactory)
+      .limit(1)
+      .prepare()
     const syncFactoryRuns: Interface["syncFactoryRuns"] = () =>
+      hasRunningFactory.get().pipe(Effect.flatMap((row) => (row ? reconcileFactoryRuns() : Effect.void)))
+
+    const reconcileFactoryRuns = () =>
       db.transaction(
         (tx) =>
           Effect.gen(function* () {
             const runs = yield* tx
               .select()
               .from(TeamFactoryRunTable)
-              .where(eq(TeamFactoryRunTable.status, "running"))
+              .where(runningFactory)
               .all()
             const outputForTask = (task: typeof TeamTaskTable.$inferSelect) =>
               Effect.gen(function* () {
@@ -2417,21 +2442,41 @@ const layer = Layer.effect(
         { behavior: "immediate" },
       )
 
+    const hasClaimWork = db
+      .select({ id: TeamTaskTable.id })
+      .from(TeamTaskTable)
+      .where(
+        or(
+          eq(TeamTaskTable.status, "queued"),
+          and(
+            inArray(TeamTaskTable.status, ["claimed", "running"]),
+            lte(TeamTaskTable.lease_expires_at, sql.placeholder("time")),
+          ),
+        ),
+      )
+      .limit(1)
+      .prepare()
     const claimTasks: Interface["claimTasks"] = (input) =>
+      Effect.gen(function* () {
+        const limit = input.limit ?? 10
+        const leaseMs = input.leaseMs ?? 60_000
+        if (
+          !input.owner.trim() ||
+          !Number.isSafeInteger(limit) ||
+          limit < 1 ||
+          limit > 100 ||
+          !Number.isSafeInteger(leaseMs) ||
+          leaseMs < 1000
+        )
+          return yield* new Team.InvalidRequestError({ message: "Invalid task claim options" })
+        if (!(yield* hasClaimWork.get({ time: now() }))) return []
+        return yield* claimReadyTasks(input.owner, limit, leaseMs)
+      })
+
+    const claimReadyTasks = (owner: string, limit: number, leaseMs: number) =>
       db.transaction(
         (tx) =>
           Effect.gen(function* () {
-            const limit = input.limit ?? 10
-            const leaseMs = input.leaseMs ?? 60_000
-            if (
-              !input.owner.trim() ||
-              !Number.isSafeInteger(limit) ||
-              limit < 1 ||
-              limit > 100 ||
-              !Number.isSafeInteger(leaseMs) ||
-              leaseMs < 1000
-            )
-              return yield* new Team.InvalidRequestError({ message: "Invalid task claim options" })
             const time = now()
             const expiredClaims = yield* tx
               .select()
@@ -2649,7 +2694,7 @@ const layer = Layer.effect(
                   .update(TeamTaskTable)
                   .set({
                     status: "claimed",
-                    lease_owner: input.owner,
+                    lease_owner: owner,
                     lease_expires_at: time + leaseMs,
                     snapshot: evidenceSnapshot,
                     time_updated: time,
@@ -2984,27 +3029,43 @@ const layer = Layer.effect(
         )
       })
 
+    const unreportedDutyRun = and(
+      inArray(LoopRunTable.status, ["succeeded", "failed", "cancelled", "stale"]),
+      notExists(
+        db
+          .select({ id: TeamMessageTable.id })
+          .from(TeamMessageTable)
+          .where(eq(TeamMessageTable.run_id, LoopRunTable.id)),
+      ),
+    )
+    const pendingDutyReport = db
+      .select({ id: TeamDutyTable.loop_id })
+      .from(TeamDutyTable)
+      .where(
+        exists(
+          db
+            .select({ id: LoopRunTable.id })
+            .from(LoopRunTable)
+            .where(and(eq(LoopRunTable.loop_id, TeamDutyTable.loop_id), unreportedDutyRun)),
+        ),
+      )
+      .limit(1)
+      .prepare()
+
     const syncDutyReports: Interface["syncDutyReports"] = () =>
       Effect.gen(function* () {
         yield* ensure
+        // Recheck publication inside the write transaction. Multiple scans can find the same run.
+        if (!(yield* pendingDutyReport.get())) return
         yield* db.transaction(
           (tx) =>
             Effect.gen(function* () {
-              const reportedRuns = tx
-                .select({ runID: TeamMessageTable.run_id })
-                .from(TeamMessageTable)
-                .where(isNotNull(TeamMessageTable.run_id))
               const reports = yield* tx
                 .select()
                 .from(LoopRunTable)
                 .innerJoin(TeamDutyTable, eq(TeamDutyTable.loop_id, LoopRunTable.loop_id))
                 .innerJoin(TeamTeammateTable, eq(TeamTeammateTable.id, TeamDutyTable.teammate_id))
-                .where(
-                  and(
-                    inArray(LoopRunTable.status, ["succeeded", "failed", "cancelled", "stale"]),
-                    notInArray(LoopRunTable.id, reportedRuns),
-                  ),
-                )
+                .where(unreportedDutyRun)
                 .orderBy(asc(LoopRunTable.time_completed))
                 .limit(100)
                 .all()
