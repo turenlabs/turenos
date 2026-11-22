@@ -33,7 +33,7 @@ const catalogModel = (executable: string) =>
     limit: { context: 32_768, output: 8_192 },
   })
 
-const fakeCLI = (body: string, version = DevinACP.SUPPORTED_VERSION, delayedSession = false) =>
+const fakeCLI = (body: string, version: string = DevinACP.SUPPORTED_BUILDS[0].version, delayedSession = false) =>
   Effect.acquireRelease(
     Effect.sync(() => {
       const directory = mkdtempSync(join(tmpdir(), "devin-test-"))
@@ -257,9 +257,15 @@ describe.skipIf(process.platform === "win32")("Devin ACP transport", () => {
       const cli = yield* fakeCLI(textReply)
       yield* collect(cli.executable)
       const capture = captures(cli.capture)[0]!
-      expect(capture.argv).not.toContain("--cloud")
-      expect(capture.argv).not.toContain("--resume")
-      expect(capture.argv).not.toContain("--model")
+      expect(capture.argv).toEqual([
+        "--config",
+        expect.any(String),
+        "--permission-mode",
+        "auto",
+        "acp",
+        "--process-model",
+        "in-process",
+      ])
       expect(capture.settings).toMatchObject({
         auto_update: false,
         subagents_enabled: false,
@@ -278,9 +284,20 @@ describe.skipIf(process.platform === "win32")("Devin ACP transport", () => {
     }),
   )
 
+  it.effect("starts qualified pre-daemon builds without the process-model flag", () =>
+    Effect.gen(function* () {
+      for (const build of DevinACP.SUPPORTED_BUILDS.slice(1)) {
+        const cli = yield* fakeCLI(textReply, build.version)
+        const events = yield* collect(cli.executable)
+        expect(events.at(-1)?.type).toBe("finish")
+        expect(captures(cli.capture)[0]!.argv).not.toContain("--process-model")
+      }
+    }),
+  )
+
   it.effect("fails before ACP startup on an unqualified CLI build", () =>
     Effect.gen(function* () {
-      const cli = yield* fakeCLI(textReply, "devin unqualified")
+      const cli = yield* fakeCLI(textReply, "devin 3000.14.30821 (000000000000)")
       const result = yield* collect(cli.executable).pipe(Effect.exit)
       expect(Exit.isFailure(result)).toBe(true)
       if (Exit.isFailure(result)) expect(Cause.pretty(result.cause)).toContain("Unsupported Devin CLI build")
@@ -414,7 +431,7 @@ if (request.id === "permission") reply(promptRequest, { stopReason: "end_turn" }
     "does not submit a late prompt and revokes MCP before process teardown",
     () =>
       Effect.gen(function* () {
-        const cli = yield* fakeCLI(textReply, DevinACP.SUPPORTED_VERSION, true)
+        const cli = yield* fakeCLI(textReply, DevinACP.SUPPORTED_BUILDS[0].version, true)
         const token = yield* ClaudeCodeMcp.register({
           definitions: [],
           execute: () => Effect.die("No tool should execute"),
