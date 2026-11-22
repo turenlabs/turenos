@@ -1,5 +1,5 @@
 import { marked, type Tokens, type TokensList } from "marked"
-import remend from "remend"
+import { repairMarkdown } from "./markdown-link-repair"
 
 export type Block = {
   raw: string
@@ -47,21 +47,17 @@ function closesFence(raw: string, suffix: string) {
   return `${raw.slice(-(mark.length - 1))}${suffix.slice(0, mark.length - 1)}`.includes(mark)
 }
 
-function heal(text: string) {
-  return remend(text, { linkMode: "text-only" })
-}
-
 export function stream(text: string, live: boolean): Block[] {
   if (!live) return [{ raw: text, src: text, mode: "full" }] satisfies Block[]
-  if (refs(text)) return [{ raw: text, src: heal(text), mode: "live" }] satisfies Block[]
+  if (refs(text)) return [{ raw: text, src: repairMarkdown(text), mode: "live" }] satisfies Block[]
   return blocksFromTokens(marked.lexer(text), text)
 }
 
 function blocksFromTokens(tokens: TokensList, text: string): Block[] {
   const tail = tokens.findLastIndex((token) => token.type !== "space")
-  if (tail < 0) return [{ raw: text, src: heal(text), mode: "live" }] satisfies Block[]
+  if (tail < 0) return [{ raw: text, src: repairMarkdown(text), mode: "live" }] satisfies Block[]
   const last = tokens[tail]
-  if (!last) return [{ raw: text, src: heal(text), mode: "live" }] satisfies Block[]
+  if (!last) return [{ raw: text, src: repairMarkdown(text), mode: "live" }] satisfies Block[]
 
   const result: Block[] = []
   for (let index = 0; index < tail; index++) {
@@ -81,7 +77,7 @@ function blocksFromTokens(tokens: TokensList, text: string): Block[] {
     .slice(tail)
     .map((token) => token.raw)
     .join("")
-  if (last.type !== "code") return [...result, { raw, src: heal(raw), mode: "live" }]
+  if (last.type !== "code") return [...result, { raw, src: repairMarkdown(raw), mode: "live" }]
 
   const code = last as Tokens.Code
   if (!open(code.raw))
