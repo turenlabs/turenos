@@ -12,8 +12,8 @@ bash tool passes the `shell` set in global config (`Config.shell`), falling back
 
 ## Parsing
 
-bash and PowerShell command strings are parsed with tree-sitter WASM grammars — `tree-sitter-bash` and
-`tree-sitter-powershell` — loaded lazily on first inspection. `inspectRoot` then walks every `command` node in the tree in
+Bash and PowerShell command strings are parsed with their respective tree-sitter WASM grammars. Each grammar loads
+the first time a command needs it. `inspectRoot` then walks every `command` node in the tree in
 document order, so each command in a pipeline, list, or subshell is judged individually.
 
 `cmd` has no grammar. `ShellSafety.parse` and `ShellSafety.inspectParsed` accept only `"bash" | "powershell"`, and a `cmd`

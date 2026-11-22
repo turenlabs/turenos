@@ -12,6 +12,28 @@ import { testEffect } from "./lib/effect"
 const it = testEffect(AppNodeBuilder.build(LayerNode.group([Database.node, Loop.node, TeamWorkspace.node])))
 
 describe("Team room lifecycle", () => {
+  it.effect("imports newly discovered duties once after concurrent polls and defers import while archived", () =>
+    Effect.gen(function* () {
+      const team = yield* TeamWorkspace.Service
+      const loops = yield* Loop.Service
+      const room = (yield* team.state()).room
+      expect((yield* team.state()).duties).toEqual([])
+
+      const first = yield* loops.create({ name: "First legacy duty", prompt: "Review", intervalSeconds: 3600 })
+      const states = yield* Effect.all([team.state(), team.state(), team.state()], { concurrency: "unbounded" })
+      for (const state of states) {
+        expect(state.duties.map((duty) => duty.loopID)).toEqual([first.id])
+        expect(state.teammates.map((teammate) => teammate.name)).toEqual([first.name])
+      }
+
+      yield* team.archiveRoom(room.id)
+      const second = yield* loops.create({ name: "Second legacy duty", prompt: "Review", intervalSeconds: 3600 })
+      expect((yield* team.state({ roomID: room.id })).duties.map((duty) => duty.loopID)).toEqual([first.id])
+      yield* team.restoreRoom(room.id)
+      expect((yield* team.state()).duties.map((duty) => duty.loopID).sort()).toEqual([first.id, second.id].sort())
+    }),
+  )
+
   it.effect("routes unmentioned chat to one coordinator with bounded shared history", () =>
     Effect.gen(function* () {
       const team = yield* TeamWorkspace.Service
