@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { chmod, mkdir } from "node:fs/promises"
+import { chmod, mkdir, rename, symlink } from "node:fs/promises"
 import path from "node:path"
 import { SnapshotScanner } from "@turenlabs/core/snapshot/scanner"
 import { tmpdir } from "./fixture/tmpdir"
@@ -63,6 +63,10 @@ test.skipIf(!resources)("the staged Rust worker matches concurrent Git scans", a
         list(git("ls-files", "--others", "--exclude-standard", "-z", "--", scope)),
       ])
     })
+    expect(await scanner.scan({ gitDirectory: ".git", worktree, scope: "." }, signal)).toBeUndefined()
+    await rename(path.join(worktree, "scope"), path.join(worktree, "moved-scope"))
+    await symlink("moved-scope", path.join(worktree, "scope"))
+    expect(await scanner.scan({ gitDirectory, worktree, scope: "." }, signal)).toBeUndefined()
   } finally {
     await scanner.close()
   }

@@ -1,11 +1,11 @@
 use git2::{ConfigLevel, Delta, DiffOptions, Repository};
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashSet};
 use std::error::Error;
 use std::ffi::OsStr;
 use std::io::{self, BufWriter, Read, Write};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::MetadataExt;
-use std::path::Path;
+use std::path::{Component, Path};
 use std::sync::{Mutex, mpsc};
 use std::{env, fs, thread};
 
@@ -39,8 +39,24 @@ fn scan(
     if env::var_os("GIT_INDEX_FILE").is_some() {
         return Err("alternate Git index requires the Git scanner".into());
     }
-    let repository = Repository::open(git_dir)?;
-    repository.set_workdir(worktree, false)?;
+    if !git_dir.is_absolute()
+        || !worktree.is_absolute()
+        || scope.is_empty()
+        || Path::new(scope)
+            .components()
+            .any(|part| !matches!(part, Component::Normal(_) | Component::CurDir))
+    {
+        return Err("invalid snapshot scan roots or scope".into());
+    }
+    // Core supplies the worktree and its shadow index over the private worker pipe.
+    // Open the exact directory and constrain the requested pathspec to that worktree.
+    let git_dir = git_dir.canonicalize()?;
+    let worktree = worktree.canonicalize()?;
+    let repository = Repository::open(&git_dir)?;
+    if repository.path().canonicalize()? != git_dir {
+        return Err("unexpected Git directory".into());
+    }
+    repository.set_workdir(&worktree, false)?;
     let mut settings = repository.config()?;
     settings.add_file(
         &env::current_exe()?.with_file_name("snapshot-scan.gitconfig"),
@@ -80,6 +96,7 @@ fn scan(
             .get_string("core.checkStat")
             .is_ok_and(|value| value == "minimal");
         let scope = scope.as_bytes();
+        let mut checked_parents = HashSet::new();
         for entry in index.iter() {
             let path = &entry.path[..];
             if path.split(|&b| b == b'/').any(|component| {
@@ -102,7 +119,17 @@ fn scan(
             if !in_scope || assume_unchanged || skip_worktree || !(regular || symlink) {
                 continue;
             }
-            let worktree_path = worktree.join(std::ffi::OsStr::from_bytes(path));
+            let worktree_path = worktree.join(OsStr::from_bytes(path));
+            let parent = worktree_path.parent().ok_or("missing index entry parent")?;
+            if !checked_parents.contains(parent) {
+                match parent.canonicalize() {
+                    Ok(resolved) if resolved == parent && resolved.starts_with(&worktree) => {
+                        checked_parents.insert(resolved);
+                    }
+                    Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+                    _ => return Err("redirected index entry parent requires Git".into()),
+                }
+            }
             let Ok(metadata) = fs::symlink_metadata(worktree_path) else {
                 continue;
             };
