@@ -68,4 +68,15 @@ describe("Wildcard.match", () => {
     // win32 compiles with the `i` flag; posix stays case-sensitive.
     expect(Wildcard.match("README.md", "readme.md")).toBe(process.platform === "win32")
   })
+
+  test("reuses literal and wildcard patterns with their original matching rules", () => {
+    for (const path of ["src/model[1].ts", "src\\model[1].ts"]) {
+      expect(Wildcard.match(path, "src\\model[1].ts")).toBe(true)
+      expect(Wildcard.match(path, "src/model?.ts")).toBe(false)
+      expect(Wildcard.match(path, "src/model*.ts")).toBe(true)
+    }
+    const long = "path/".repeat(60)
+    expect(Wildcard.match(long, long)).toBe(true)
+    expect(Wildcard.match(long + "extra", long)).toBe(false)
+  })
 })
