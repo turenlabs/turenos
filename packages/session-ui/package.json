@@ -22,6 +22,7 @@
     "./v2/*": "./src/v2/components/*.tsx"
   },
   "scripts": {
+    "build:markdown-links": "bun run script/build-markdown-links.ts",
     "typecheck": "tsgo --noEmit --checkers 1",
     "test": "bun test src --only-failures"
   },

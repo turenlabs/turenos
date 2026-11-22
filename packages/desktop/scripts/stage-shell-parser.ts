@@ -12,7 +12,7 @@ const dist = path.resolve(import.meta.dir, "../../forge/dist")
 const output = path.join(dist, "node")
 const targetDir = path.join(dist, "shell-parser-target")
 const library = "libturen_shell_parser.dylib"
-const toolchain = process.env.RUSTUP_TOOLCHAIN
+const toolchain = process.env.TUREN_SHELL_PARSER_RUST_TOOLCHAIN ?? process.env.RUSTUP_TOOLCHAIN
 const tools = toolchain
   ? await Promise.all(
       ["cargo", "rustc"].map(async (name) => (await $`rustup which --toolchain ${toolchain} ${name}`.text()).trim()),

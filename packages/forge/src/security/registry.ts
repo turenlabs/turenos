@@ -18,6 +18,7 @@ import { D3fend } from "./integrations/data-knowledge/d3fend"
 import { Capec } from "./integrations/data-knowledge/capec"
 import { CirclHashlookup } from "./integrations/data-ioc/circl-hashlookup"
 import { Euvd } from "./integrations/data-community/euvd"
+import { RedHat } from "./integrations/data-vulnerability/redhat"
 import { Lolbas } from "./integrations/data-community/lolbas"
 import { Gtfobins } from "./integrations/data-community/gtfobins"
 import { Scorecard } from "./integrations/data-community/scorecard"
@@ -97,6 +98,7 @@ const implementations: readonly Integration[] = [
   Capec,
   CirclHashlookup,
   Euvd,
+  RedHat,
   Lolbas,
   Gtfobins,
   Scorecard,

@@ -193,41 +193,61 @@ const layer = Layer.effect(
             }
             const target = yield* mutation.resolve({ path: input.workdir ?? ".", kind: "directory" })
             const shell = Config.shell(yield* config.entries()) ?? defaultShell()
-            const violation = yield* ShellSafety.inspect({
-              command: input.command,
-              cwd: target.canonical,
-              shell: ShellSafety.kind(shell),
-            })
-            if (violation) return yield* new ToolFailure({ message: ShellSafety.blockedMessage(violation) })
-            const inspected = yield* ShellToolRouting.inspect({
-              command: input.command,
-              cwd: target.canonical,
-              shell: ShellSafety.kind(shell),
-            })
-            // Redirecting to a search tool that is failing in this session would leave the
-            // agent no way to search, so the command runs under the normal bash permissions.
-            const recommendation =
-              inspected && !ShellToolRouting.searchUnavailable(context.sessionID, inspected.tool) ? inspected : undefined
-            if (recommendation) {
-              // A bare `apply_patch <<EOF` heredoc is the model writing a patch
-              // in Codex style — run it through the real patch pipeline (fuzzy
-              // matching, permission, diff tracking) instead of blocking.
-              const kind = ShellSafety.kind(shell)
-              const patchText =
-                recommendation.tool === "apply_patch" &&
-                kind !== "cmd" &&
-                (yield* mutation.resolve({ path: ".", kind: "directory" })).canonical === target.canonical
-                  ? yield* ShellToolRouting.patchHeredoc({ command: input.command, shell: kind })
-                  : undefined
-              if (patchText !== undefined) {
-                const result = yield* ApplyPatchTool.run({ patchText, context, mutation, files, fs, permission })
+            const analysis = yield* Effect.scoped(
+              Effect.gen(function* () {
+                const kind = ShellSafety.kind(shell)
+                const parsed =
+                  kind === "cmd"
+                    ? undefined
+                    : {
+                        shell: kind,
+                        tree: yield* Effect.acquireRelease(
+                          ShellSafety.parse({ command: input.command, shell: kind }),
+                          (tree) => Effect.sync(() => tree.delete()),
+                        ),
+                      }
+                const violation = parsed
+                  ? yield* ShellSafety.inspectParsed({ ...parsed, cwd: target.canonical })
+                  : yield* ShellSafety.inspect({ command: input.command, shell: "cmd", cwd: target.canonical })
+                if (violation) return yield* new ToolFailure({ message: ShellSafety.blockedMessage(violation) })
+                const inspected = parsed
+                  ? ShellToolRouting.inspectParsed({ tree: parsed.tree, cwd: target.canonical })
+                  : yield* ShellToolRouting.inspect({ command: input.command, shell: "cmd", cwd: target.canonical })
+                // A broken dedicated search tool falls back to normal bash permissions.
+                if (!inspected || ShellToolRouting.searchUnavailable(context.sessionID, inspected.tool)) {
+                  return {
+                    recommendation: undefined,
+                    commands: parsed
+                      ? ShellSafety.commandsParsed({ tree: parsed.tree, command: input.command })
+                      : [input.command],
+                  }
+                }
+                const patchText =
+                  inspected.tool === "apply_patch" &&
+                  parsed &&
+                  (yield* mutation.resolve({ path: ".", kind: "directory" })).canonical === target.canonical
+                    ? ShellToolRouting.patchHeredocParsed({ tree: parsed.tree, command: input.command })
+                    : undefined
+                return { recommendation: inspected, patchText }
+              }),
+            )
+            if (analysis.recommendation) {
+              if (analysis.patchText !== undefined) {
+                const result = yield* ApplyPatchTool.run({
+                  patchText: analysis.patchText,
+                  context,
+                  mutation,
+                  files,
+                  fs,
+                  permission,
+                })
                 return {
                   output: `apply_patch command intercepted and applied through the patch pipeline:\n${ApplyPatchTool.toModelOutput(result)}`,
                   truncated: false,
                   exit: 0,
                 }
               }
-              return yield* new ToolFailure({ message: ShellToolRouting.blockedMessage(recommendation) })
+              return yield* new ToolFailure({ message: ShellToolRouting.blockedMessage(analysis.recommendation) })
             }
             const external = target.externalDirectory
             if (external)
@@ -255,11 +275,10 @@ const layer = Layer.effect(
             )
             // Rules are matched per simple command, not per line: a `git *` allow must not
             // approve `git status; cp .env /tmp/leak`, and "always" remembers each command separately.
-            const commands = yield* ShellSafety.commands({ command: input.command, shell: ShellSafety.kind(shell) })
             yield* assertPermission({
               action: name,
-              resources: commands,
-              save: commands,
+              resources: analysis.commands,
+              save: analysis.commands,
               metadata: { workdir: target.resource, command: input.command },
               sessionID: context.sessionID,
               agent: context.agent,

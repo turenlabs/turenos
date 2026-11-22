@@ -1201,6 +1201,7 @@ const layer = Layer.effect(
           yield* SessionContextRequest.save(db, session.id, {
             baselineSeq: system.baselineSeq,
             identity,
+            known: prepared.known,
             generation: prepared.generation + (prepared.frame === undefined ? 0 : 1),
             reason: "pressure",
             frame: {
@@ -1258,6 +1259,7 @@ const layer = Layer.effect(
       yield* SessionContextRequest.save(db, session.id, {
         baselineSeq: system.baselineSeq,
         identity,
+        known: prepared.known,
         generation: prepared.generation,
         reason: prepared.reason,
         frame: { entries: measured, messages: request.messages, sources: prepared.sources, turn },
@@ -1282,6 +1284,12 @@ const layer = Layer.effect(
       carriedSnapshots.delete(sessionID)
       const reusable = carried !== undefined && Date.now() - carried.at <= CARRIED_SNAPSHOT_MAX_AGE_MS
       let startSnapshot = reusable ? (carried.snapshot as Snapshot.ID) : yield* snapshots.capture()
+      const snapshotFiles = (before: Snapshot.ID | undefined, after: Snapshot.ID | undefined) => {
+        if (!before || !after) return Effect.succeed(undefined)
+        // Captures return content-addressed tree IDs. Equal IDs describe the same files.
+        if (before === after) return Effect.succeed([])
+        return snapshots.files({ from: before, to: after }).pipe(Effect.catch(() => Effect.succeed(undefined)))
+      }
       yield* startupPhase("snapshot_captured", { captured: startSnapshot !== undefined, reused: reusable })
       // From here on the publisher owns failure reporting for this turn. Provisionally: the
       // publisher only opens the durable step on the first content frame, so if the turn ends
@@ -1349,12 +1357,7 @@ const layer = Layer.effect(
         yield* publisher.flush()
         if (publisher.hasAssistantStarted()) {
           const snapshot = yield* snapshots.capture()
-          const files =
-            startSnapshot && snapshot
-              ? yield* snapshots
-                  .files({ from: startSnapshot, to: snapshot })
-                  .pipe(Effect.catch(() => Effect.succeed(undefined)))
-              : undefined
+          const files = yield* snapshotFiles(startSnapshot, snapshot)
           // The CLI reports the run's usage once, on the final step; this one carries none of it.
           const unmeasured = { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } }
           yield* events.publish(SessionEvent.Step.Ended, {
@@ -1959,12 +1962,7 @@ const layer = Layer.effect(
           if (stepSettlement && !publisher.hasProviderError() && !turnInterrupted) {
             const endSnapshot = yield* snapshots.capture()
             if (endSnapshot !== undefined) carriedSnapshots.set(sessionID, { snapshot: endSnapshot, at: Date.now() })
-            const files =
-              startSnapshot && endSnapshot
-                ? yield* snapshots
-                    .files({ from: startSnapshot, to: endSnapshot })
-                    .pipe(Effect.catch(() => Effect.succeed(undefined)))
-                : undefined
+            const files = yield* snapshotFiles(startSnapshot, endSnapshot)
             const billing = SessionRunnerModel.settle(resolvedModel, stepSettlement)
             yield* withPublication(
               events.publish(SessionEvent.Step.Ended, {

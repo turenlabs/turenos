@@ -15,8 +15,8 @@ bash tool passes the `shell` set in global config (`Config.shell`), falling back
 Bash and PowerShell both use tree-sitter. On Apple silicon, the bundled Bun sidecar loads a native Rust bridge from
 the server bundle on first use. It uses the same engine version and grammar sources as the portable WASM parser.
 The sidecar uses WASM when the native library is missing, incompatible, or cannot return a tree. Both paths feed
-the same TypeScript analysis. `inspectRoot` walks the `command` nodes in document order so each command in a
-pipeline, list, or subshell is judged individually.
+the same TypeScript analysis. The WASM path loads each grammar on first use. `inspectRoot` walks the
+`command` nodes in document order so each command in a pipeline, list, or subshell is judged individually.
 
 `cmd` has no grammar. `ShellSafety.parse` and `ShellSafety.inspectParsed` accept only `"bash" | "powershell"`, and a `cmd`
 string is handled by a hand-written path that splits on unquoted `&`, `|`, `;`, and newlines and lexes each segment with a

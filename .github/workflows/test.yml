@@ -306,7 +306,7 @@ jobs:
         working-directory: packages/desktop
         run: |
           rustup toolchain install 1.93.0 --profile minimal --target aarch64-apple-darwin
-          RUSTUP_TOOLCHAIN=1.93.0 bun scripts/stage-shell-parser.ts
+          TUREN_SHELL_PARSER_RUST_TOOLCHAIN=1.93.0 bun scripts/stage-shell-parser.ts
       - name: Compare native and WASM shell parsing
         if: matrix.name == 'macos-arm64'
         working-directory: packages/core

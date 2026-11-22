@@ -3,7 +3,22 @@ export * as TeamWorkspace from "./workspace"
 import { Team } from "@turenlabs/schema/team"
 import { parseFactoryOutput } from "@turenlabs/schema/team-output"
 import { createHash } from "node:crypto"
-import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lt, lte, notInArray, or, sql } from "drizzle-orm"
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  lte,
+  notExists,
+  notInArray,
+  or,
+  sql,
+} from "drizzle-orm"
 import { Context, Effect, Layer, Schema } from "effect"
 import { Database } from "../database/database"
 import { makeGlobalNode } from "../effect/app-node"
@@ -175,7 +190,7 @@ const layer = Layer.effect(
     const db = Database.primary(database.db)
     const now = Date.now
 
-    const ensure = db.transaction(
+    const reconcileDefaultRoom = db.transaction(
       (tx) =>
         Effect.gen(function* () {
           yield* tx
@@ -234,6 +249,37 @@ const layer = Layer.effect(
         }),
       { behavior: "immediate" },
     )
+
+    const initialized = db
+      .select({ id: TeamRoomTable.id })
+      .from(TeamRoomTable)
+      .where(
+        and(
+          eq(TeamRoomTable.id, DEFAULT_ROOM_ID),
+          or(
+            eq(TeamRoomTable.archived, true),
+            notExists(
+              db
+                .select({ id: LoopTable.id })
+                .from(LoopTable)
+                .where(
+                  notExists(
+                    db
+                      .select({ id: TeamDutyTable.loop_id })
+                      .from(TeamDutyTable)
+                      .where(eq(TeamDutyTable.loop_id, LoopTable.id)),
+                  ),
+                ),
+            ),
+          ),
+        ),
+      )
+      .prepare()
+
+    const ensure = Effect.gen(function* () {
+      // Recheck inside the write transaction when another caller could also be importing duties.
+      if (!(yield* initialized.get())) yield* reconcileDefaultRoom
+    })
 
     const roomInfo = (row: typeof TeamRoomTable.$inferSelect): Room => ({
       id: row.id,
@@ -384,6 +430,117 @@ const layer = Layer.effect(
           .pipe(Effect.orDie)
       })
 
+    const roomParam = sql.placeholder("roomID")
+    const listRooms = db.select().from(TeamRoomTable).orderBy(asc(TeamRoomTable.name), asc(TeamRoomTable.id)).prepare()
+    const messagePage = (direction?: "after" | "before") =>
+      db
+        .select()
+        .from(TeamMessageTable)
+        .where(
+          and(
+            eq(TeamMessageTable.room_id, roomParam),
+            direction === "after"
+              ? gt(TeamMessageTable.seq, sql.placeholder("cursor"))
+              : direction === "before"
+                ? lt(TeamMessageTable.seq, sql.placeholder("cursor"))
+                : undefined,
+          ),
+        )
+        .orderBy(direction === "after" ? asc(TeamMessageTable.seq) : desc(TeamMessageTable.seq))
+        .limit(sql.placeholder("limit"))
+        .prepare()
+    const latestMessages = messagePage()
+    const earlierMessages = messagePage("before")
+    const laterMessages = messagePage("after")
+    // One bound list keeps the prepared query shape stable for pages of any size.
+    // Use the message ID index for these page-sized lookups and retain the room filter.
+    const pageAttachments = and(
+      eq(sql`+${TeamAttachmentTable.room_id}`, roomParam),
+      inArray(TeamAttachmentTable.message_id, sql`(select value from json_each(${sql.placeholder("messageIDs")}))`),
+    )
+    const attachmentMetadata = db
+      .select({
+        message_id: TeamAttachmentTable.message_id,
+        name: TeamAttachmentTable.name,
+        mime: TeamAttachmentTable.mime,
+        size: TeamAttachmentTable.size,
+      })
+      .from(TeamAttachmentTable)
+      .where(pageAttachments)
+      .orderBy(asc(TeamAttachmentTable.message_id), asc(TeamAttachmentTable.position))
+      .prepare()
+    const attachmentContent = db
+      .select()
+      .from(TeamAttachmentTable)
+      .where(pageAttachments)
+      .orderBy(asc(TeamAttachmentTable.message_id), asc(TeamAttachmentTable.position))
+      .prepare()
+    const roomTeammates = db
+      .select()
+      .from(TeamTeammateTable)
+      .where(eq(TeamTeammateTable.room_id, roomParam))
+      .orderBy(asc(TeamTeammateTable.time_created))
+      .prepare()
+    const roomDuties = db
+      .select({ loopID: TeamDutyTable.loop_id, teammateID: TeamDutyTable.teammate_id })
+      .from(TeamDutyTable)
+      .innerJoin(TeamTeammateTable, eq(TeamTeammateTable.id, TeamDutyTable.teammate_id))
+      .where(eq(TeamTeammateTable.room_id, roomParam))
+      .prepare()
+    const taskFields = {
+      id: TeamTaskTable.id,
+      room_id: TeamTaskTable.room_id,
+      message_id: TeamTaskTable.message_id,
+      teammate_id: TeamTaskTable.teammate_id,
+      session_id: TeamTaskTable.session_id,
+      status: TeamTaskTable.status,
+      error: TeamTaskTable.error,
+      factory_run_id: TeamTaskTable.factory_run_id,
+      time_created: TeamTaskTable.time_created,
+      time_updated: TeamTaskTable.time_updated,
+    }
+    const recentRoomTasks = db
+      .select(taskFields)
+      .from(TeamTaskTable)
+      .where(eq(TeamTaskTable.room_id, roomParam))
+      .orderBy(desc(TeamTaskTable.time_created))
+      .limit(100)
+      .prepare()
+    const activeRoomTasks = db
+      .select(taskFields)
+      .from(TeamTaskTable)
+      .where(and(eq(TeamTaskTable.room_id, roomParam), sql`${TeamTaskTable.status} IN ('claimed', 'running')`))
+      .orderBy(asc(TeamTaskTable.time_created))
+      .limit(100)
+      .prepare()
+    const taskRoomIDs = db
+      .selectDistinct({ room_id: TeamTaskTable.room_id })
+      .from(TeamTaskTable)
+      .where(inArray(TeamTaskTable.status, ["queued", "claimed", "running"]))
+      .prepare()
+    const factoryRoomIDs = db
+      .selectDistinct({ room_id: TeamFactoryRunTable.room_id })
+      .from(TeamFactoryRunTable)
+      .where(eq(TeamFactoryRunTable.status, "running"))
+      .prepare()
+    const roomFactoryRuns = db
+      .select({
+        id: TeamFactoryRunTable.id,
+        room_id: TeamFactoryRunTable.room_id,
+        status: TeamFactoryRunTable.status,
+        phase: TeamFactoryRunTable.phase,
+        task_ids: TeamFactoryRunTable.task_ids,
+        result: TeamFactoryRunTable.result,
+        error: TeamFactoryRunTable.error,
+        time_created: TeamFactoryRunTable.time_created,
+        time_updated: TeamFactoryRunTable.time_updated,
+      })
+      .from(TeamFactoryRunTable)
+      .where(eq(TeamFactoryRunTable.room_id, roomParam))
+      .orderBy(desc(TeamFactoryRunTable.time_created))
+      .limit(20)
+      .prepare()
+
     const state: Interface["state"] = (input = {}) =>
       Effect.gen(function* () {
         yield* ensure
@@ -397,142 +554,37 @@ const layer = Layer.effect(
         const limit = input.limit ?? 100
         if (!Number.isSafeInteger(limit) || limit < 1 || limit > 200)
           return yield* new Team.InvalidRequestError({ message: "Limit must be between 1 and 200" })
-        const rooms = yield* db
-          .select()
-          .from(TeamRoomTable)
-          .orderBy(asc(TeamRoomTable.name), asc(TeamRoomTable.id))
-          .all()
-          .pipe(Effect.orDie)
+        const rooms = yield* listRooms.all().pipe(Effect.orDie)
         const roomID =
           input.roomID ??
           rooms.find((item) => item.id === DEFAULT_ROOM_ID && !item.archived)?.id ??
           rooms.find((item) => !item.archived)?.id ??
           DEFAULT_ROOM_ID
-        const room = yield* requireRoom(roomID)
-        const messages = yield* db
-          .select()
-          .from(TeamMessageTable)
-          .where(
-            and(
-              eq(TeamMessageTable.room_id, roomID),
-              input.after === undefined ? undefined : gt(TeamMessageTable.seq, input.after),
-              input.before === undefined ? undefined : lt(TeamMessageTable.seq, input.before),
-            ),
-          )
-          .orderBy(input.after === undefined ? desc(TeamMessageTable.seq) : asc(TeamMessageTable.seq))
-          .limit(limit + 1)
-          .all()
+        const room = rooms.find((item) => item.id === roomID) ?? (yield* requireRoom(roomID))
+        const page =
+          input.after !== undefined ? laterMessages : input.before !== undefined ? earlierMessages : latestMessages
+        const messages = yield* page
+          .all({ roomID, cursor: input.after ?? input.before, limit: limit + 1 })
           .pipe(Effect.orDie)
         const hasMore = messages.length > limit
         const ordered = messages.slice(0, limit).sort((a, b) => a.seq - b.seq)
-        // History reads select metadata only; content is fetched explicitly per message.
-        const metadata = ordered.length
-          ? yield* db
-              .select({
-                message_id: TeamAttachmentTable.message_id,
-                name: TeamAttachmentTable.name,
-                mime: TeamAttachmentTable.mime,
-                size: TeamAttachmentTable.size,
-              })
-              .from(TeamAttachmentTable)
-              .where(
-                and(
-                  eq(TeamAttachmentTable.room_id, roomID),
-                  inArray(
-                    TeamAttachmentTable.message_id,
-                    ordered.map((message) => message.id),
-                  ),
-                ),
-              )
-              .orderBy(asc(TeamAttachmentTable.message_id), asc(TeamAttachmentTable.position))
-              .all()
-              .pipe(Effect.orDie)
-          : []
+        const attachmentParams = { roomID, messageIDs: JSON.stringify(ordered.map((message) => message.id)) }
+        // History reads select metadata only. Explicit requests for bytes reuse that query's metadata.
         const uploads =
-          input.attachments && ordered.length
-            ? yield* db
-                .select()
-                .from(TeamAttachmentTable)
-                .where(
-                  and(
-                    eq(TeamAttachmentTable.room_id, roomID),
-                    inArray(
-                      TeamAttachmentTable.message_id,
-                      ordered.map((message) => message.id),
-                    ),
-                  ),
-                )
-                .orderBy(asc(TeamAttachmentTable.message_id), asc(TeamAttachmentTable.position))
-                .all()
-                .pipe(Effect.orDie)
-            : []
-        const teammates = yield* db
-          .select()
-          .from(TeamTeammateTable)
-          .where(eq(TeamTeammateTable.room_id, roomID))
-          .orderBy(asc(TeamTeammateTable.time_created))
-          .all()
-          .pipe(Effect.orDie)
-        const duties = yield* db
-          .select()
-          .from(TeamDutyTable)
-          .innerJoin(TeamTeammateTable, eq(TeamTeammateTable.id, TeamDutyTable.teammate_id))
-          .where(eq(TeamTeammateTable.room_id, roomID))
-          .all()
-          .pipe(Effect.orDie)
-        const tasks = yield* db
-          .select({
-            id: TeamTaskTable.id,
-            room_id: TeamTaskTable.room_id,
-            message_id: TeamTaskTable.message_id,
-            teammate_id: TeamTaskTable.teammate_id,
-            session_id: TeamTaskTable.session_id,
-            status: TeamTaskTable.status,
-            error: TeamTaskTable.error,
-            factory_run_id: TeamTaskTable.factory_run_id,
-            time_created: TeamTaskTable.time_created,
-            time_updated: TeamTaskTable.time_updated,
-          })
-          .from(TeamTaskTable)
-          .where(eq(TeamTaskTable.room_id, roomID))
-          .orderBy(desc(TeamTaskTable.time_created))
-          .limit(100)
-          .all()
-          .pipe(Effect.orDie)
-        const activeTasks = yield* db
-          .select({
-            id: TeamTaskTable.id,
-            room_id: TeamTaskTable.room_id,
-            message_id: TeamTaskTable.message_id,
-            teammate_id: TeamTaskTable.teammate_id,
-            session_id: TeamTaskTable.session_id,
-            status: TeamTaskTable.status,
-            error: TeamTaskTable.error,
-            factory_run_id: TeamTaskTable.factory_run_id,
-            time_created: TeamTaskTable.time_created,
-            time_updated: TeamTaskTable.time_updated,
-          })
-          .from(TeamTaskTable)
-          .where(and(eq(TeamTaskTable.room_id, roomID), sql`${TeamTaskTable.status} IN ('claimed', 'running')`))
-          .orderBy(asc(TeamTaskTable.time_created))
-          .limit(100)
-          .all()
-          .pipe(Effect.orDie)
+          input.attachments && ordered.length ? yield* attachmentContent.all(attachmentParams).pipe(Effect.orDie) : []
+        const metadata =
+          !input.attachments && ordered.length
+            ? yield* attachmentMetadata.all(attachmentParams).pipe(Effect.orDie)
+            : uploads
+        const teammates = yield* roomTeammates.all({ roomID }).pipe(Effect.orDie)
+        const duties = yield* roomDuties.all({ roomID }).pipe(Effect.orDie)
+        const tasks = yield* recentRoomTasks.all({ roomID }).pipe(Effect.orDie)
+        const activeTasks = yield* activeRoomTasks.all({ roomID }).pipe(Effect.orDie)
         const visibleTasks = [...new Map([...tasks, ...activeTasks].map((task) => [task.id, task])).values()].sort(
           (a, b) => b.time_created - a.time_created,
         )
-        const activeTaskRooms = yield* db
-          .selectDistinct({ room_id: TeamTaskTable.room_id })
-          .from(TeamTaskTable)
-          .where(inArray(TeamTaskTable.status, ["queued", "claimed", "running"]))
-          .all()
-          .pipe(Effect.orDie)
-        const activeFactoryRooms = yield* db
-          .selectDistinct({ room_id: TeamFactoryRunTable.room_id })
-          .from(TeamFactoryRunTable)
-          .where(eq(TeamFactoryRunTable.status, "running"))
-          .all()
-          .pipe(Effect.orDie)
+        const activeTaskRooms = yield* taskRoomIDs.all().pipe(Effect.orDie)
+        const activeFactoryRooms = yield* factoryRoomIDs.all().pipe(Effect.orDie)
         return {
           rooms: rooms.map(roomInfo),
           activeRoomIDs: [...new Set([...activeTaskRooms, ...activeFactoryRooms].map((row) => row.room_id))],
@@ -548,25 +600,8 @@ const layer = Layer.effect(
             }
           }),
           tasks: visibleTasks.map(taskInfo),
-          duties: duties.map(({ team_duty }) => ({ loopID: team_duty.loop_id, teammateID: team_duty.teammate_id })),
-          factoryRuns: (yield* db
-            .select({
-              id: TeamFactoryRunTable.id,
-              room_id: TeamFactoryRunTable.room_id,
-              status: TeamFactoryRunTable.status,
-              phase: TeamFactoryRunTable.phase,
-              task_ids: TeamFactoryRunTable.task_ids,
-              result: TeamFactoryRunTable.result,
-              error: TeamFactoryRunTable.error,
-              time_created: TeamFactoryRunTable.time_created,
-              time_updated: TeamFactoryRunTable.time_updated,
-            })
-            .from(TeamFactoryRunTable)
-            .where(eq(TeamFactoryRunTable.room_id, roomID))
-            .orderBy(desc(TeamFactoryRunTable.time_created))
-            .limit(20)
-            .all()
-            .pipe(Effect.orDie)).map(factoryRunInfo),
+          duties,
+          factoryRuns: (yield* roomFactoryRuns.all({ roomID }).pipe(Effect.orDie)).map(factoryRunInfo),
           hasMore,
         }
       })
