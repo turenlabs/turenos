@@ -45,6 +45,8 @@ test("matches Remend on generated sequences with ambiguous delimiters", () => {
 })
 
 test("recovers from an oversized UTF-8 input and reuses the WASM instance", () => {
+  const wasm = instance.exports as { repair_links(length: number): number }
+  expect(wasm.repair_links(256 * 1024 + 1)).toBe(4)
   const text = "é".repeat(132_000) + "🌍 [label](/draft"
   expect(repair(text)).toBe(remend(text, options))
   expect(repair("[new](/draft")).toBe("new")

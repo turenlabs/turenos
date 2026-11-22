@@ -1,6 +1,13 @@
+use std::cell::RefCell;
+
 const CAPACITY: usize = 256 * 1024;
-static mut INPUT: [u8; CAPACITY] = [0; CAPACITY];
-static mut OUTPUT: [u32; 2] = [0; 2];
+
+// The host writes input and reads output between synchronous calls. Rust
+// borrows the buffers only while executing the repair.
+thread_local! {
+    static INPUT: RefCell<[u8; CAPACITY]> = const { RefCell::new([0; CAPACITY]) };
+    static OUTPUT: RefCell<[u32; 2]> = const { RefCell::new([0; 2]) };
+}
 
 const KEEP: u32 = 0;
 const REMOVE_OPEN: u32 = 1;
@@ -121,27 +128,26 @@ fn utf16_offset(text: &[u8], index: usize) -> u32 {
 
 #[no_mangle]
 pub extern "C" fn input_ptr() -> *mut u8 {
-    (&raw mut INPUT).cast()
+    INPUT.with(|input| input.as_ptr().cast())
 }
 
 #[no_mangle]
 pub extern "C" fn output_ptr() -> *mut u32 {
-    (&raw mut OUTPUT).cast()
+    OUTPUT.with(|output| output.as_ptr().cast())
 }
 
 #[no_mangle]
 pub extern "C" fn repair_links(length: usize) -> u32 {
-    if length > CAPACITY {
-        return FALLBACK;
-    }
-    let text = unsafe { std::slice::from_raw_parts(input_ptr(), length) };
-    let (kind, start, end) = plan(text);
-    if kind == KEEP {
-        return KEEP;
-    }
-    unsafe {
-        output_ptr().write(utf16_offset(text, start));
-        output_ptr().add(1).write(utf16_offset(text, end));
-    }
-    kind
+    INPUT.with_borrow(|input| {
+        let Some(text) = input.get(..length) else {
+            return FALLBACK;
+        };
+        let (kind, start, end) = plan(text);
+        if kind != KEEP {
+            OUTPUT.with_borrow_mut(|output| {
+                *output = [utf16_offset(text, start), utf16_offset(text, end)];
+            });
+        }
+        kind
+    })
 }
