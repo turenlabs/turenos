@@ -10,6 +10,7 @@ import { AppProcess } from "./process"
 import { makeGlobalNode } from "./effect/app-node"
 import { File } from "./file"
 import { KeyedMutex } from "./effect/keyed-mutex"
+import { SnapshotScanner } from "./snapshot/scanner"
 
 export class Repository extends Schema.Class<Repository>("Git.Repository")({
   worktree: AbsolutePath,
@@ -180,6 +181,13 @@ const layer = Layer.effect(
   Effect.gen(function* () {
     const fs = yield* FSUtil.Service
     const proc = yield* AppProcess.Service
+    const scanner = SnapshotScanner.make()
+    if (scanner)
+      yield* Effect.addFinalizer(() =>
+        Effect.promise(async () => {
+          await scanner.close()
+        }),
+      )
     const locks = KeyedMutex.makeUnsafe<string>()
     const locked = <A, E, R>(repository: Repository, effect: Effect.Effect<A, E, R>) =>
       locks.withLock(repository.gitDirectory)(effect)
@@ -439,13 +447,28 @@ const layer = Layer.effect(
         repositoryOperation("refresh", input.repository, args).pipe(
           Effect.map((result) => result.text.split("\0").filter(Boolean)),
         )
-      const [tracked, untracked] = yield* Effect.all(
-        [
-          list(["diff-files", "--name-only", "-z", "--", input.scope]),
-          list(["ls-files", "--others", "--exclude-standard", "-z", "--", input.scope]),
-        ],
-        { concurrency: 2 },
-      )
+      const native =
+        scanner && input.ignores
+          ? yield* Effect.promise((signal) =>
+              scanner.scan(
+                {
+                  gitDirectory: input.repository.gitDirectory,
+                  worktree: input.repository.worktree,
+                  scope: input.scope,
+                },
+                signal,
+              ),
+            )
+          : undefined
+      const [tracked, untracked] =
+        native ??
+        (yield* Effect.all(
+          [
+            list(["diff-files", "--ignore-submodules=dirty", "--name-only", "-z", "--", input.scope]),
+            list(["ls-files", "--others", "--exclude-standard", "-z", "--", input.scope]),
+          ],
+          { concurrency: 2 },
+        ))
       const candidates = Array.from(new Set([...tracked, ...untracked]))
       if (!candidates.length) return { skipped: [] }
       // NUL delimiters preserve filename bytes, not pathspec semantics. These

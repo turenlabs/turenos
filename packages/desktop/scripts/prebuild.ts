@@ -5,6 +5,7 @@ import { copyBinaryToSidecarFolder, getCurrentSidecar, resolveChannel, windowsif
 
 const channel = resolveChannel()
 await $`bun ./scripts/stage-bun.ts`
+await $`bun ./scripts/stage-snapshot-scan.ts`
 await $`bun ../../script/license-audit.ts --write`
 await $`bun ./scripts/copy-icons.ts ${channel}`
 await $`bun ./scripts/copy-metainfo.ts ${channel}`
