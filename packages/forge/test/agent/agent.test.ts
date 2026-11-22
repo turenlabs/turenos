@@ -1,6 +1,6 @@
 import { afterEach, expect } from "bun:test"
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
-import { Cause, Effect, Exit } from "effect"
+import { Cause, Effect, Exit, Layer } from "effect"
 import path from "path"
 import { disposeAllInstances } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
@@ -30,7 +30,7 @@ const catalogAgentIt = testEffect(
     LayerNode.group([Agent.node, Plugin.node, Provider.node, Config.node, Skill.node, RuntimeFlags.node]),
     [
       [RuntimeFlags.node, RuntimeFlags.layer({})],
-      [ExtensionRuntime.node, CatalogAgentFixture.extensions],
+      [ExtensionRuntime.node, Layer.mock(ExtensionRuntime.Service, CatalogAgentFixture.extensionMethods)],
     ],
   ),
 )

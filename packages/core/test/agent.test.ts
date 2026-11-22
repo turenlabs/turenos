@@ -1,5 +1,5 @@
 import { describe, expect } from "bun:test"
-import { Effect, Exit, Scope } from "effect"
+import { Effect, Exit, Layer, Scope } from "effect"
 import { AgentV2 } from "@turenlabs/core/agent"
 import { AppNodeBuilder } from "@turenlabs/core/effect/app-node-builder"
 import { Location } from "@turenlabs/core/location"
@@ -16,7 +16,9 @@ import { LayerNode } from "@turenlabs/core/effect/layer-node"
 const it = testEffect(AppNodeBuilder.build(AgentV2.node))
 
 const catalogIt = testEffect(
-  LayerNode.compile(AgentV2.node, [[ExtensionRuntime.node, CatalogAgentFixture.extensions]]),
+  LayerNode.compile(AgentV2.node, [
+    [ExtensionRuntime.node, Layer.mock(ExtensionRuntime.Service, CatalogAgentFixture.extensionMethods)],
+  ]),
 )
 
 describe("AgentV2", () => {

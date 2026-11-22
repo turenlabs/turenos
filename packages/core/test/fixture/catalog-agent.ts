@@ -3,7 +3,7 @@ export * as CatalogAgentFixture from "./catalog-agent"
 import { ExtensionRuntime } from "@turenlabs/core/extension"
 import { ExtensionCatalog } from "@turenlabs/extensions"
 import { Extension } from "@turenlabs/schema"
-import { Effect, Layer } from "effect"
+import { Effect } from "effect"
 
 const contribution = Extension.Skill.make({
   type: "skill",
@@ -30,8 +30,8 @@ const manifest = new Extension.Manifest({
   contributions: [contribution],
 })
 
-export const extensions = Layer.mock(ExtensionRuntime.Service, {
+export const extensionMethods = {
   enabled: () => Effect.succeed(true),
   manifests: () => Effect.succeed([manifest, ExtensionCatalog.get("turenlabs/nvd")!]),
   enabledSkills: () => Effect.succeed([{ manifest, contribution }]),
-})
+} satisfies Partial<ExtensionRuntime.Interface>
