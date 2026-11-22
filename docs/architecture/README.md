@@ -53,6 +53,18 @@ See [runtime staging](../../packages/desktop/scripts/stage-bun.ts),
 [backend build](../../packages/forge/script/build-node.ts), and
 [Desktop packaging](../../packages/desktop/electron-builder.config.ts).
 
+On same-architecture macOS and Linux builds, Desktop stages a Rust snapshot worker when the host toolchain can build it.
+The worker lives at `snapshot-scan/turen-snapshot` under the resource directory, alongside its Git configuration and
+dependency notices. The Bun sidecar starts one worker on demand to discover tracked and untracked changes and to write
+tree objects under TurenOS's snapshot directory, which the sidecar supplies at worker startup. Git applies ignore rules,
+stages files, and restores snapshots. Core uses Git for discovery and writes when the worker is unavailable or
+encounters unsupported settings or index features, including split indexes and intent-to-add entries for writes. A failed
+worker waits 30 seconds before restarting, and an idle worker exits after 30 seconds.
+
+Source: [Core discovery](../../packages/core/src/snapshot/scanner.ts),
+[Git snapshot operations](../../packages/core/src/git.ts), and
+[worker staging](../../packages/desktop/scripts/stage-snapshot-scan.ts).
+
 The browser renderer does not call Core services directly; from `@turenlabs/core` it imports only pure
 `@turenlabs/core/util/*` helpers. It uses a generated SDK client contract over
 HTTP, server-sent events (SSE), and selected WebSocket routes.

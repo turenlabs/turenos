@@ -27,6 +27,7 @@ out/
 resources/forge-cli*
 resources/bun
 resources/bun.exe
+resources/snapshot-scan/
 resources/vigil
 resources/icons
 resources/*.metainfo.xml

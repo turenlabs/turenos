@@ -131,6 +131,11 @@ describe("Snapshot", () => {
             if (!before) return
 
             yield* Effect.promise(async () => {
+              // An explicit object sync policy exercises the Git write fallback.
+              const snapshots = path.join(tmp.path, "snapshot")
+              const [projectID] = await fs.readdir(snapshots)
+              const shadow = path.join(snapshots, projectID!, Hash.fast(await fs.realpath(project)))
+              await $`git --git-dir ${shadow} config core.fsync all`.cwd(project).quiet()
               await fs.writeFile(path.join(location, "tracked.txt"), "two\n")
               await fs.writeFile(path.join(location, "added.txt"), "added\n")
               await fs.writeFile(path.join(project, "outside.txt"), "changed outside\n")

@@ -160,8 +160,14 @@ const verifyPackage: NonNullable<Configuration["afterPack"]> = async (context) =
       ? `${context.packager.appInfo.productFilename}.app/Contents/Resources`
       : "resources",
   )
+  const scanner = "snapshot-scan/turen-snapshot"
+  const hasScanner = await access(path.join(packageDir, "resources", scanner)).then(
+    () => true,
+    () => false,
+  )
   await Promise.all(
     [
+      ...(hasScanner ? [scanner, "snapshot-scan/snapshot-scan.gitconfig", "snapshot-scan/licenses"] : []),
       context.electronPlatformName === "win32" ? "bun.exe" : "bun",
       "server/sidecar.js",
       "server/node.js",
@@ -413,6 +419,7 @@ const getBase = (appId: string): Configuration => ({
     "resources/**/*",
     "!resources/bun*",
     "!resources/forge-cli*",
+    "!resources/snapshot-scan/**",
   ],
   extraResources: [
     {
@@ -430,7 +437,7 @@ const getBase = (appId: string): Configuration => ({
     {
       from: "resources/",
       to: ".",
-      filter: ["forge-cli*", "bun*", "vigil/**"],
+      filter: ["forge-cli*", "bun*", "vigil/**", "snapshot-scan/**"],
     },
     {
       from: "native/",

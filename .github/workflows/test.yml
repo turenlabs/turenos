@@ -299,6 +299,19 @@ jobs:
         run: bun run --cwd packages/forge script/build-node.ts
       - name: Stage Bun runtime
         run: bun run --cwd packages/desktop scripts/stage-bun.ts --unsigned
+      - name: Set up native snapshot scanner toolchain
+        if: runner.os != 'Windows'
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: 1.97.1
+      - name: Check staged native snapshot scanner
+        if: runner.os != 'Windows'
+        env:
+          RUSTUP_TOOLCHAIN: 1.97.1
+          FORGE_RESOURCES_PATH: ${{ github.workspace }}/packages/desktop/resources
+        run: |
+          bun packages/desktop/scripts/stage-snapshot-scan.ts
+          env -u GIT_CONFIG_COUNT -u GIT_CONFIG_PARAMETERS bun --cwd packages/core test test/snapshot-scanner.test.ts test/git.test.ts test/snapshot.test.ts --timeout 60000 --max-concurrency 2
       - name: Bundle desktop sidecar entry
         run: bun run --cwd packages/desktop scripts/build-sidecar.ts
       - name: Stage Apple silicon native shell parser

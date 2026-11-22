@@ -10,7 +10,7 @@ afterEach(() => {
   for (const dispose of cleanup.splice(0).reverse()) dispose()
 })
 
-async function fixture(deferredReady = false, initialText = "Initial snapshot") {
+async function fixture(options: { deferredReady?: boolean; initialText?: string; initialTail?: string } = {}) {
   const session: Session = {
     id: "ses_live",
     projectID: "project",
@@ -22,11 +22,11 @@ async function fixture(deferredReady = false, initialText = "Initial snapshot") 
     tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
   }
   const data = {
-    text: initialText,
+    text: options.initialText ?? "Initial snapshot",
     available: true,
     tasks: { data: [], active: [], cursor: {} } as SessionsTaskListOutput,
     revert: undefined as Session["revert"],
-    tail: undefined as string | undefined,
+    tail: options.initialTail,
     delay: 0,
     terminals: [] as Record<string, unknown>[],
   }
@@ -52,7 +52,7 @@ async function fixture(deferredReady = false, initialText = "Initial snapshot") 
             start(value) {
               controller = value
               streams.add(value)
-              if (!deferredReady) value.enqueue(encode("server.connected", {}))
+              if (!options.deferredReady) value.enqueue(encode("server.connected", {}))
             },
             cancel() {
               streams.delete(controller)
@@ -180,7 +180,7 @@ test("live text and tool progress render before snapshots change, including besi
 })
 
 test("delayed listener readiness triggers a post-readiness catch-up snapshot", async () => {
-  const f = await fixture(true)
+  const f = await fixture({ deferredReady: true })
   await f.screen("Initial snapshot")
   await f.wait(() => f.streams.size > 0)
   const reads = f.reads()
@@ -254,7 +254,7 @@ test("an open task roster updates in place without losing its filter or focus", 
 })
 
 test("streaming grows the transcript without pulling a reader away from older text", async () => {
-  const f = await fixture(false, Array.from({ length: 80 }, (_, i) => `Line ${i}`).join("\n\n"))
+  const f = await fixture({ initialText: Array.from({ length: 80 }, (_, i) => `Line ${i}`).join("\n\n") })
   await f.wait(() => f.reads() >= 2)
   await f.screen("Line 79")
   f.view.mockInput.pressEnter()
@@ -301,10 +301,8 @@ test("external undo/redo events refresh metadata and cannot resurrect stale live
 test.each(["events", "reconnect"])(
   "committed-away cached turns disappear after %s even when metadata has no staged boundary",
   async (mode) => {
-    const f = await fixture()
-    await f.wait(() => f.reads() >= 2)
-    f.data.tail = "Committed-away turn"
-    await f.app.refresh()
+    const f = await fixture({ initialTail: "Committed-away turn" })
+    await f.wait(() => f.reads() >= 2 && f.streams.size > 0)
     await f.screen("Committed-away turn")
     const reads = f.reads()
     f.data.tail = undefined
@@ -312,8 +310,6 @@ test.each(["events", "reconnect"])(
       f.emit("session.next.revert.staged", { assistantMessageID: undefined, revert: { messageID: "msg_tail" } })
       f.emit("session.next.revert.committed", { assistantMessageID: undefined, messageID: "msg_tail" })
     } else {
-      // Snapshot reads can finish before the event stream subscribes.
-      await f.wait(() => f.streams.size > 0)
       f.data.available = false
       f.closeStreams()
       await f.screen("Polling")

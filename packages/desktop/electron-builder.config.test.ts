@@ -185,7 +185,7 @@ for (const channel of channels) {
     expect(config.extraResources).toContainEqual({
       from: "resources/",
       to: ".",
-      filter: ["forge-cli*", "bun*", "vigil/**"],
+      filter: ["forge-cli*", "bun*", "vigil/**", "snapshot-scan/**"],
     })
     expect(config.extraResources).toContainEqual(noticeResource)
     expect(config.extraResources).toContainEqual(thinkingOrbsLicenseResource)
