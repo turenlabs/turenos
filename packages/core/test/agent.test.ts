@@ -1,5 +1,5 @@
 import { describe, expect } from "bun:test"
-import { Effect, Exit, Layer, Scope } from "effect"
+import { Effect, Exit, Scope } from "effect"
 import { AgentV2 } from "@turenlabs/core/agent"
 import { AppNodeBuilder } from "@turenlabs/core/effect/app-node-builder"
 import { Location } from "@turenlabs/core/location"
@@ -10,53 +10,13 @@ import { location } from "./fixture/location"
 import { testEffect } from "./lib/effect"
 import { agentHost, host } from "./plugin/host"
 import { ExtensionRuntime } from "@turenlabs/core/extension"
-import { Extension } from "@turenlabs/schema"
-import { ExtensionCatalog } from "@turenlabs/extensions"
+import { CatalogAgentFixture } from "./fixture/catalog-agent"
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
 
 const it = testEffect(AppNodeBuilder.build(AgentV2.node))
 
-const subagentManifest = new Extension.Manifest({
-  schemaVersion: 1,
-  id: Extension.ID.make("community", "vulnerability-analyst"),
-  name: "Vulnerability Analyst",
-  description: "Read-only vulnerability analysis",
-  version: "1.0.0",
-  publisher: "Community",
-  trust: "community",
-  contributions: [
-    {
-      type: "skill",
-      id: Extension.ContributionID.make("vulnerability-analyst"),
-      name: "Vulnerability Analyst",
-      description: "Correlate vulnerability evidence",
-      instructions: "Use defensively.",
-      adapter: "skill:vulnerability-analyst",
-      secrets: [],
-      defaultEnabled: false,
-      source: { type: "catalog", content: "Correlate supplied vulnerability evidence." },
-      requires: ["nvd_cve_detail"],
-      agent: { profile: "data", steps: 10 },
-    },
-  ],
-})
-
 const catalogIt = testEffect(
-  LayerNode.compile(AgentV2.node, [
-    [
-      ExtensionRuntime.node,
-      Layer.mock(ExtensionRuntime.Service, {
-        enabled: () => Effect.succeed(true),
-        manifests: () => Effect.succeed([subagentManifest, ExtensionCatalog.get("turenlabs/nvd")!]),
-        enabledSkills: () =>
-          Effect.succeed(
-            subagentManifest.contributions.flatMap((contribution) =>
-              contribution.type === "skill" ? [{ manifest: subagentManifest, contribution }] : [],
-            ),
-          ),
-      }),
-    ],
-  ]),
+  LayerNode.compile(AgentV2.node, [[ExtensionRuntime.node, CatalogAgentFixture.extensions]]),
 )
 
 describe("AgentV2", () => {
