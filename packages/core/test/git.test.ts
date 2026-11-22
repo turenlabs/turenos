@@ -108,6 +108,33 @@ describe("Git worktrees", () => {
       expect((yield* git.worktree.list(repo)).some((entry) => entry.directory.endsWith("-git-worktree"))).toBe(false)
     }),
   )
+
+  it.live("discovers repositories when Git cannot return three path lines", () =>
+    Effect.gen(function* () {
+      const root = yield* Effect.acquireRelease(
+        Effect.promise(() => tmpdir()),
+        (dir) => Effect.promise(() => dir[Symbol.asyncDispose]()),
+      )
+      const git = yield* Git.Service
+      const bare = path.join(root.path, ".git")
+      yield* Effect.promise(() => runGit(root.path, "init", "--bare", bare))
+      expect(yield* git.repo.discover(AbsolutePath.make(root.path))).toMatchObject({
+        worktree: root.path,
+        gitDirectory: bare,
+        commonDirectory: bare,
+      })
+
+      if (process.platform === "win32") return
+      const directory = path.join(root.path, "checkout\nline")
+      yield* Effect.promise(() => fs.mkdir(directory))
+      yield* Effect.promise(() => runGit(directory, "init"))
+      expect(yield* git.repo.discover(AbsolutePath.make(directory))).toMatchObject({
+        worktree: directory,
+        gitDirectory: path.join(directory, ".git"),
+        commonDirectory: path.join(directory, ".git"),
+      })
+    }),
+  )
 })
 
 describe("Git trees", () => {

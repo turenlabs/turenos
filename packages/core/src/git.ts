@@ -193,6 +193,17 @@ const layer = Layer.effect(
 
       const cwd = path.dirname(dotgit)
       const git = run(cwd, proc)
+      const combined = yield* git(["rev-parse", "--show-toplevel", "--git-dir", "--git-common-dir"])
+      const paths = combined.text.split("\n")
+      if (combined.exitCode === 0 && paths.length === 4 && paths[3] === "" && paths[0] && paths[1] && paths[2]) {
+        return new Repository({
+          worktree: AbsolutePath.make(resolvePath(cwd, paths[0])),
+          gitDirectory: AbsolutePath.make(resolvePath(cwd, paths[1])),
+          commonDirectory: AbsolutePath.make(resolvePath(cwd, paths[2])),
+        })
+      }
+
+      // A path can contain a newline, and bare repositories have no top level.
       const topLevel = yield* git(["rev-parse", "--show-toplevel"])
       const gitDir = yield* git(["rev-parse", "--git-dir"])
       const commonDir = yield* git(["rev-parse", "--git-common-dir"])
