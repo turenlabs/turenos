@@ -1,7 +1,7 @@
 {
   "crate": "turen-java-inspect-wasm",
   "upstream": null,
-  "derivation": "Original bounded implementation. The .class parser, constant-pool model, bytecode disassembler, findings scanner, and JAR walker are Turen-written parse-only code; JAR (ZIP) container reading delegates to the pinned zip crate with its pure-Rust deflate backend (flate2/miniz_oxide). The cafebabe and noak parser crates were evaluated and rejected in favor of a hand-rolled parser for tighter bounds control and a smaller dependency closure. No upstream CLI, filesystem, network, or execution APIs are exposed.",
+  "derivation": "Original bounded implementation. The .class parser, constant-pool model, bytecode disassembler, findings scanner, and JAR walker are Turen-written parse-only code; JAR (ZIP) container reading delegates to zip 9.0.5 (MIT) with flate2 and its pure-Rust zlib-rs 0.6.7 deflate backend (Zlib). The cafebabe and noak parser crates were evaluated and rejected in favor of a hand-rolled parser for tighter bounds control and a smaller dependency closure. No upstream CLI, filesystem, network, or execution APIs are exposed.",
   "license": "Apache-2.0 OR MIT",
   "rust": "1.97.1",
   "wasmPack": "0.15.0",
@@ -32,6 +32,6 @@
     "selectedEntryBytes": 33554432,
     "disassemblyBytes": 2097152
   },
-  "sourceCommit": "8c99fda31917e43bfc082553e9d2d2c63eb1e5c1",
-  "workflowRun": "35765714298"
+  "sourceCommit": "1628ceade71b7aa91d3f5d4681ea160a6065b66c",
+  "workflowRun": "45079540062"
 }
