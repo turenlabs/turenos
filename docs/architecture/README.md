@@ -53,12 +53,13 @@ See [runtime staging](../../packages/desktop/scripts/stage-bun.ts),
 [backend build](../../packages/forge/script/build-node.ts), and
 [Desktop packaging](../../packages/desktop/electron-builder.config.ts).
 
-On same-architecture macOS and Linux builds, Desktop stages a Rust snapshot scanner when the host toolchain can build it.
+On same-architecture macOS and Linux builds, Desktop stages a Rust snapshot worker when the host toolchain can build it.
 The worker lives at `snapshot-scan/turen-snapshot` under the resource directory, alongside its Git configuration and
-dependency notices. The Bun sidecar starts one worker on demand to discover tracked and untracked changes in Core
-snapshot indexes. Existing Git commands apply ignore rules, populate the shadow index, write trees, and restore files.
-Core uses Git discovery when the worker is missing, busy, or fails, or when the request uses Git overrides the worker
-cannot honor. A failed worker waits 30 seconds before restarting, and an idle worker exits after 30 seconds.
+dependency notices. The Bun sidecar starts one worker on demand to discover tracked and untracked changes and to write
+tree objects for Core's shadow indexes. Git applies ignore rules, stages files, and restores snapshots. Core uses Git
+for discovery and writes when the worker is unavailable or encounters unsupported settings or index features, including
+split indexes and intent-to-add entries for writes. A failed worker waits 30 seconds before restarting, and an idle worker
+exits after 30 seconds.
 
 Source: [Core discovery](../../packages/core/src/snapshot/scanner.ts),
 [Git snapshot operations](../../packages/core/src/git.ts), and

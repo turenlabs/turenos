@@ -1,4 +1,7 @@
-use git2::{ConfigLevel, Delta, DiffOptions, Repository};
+use git2::{
+    ConfigLevel, Delta, DiffOptions, ErrorCode, IndexEntryExtendedFlag, Repository,
+    RepositoryOpenFlags,
+};
 use std::collections::{BTreeSet, HashSet};
 use std::error::Error;
 use std::ffi::OsStr;
@@ -57,12 +60,7 @@ fn scan(
         return Err("unexpected Git directory".into());
     }
     repository.set_workdir(&worktree, false)?;
-    let mut settings = repository.config()?;
-    settings.add_file(
-        &env::current_exe()?.with_file_name("snapshot-scan.gitconfig"),
-        ConfigLevel::App,
-        true,
-    )?;
+    apply_worker_config(&mut repository.config()?)?;
     let index = repository.index()?;
     let mut options = DiffOptions::new();
     options
@@ -158,6 +156,71 @@ fn scan(
     Ok(out)
 }
 
+fn write_tree(shadow_root: &Path, git_dir: &Path) -> Result<Vec<u8>, Box<dyn Error>> {
+    if !shadow_root.is_absolute() || !git_dir.is_absolute() {
+        return Err("snapshot tree roots must be absolute".into());
+    }
+    let shadow_root = shadow_root.canonicalize()?;
+    let git_dir = git_dir.canonicalize()?;
+    if git_dir.parent().and_then(Path::parent) != Some(shadow_root.as_path()) {
+        return Err("snapshot tree writes require a shadow repository".into());
+    }
+    let objects = git_dir.join("objects");
+    if !fs::symlink_metadata(&objects)?.is_dir()
+        || !fs::symlink_metadata(git_dir.join("index"))?.is_file()
+    {
+        return Err("redirected or missing shadow storage requires Git".into());
+    }
+    // Loose tree objects are written into the two-character fanout directories under objects.
+    for entry in fs::read_dir(&objects)? {
+        if entry?.file_type()?.is_symlink() {
+            return Err("redirected shadow object storage requires Git".into());
+        }
+    }
+    let repository = Repository::open_ext(
+        &git_dir,
+        RepositoryOpenFlags::NO_SEARCH | RepositoryOpenFlags::NO_DOTGIT | RepositoryOpenFlags::BARE,
+        &[] as &[&OsStr],
+    )?;
+    if repository.path().canonicalize()? != git_dir
+        || repository.commondir().canonicalize()? != git_dir
+    {
+        return Err("unexpected shadow Git directory".into());
+    }
+    let mut settings = repository.config()?;
+    for key in [
+        "core.fsync",
+        "core.fsyncmethod",
+        "core.fsyncobjectfiles",
+        "core.sharedrepository",
+    ] {
+        if !matches!(settings.get_entry(key), Err(error) if error.code() == ErrorCode::NotFound) {
+            return Err("configured Git object writes require Git".into());
+        }
+    }
+    apply_worker_config(&mut settings)?;
+    let mut index = repository.index()?;
+    if index.iter().any(|item| {
+        item.flags_extended & IndexEntryExtendedFlag::INTENT_TO_ADD.bits() != 0
+            || item.mode == 0o040000
+    }) {
+        return Err("intent-to-add or sparse entries require Git".into());
+    }
+    let tree = index.write_tree_to(&repository)?;
+    // An index can cache a tree ID even if the object was pruned from its object store.
+    repository.find_tree(tree)?;
+    Ok(tree.to_string().into_bytes())
+}
+
+fn apply_worker_config(settings: &mut git2::Config) -> Result<(), Box<dyn Error>> {
+    settings.add_file(
+        &env::current_exe()?.with_file_name("snapshot-scan.gitconfig"),
+        ConfigLevel::App,
+        true,
+    )?;
+    Ok(())
+}
+
 const MAX_REQUEST_BYTES: u32 = 16 * 1024;
 const MAX_RESPONSE_BYTES: usize = 1024 * 1024;
 const THREADS: usize = 4;
@@ -179,6 +242,10 @@ fn serve() -> Result<(), Box<dyn Error>> {
                     let Ok(request) = request else { break };
                     let fields = request.paths.split(|&byte| byte == 0).collect::<Vec<_>>();
                     let response = match fields.as_slice() {
+                        [b"write-tree", shadow_root, git_dir] => write_tree(
+                            Path::new(OsStr::from_bytes(shadow_root)),
+                            Path::new(OsStr::from_bytes(git_dir)),
+                        ),
                         [git_dir, worktree, scope]
                             if fields.iter().all(|part| !part.is_empty()) =>
                         {
@@ -189,11 +256,11 @@ fn serve() -> Result<(), Box<dyn Error>> {
                                 true,
                             )
                         }
-                        _ => Err("invalid scan request".into()),
+                        _ => Err("invalid snapshot request".into()),
                     };
                     let (status, bytes) = match response {
                         Ok(bytes) if bytes.len() <= MAX_RESPONSE_BYTES => (0, bytes),
-                        Ok(_) => (1, b"scan output too large".to_vec()),
+                        Ok(_) => (1, b"snapshot response too large".to_vec()),
                         Err(error) => (1, error.to_string().into_bytes()),
                     };
                     let mut stdout = output.lock().unwrap();

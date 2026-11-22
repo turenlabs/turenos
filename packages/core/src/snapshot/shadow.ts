@@ -9,6 +9,8 @@ import { Hash } from "../util/hash"
 const scope = Storage.Scope.make("internal/snapshot-worktree")
 const bindings = 1000
 
+export const root = (data: string) => path.join(data, "snapshot")
+
 export interface Input {
   /** Global data directory the `snapshot` tree lives under. */
   readonly data: string
@@ -39,7 +41,7 @@ export const directory = Effect.fnUntraced(function* (input: Input) {
   // what keeps already-installed worktrees on their current repository.
   const binding = held ?? (yield* orphan(bound, prefix)) ?? Hash.fast(input.worktree)
   if (!held) yield* storage.set({ scope, key: Storage.Key.make(prefix + binding), value: input.worktree })
-  return path.join(input.data, "snapshot", input.projectID, binding)
+  return path.join(root(input.data), input.projectID, binding)
 })
 
 const orphan = Effect.fnUntraced(function* (bound: ReadonlyArray<Storage.State>, prefix: string) {

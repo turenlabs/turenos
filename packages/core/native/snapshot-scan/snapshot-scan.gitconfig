@@ -1,2 +1,4 @@
 [diff]
     ignoreSubmodules = dirty
+[core]
+    fsyncObjectFiles = true

@@ -27,7 +27,7 @@ const gitOverrides = [
 type Paths = readonly [tracked: string[], untracked: string[]]
 type Pending = {
   readonly timer: ReturnType<typeof setTimeout>
-  readonly finish: (result: Paths | undefined) => void
+  readonly finish: (result: Buffer | undefined) => void
 }
 
 export function make(resources = process.env.FORGE_RESOURCES_PATH, env = process.env) {
@@ -40,21 +40,34 @@ export function make(resources = process.env.FORGE_RESOURCES_PATH, env = process
   let current: ReturnType<typeof start> | undefined
   let restartAt = 0
 
+  const request = (fields: readonly string[], signal: AbortSignal) => {
+    if (signal.aborted || Date.now() < restartAt || fields.some((field) => field.includes("\0")))
+      return Promise.resolve(undefined)
+    if (!current) {
+      try {
+        current = start(binary, env, (failed) => {
+          current = undefined
+          if (failed) restartAt = Date.now() + restartDelay
+        })
+      } catch {
+        restartAt = Date.now() + restartDelay
+        return Promise.resolve(undefined)
+      }
+    }
+    return current.request(fields, signal)
+  }
+
   return {
     scan(input: { gitDirectory: string; worktree: string; scope: string }, signal: AbortSignal) {
-      if (signal.aborted || Date.now() < restartAt || /[:*?[\\\0]/.test(input.scope)) return Promise.resolve(undefined)
-      if (!current) {
-        try {
-          current = start(binary, env, (failed) => {
-            current = undefined
-            if (failed) restartAt = Date.now() + restartDelay
-          })
-        } catch {
-          restartAt = Date.now() + restartDelay
-          return Promise.resolve(undefined)
-        }
-      }
-      return current.scan(input, signal)
+      // Legacy scan messages start with an absolute path. Write messages start with an operation name.
+      if (!path.isAbsolute(input.gitDirectory) || /[:*?[\\]/.test(input.scope)) return Promise.resolve(undefined)
+      return request([input.gitDirectory, input.worktree, input.scope], signal).then((data) => data && paths(data))
+    },
+    writeTree(input: { gitDirectory: string; shadowRoot: string }, signal: AbortSignal) {
+      return request(["write-tree", input.shadowRoot, input.gitDirectory], signal).then((data) => {
+        const tree = data?.toString("utf8")
+        return tree && /^[0-9a-f]{40}$/.test(tree) ? tree : undefined
+      })
     },
     close: () => current?.close(),
   }
@@ -102,23 +115,23 @@ function start(binary: string, env: NodeJS.ProcessEnv, onClose: (failed: boolean
         buffer = buffer.subarray(length + 4)
         pending.delete(id)
         clearTimeout(request.timer)
-        request.finish(status === 0 ? paths(data) : undefined)
+        request.finish(status === 0 ? data : undefined)
         if (!pending.size) idle = setTimeout(() => close(false), idleTimeout)
       }
     }
   })().catch(() => close(true))
 
   return {
-    scan(input: { gitDirectory: string; worktree: string; scope: string }, signal: AbortSignal) {
+    request(fields: readonly string[], signal: AbortSignal) {
       if (closed || pending.size >= 8) return Promise.resolve(undefined)
-      const data = Buffer.from([input.gitDirectory, input.worktree, input.scope].join("\0"))
+      const data = Buffer.from(fields.join("\0"))
       if (data.length > requestLimit - 4) return Promise.resolve(undefined)
       clearTimeout(idle)
       const id = nextID++ >>> 0
       const header = Buffer.alloc(8)
       header.writeUInt32BE(data.length + 4)
       header.writeUInt32BE(id, 4)
-      return new Promise<Paths | undefined>((resolve) => {
+      return new Promise<Buffer | undefined>((resolve) => {
         const abort = () => resolve(undefined)
         signal.addEventListener("abort", abort, { once: true })
         // Keep the ID reserved after cancellation so its response can still be consumed.

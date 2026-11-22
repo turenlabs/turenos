@@ -143,6 +143,7 @@ export interface Interface {
       scopes: readonly RelativePath[]
       ignores?: Repository
       maximumUntrackedFileBytes?: number
+      shadowRoot?: AbsolutePath
     }) => Effect.Effect<TreeID, OperationError>
     readonly write: (repository: Repository) => Effect.Effect<TreeID, OperationError>
     readonly files: (input: {
@@ -598,6 +599,7 @@ const layer = Layer.effect(
         scopes: readonly RelativePath[]
         ignores?: Repository
         maximumUntrackedFileBytes?: number
+        shadowRoot?: AbsolutePath
       }) =>
         Effect.gen(function* () {
           const requestedAt = Date.now()
@@ -606,7 +608,20 @@ const layer = Layer.effect(
             Effect.gen(function* () {
               const acquiredAt = Date.now()
               yield* Effect.forEach(input.scopes, (scope) => refresh({ ...input, scope }), { discard: true })
-              const tree = yield* writeTree(input.repository)
+              const shadowRoot = input.shadowRoot
+              const native =
+                scanner && shadowRoot
+                  ? yield* Effect.promise((signal) =>
+                      scanner.writeTree(
+                        {
+                          gitDirectory: input.repository.gitDirectory,
+                          shadowRoot,
+                        },
+                        signal,
+                      ),
+                    )
+                  : undefined
+              const tree = native ? TreeID.make(native) : yield* writeTree(input.repository)
               yield* Effect.logInfo("Git tree capture", {
                 gitDirectory: input.repository.gitDirectory,
                 lockWaitMs: acquiredAt - requestedAt,
