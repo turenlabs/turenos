@@ -70,6 +70,7 @@ export type QueryInput = Readonly<{
 
 export interface Interface {
   readonly get: (input: Address) => Effect.Effect<State | undefined>
+  readonly existing: (addresses: ReadonlyArray<Address>) => Effect.Effect<ReadonlyArray<Address>>
   readonly list: (input: ListInput) => Effect.Effect<ReadonlyArray<State>>
   readonly query: (input: QueryInput) => Effect.Effect<ReadonlyArray<State>>
   readonly set: (input: SetInput) => Effect.Effect<State>
@@ -112,6 +113,31 @@ export const layer = Layer.effect(
         .get()
         .pipe(Effect.orDie)
       return row ? state(row) : undefined
+    })
+
+    const existing = Effect.fn("Storage.existing")(function* (addresses: ReadonlyArray<Address>) {
+      // Bind both halves of each address and stay below SQLite's variable limit.
+      const batchSize = 200
+      const batches = Array.from({ length: Math.ceil(addresses.length / batchSize) }, (_, index) =>
+        addresses.slice(index * batchSize, (index + 1) * batchSize),
+      )
+      const rows = yield* Effect.forEach(batches, (batch) =>
+        db
+          .select({ scope: StorageStateTable.scope, key: StorageStateTable.key })
+          .from(StorageStateTable)
+          .where(
+            and(
+              eq(StorageStateTable.deleted, false),
+              sql`(${StorageStateTable.scope}, ${StorageStateTable.key}) IN (VALUES ${sql.join(
+                batch.map((address) => sql`(${address.scope}, ${address.key})`),
+                sql`, `,
+              )})`,
+            ),
+          )
+          .all()
+          .pipe(Effect.orDie),
+      )
+      return rows.flat()
     })
 
     const list = Effect.fn("Storage.list")(function* (input: ListInput) {
@@ -719,6 +745,7 @@ export const layer = Layer.effect(
 
     return Service.of({
       get,
+      existing,
       list,
       query,
       set,

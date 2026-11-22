@@ -76,7 +76,7 @@ export const layer = Layer.effect(
           })
           const manifests = yield* extensions.manifests()
           if (manifests.length > 4096) return yield* Effect.fail(unavailable())
-          const declarations = new Map<string, { id: string; name: string }>()
+          const declarations = new Map<string, ExtensionRuntime.SecretField>()
           let work = 0
           for (const manifest of manifests) {
             for (const contribution of manifest.contributions) {
@@ -89,8 +89,10 @@ export const layer = Layer.effect(
               }
             }
           }
-          // Sequential, deduplicated reads also protect stored secrets of disabled extensions.
-          for (const field of declarations.values()) add(yield* extensions.secret(field.id, field.name))
+          // Check addresses in batches without loading ciphertext. Read stored values one at a time
+          // so declaration checks, vault validation, and the protection budget still apply to each.
+          for (const field of yield* extensions.storedSecretFields([...declarations.values()]))
+            add(yield* extensions.secret(field.id, field.name))
           return SecretRedaction.compile([...secrets]) satisfies Snapshot
         }).pipe(
           Effect.timeout("5 seconds"),

@@ -25,6 +25,7 @@ function providers(all: Credential.Interface["all"], extensions: Partial<Extensi
       ExtensionRuntime.Service.of({
         manifests: () => Effect.succeed([]),
         secret: () => Effect.succeed(undefined),
+        storedSecretFields: (fields) => Effect.succeed(fields),
         get: unused,
         desired: unused,
         enabled: unused,
@@ -99,6 +100,10 @@ test("fails closed when extension reads fail or enumeration exceeds its work bud
   )!
   for (const extensions of [
     { manifests: () => Effect.die(new Error("opaque.manifest.failure")) },
+    {
+      manifests: () => Effect.succeed([manifest]),
+      storedSecretFields: () => Effect.die(new Error("opaque.storage.failure")),
+    },
     { manifests: () => Effect.succeed([manifest]), secret: () => Effect.die(new Error("opaque.extension.failure")) },
     { manifests: () => Effect.succeed(Array.from({ length: 4097 }, () => manifest)) },
     {
