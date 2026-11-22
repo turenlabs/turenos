@@ -8,7 +8,7 @@ use std::ffi::OsStr;
 use std::io::{self, BufWriter, Read, Write};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::MetadataExt;
-use std::path::{Component, Path};
+use std::path::{Component, Path, PathBuf};
 use std::sync::{Mutex, mpsc};
 use std::{env, fs, thread};
 
@@ -16,7 +16,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut args = env::args_os().skip(1);
     let git_dir = args.next().ok_or("missing git directory")?;
     if git_dir == "--serve" {
-        return serve();
+        let shadow_root = args
+            .next()
+            .map(PathBuf::from)
+            .filter(|path| path.is_absolute())
+            .and_then(|path| path.canonicalize().ok());
+        return serve(shadow_root.as_deref());
     }
     let worktree = args.next().ok_or("missing worktree")?;
     let scope = args.next().ok_or("missing scope")?;
@@ -156,13 +161,27 @@ fn scan(
     Ok(out)
 }
 
-fn write_tree(shadow_root: &Path, git_dir: &Path) -> Result<Vec<u8>, Box<dyn Error>> {
-    if !shadow_root.is_absolute() || !git_dir.is_absolute() {
-        return Err("snapshot tree roots must be absolute".into());
+fn write_tree(
+    shadow_root: &Path,
+    project: &[u8],
+    checkout: &[u8],
+) -> Result<Vec<u8>, Box<dyn Error>> {
+    for name in [project, checkout] {
+        if name.is_empty()
+            || !name
+                .iter()
+                .all(|b| b.is_ascii_alphanumeric() || b"-_".contains(b))
+        {
+            return Err("invalid shadow repository identifier".into());
+        }
     }
-    let shadow_root = shadow_root.canonicalize()?;
-    let git_dir = git_dir.canonicalize()?;
-    if git_dir.parent().and_then(Path::parent) != Some(shadow_root.as_path()) {
+    let git_dir = shadow_root
+        .join(OsStr::from_bytes(project))
+        .join(OsStr::from_bytes(checkout))
+        .canonicalize()?;
+    if !git_dir.starts_with(shadow_root)
+        || git_dir.parent().and_then(Path::parent) != Some(shadow_root)
+    {
         return Err("snapshot tree writes require a shadow repository".into());
     }
     let objects = git_dir.join("objects");
@@ -227,10 +246,10 @@ const THREADS: usize = 4;
 
 struct Request {
     id: [u8; 4],
-    paths: Vec<u8>,
+    payload: Vec<u8>,
 }
 
-fn serve() -> Result<(), Box<dyn Error>> {
+fn serve(shadow_root: Option<&Path>) -> Result<(), Box<dyn Error>> {
     let (sender, receiver) = mpsc::sync_channel::<Request>(THREADS);
     let receiver = Mutex::new(receiver);
     let output = Mutex::new(BufWriter::new(io::stdout()));
@@ -240,12 +259,14 @@ fn serve() -> Result<(), Box<dyn Error>> {
                 loop {
                     let request = receiver.lock().unwrap().recv();
                     let Ok(request) = request else { break };
-                    let fields = request.paths.split(|&byte| byte == 0).collect::<Vec<_>>();
+                    let fields = request.payload.split(|&byte| byte == 0).collect::<Vec<_>>();
                     let response = match fields.as_slice() {
-                        [b"write-tree", shadow_root, git_dir] => write_tree(
-                            Path::new(OsStr::from_bytes(shadow_root)),
-                            Path::new(OsStr::from_bytes(git_dir)),
-                        ),
+                        [b"write-tree", project, checkout] => match shadow_root {
+                            Some(root) => write_tree(root, project, checkout),
+                            None => {
+                                Err("snapshot tree writes require a configured shadow root".into())
+                            }
+                        },
                         [git_dir, worktree, scope]
                             if fields.iter().all(|part| !part.is_empty()) =>
                         {
@@ -295,10 +316,10 @@ fn read_requests(sender: mpsc::SyncSender<Request>) -> io::Result<()> {
         }
         let mut id = [0u8; 4];
         input.read_exact(&mut id)?;
-        let mut paths = vec![0u8; size as usize - 4];
-        input.read_exact(&mut paths)?;
+        let mut payload = vec![0u8; size as usize - 4];
+        input.read_exact(&mut payload)?;
         sender
-            .send(Request { id, paths })
+            .send(Request { id, payload })
             .map_err(io::Error::other)?;
     }
 }

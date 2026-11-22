@@ -30,7 +30,9 @@ type Pending = {
   readonly finish: (result: Buffer | undefined) => void
 }
 
-export function make(resources = process.env.FORGE_RESOURCES_PATH, env = process.env) {
+export function make(input: { resources?: string; env?: NodeJS.ProcessEnv; shadowRoot?: string } = {}) {
+  const resources = input.resources ?? process.env.FORGE_RESOURCES_PATH
+  const env = input.env ?? process.env
   if (!resources || !path.isAbsolute(resources) || typeof Bun === "undefined") return
   if (process.platform !== "darwin" && process.platform !== "linux") return
   if (gitOverrides.some((key) => env[key] !== undefined)) return
@@ -45,7 +47,7 @@ export function make(resources = process.env.FORGE_RESOURCES_PATH, env = process
       return Promise.resolve(undefined)
     if (!current) {
       try {
-        current = start(binary, env, (failed) => {
+        current = start(binary, env, input.shadowRoot, (failed) => {
           current = undefined
           if (failed) restartAt = Date.now() + restartDelay
         })
@@ -63,8 +65,11 @@ export function make(resources = process.env.FORGE_RESOURCES_PATH, env = process
       if (!path.isAbsolute(input.gitDirectory) || /[:*?[\\]/.test(input.scope)) return Promise.resolve(undefined)
       return request([input.gitDirectory, input.worktree, input.scope], signal).then((data) => data && paths(data))
     },
-    writeTree(input: { gitDirectory: string; shadowRoot: string }, signal: AbortSignal) {
-      return request(["write-tree", input.shadowRoot, input.gitDirectory], signal).then((data) => {
+    writeTree(gitDirectory: string, signal: AbortSignal) {
+      if (!input.shadowRoot || !path.isAbsolute(gitDirectory)) return Promise.resolve(undefined)
+      const parts = path.relative(input.shadowRoot, gitDirectory).split(path.sep)
+      if (parts.length !== 2 || parts.some((part) => !/^[a-zA-Z0-9_-]+$/.test(part))) return Promise.resolve(undefined)
+      return request(["write-tree", ...parts], signal).then((data) => {
         const tree = data?.toString("utf8")
         return tree && /^[0-9a-f]{40}$/.test(tree) ? tree : undefined
       })
@@ -73,8 +78,18 @@ export function make(resources = process.env.FORGE_RESOURCES_PATH, env = process
   }
 }
 
-function start(binary: string, env: NodeJS.ProcessEnv, onClose: (failed: boolean) => void) {
-  const child = Bun.spawn([binary, "--serve"], { env, stdin: "pipe", stdout: "pipe", stderr: "ignore" })
+function start(
+  binary: string,
+  env: NodeJS.ProcessEnv,
+  shadowRoot: string | undefined,
+  onClose: (failed: boolean) => void,
+) {
+  const child = Bun.spawn([binary, "--serve", ...(shadowRoot ? [shadowRoot] : [])], {
+    env,
+    stdin: "pipe",
+    stdout: "pipe",
+    stderr: "ignore",
+  })
   const reader = child.stdout.getReader()
   const pending = new Map<number, Pending>()
   let nextID = 0

@@ -10,7 +10,9 @@ import { AppProcess } from "./process"
 import { makeGlobalNode } from "./effect/app-node"
 import { File } from "./file"
 import { KeyedMutex } from "./effect/keyed-mutex"
+import { Global } from "./global"
 import { SnapshotScanner } from "./snapshot/scanner"
+import { SnapshotShadow } from "./snapshot/shadow"
 
 export class Repository extends Schema.Class<Repository>("Git.Repository")({
   worktree: AbsolutePath,
@@ -143,7 +145,6 @@ export interface Interface {
       scopes: readonly RelativePath[]
       ignores?: Repository
       maximumUntrackedFileBytes?: number
-      shadowRoot?: AbsolutePath
     }) => Effect.Effect<TreeID, OperationError>
     readonly write: (repository: Repository) => Effect.Effect<TreeID, OperationError>
     readonly files: (input: {
@@ -182,7 +183,8 @@ const layer = Layer.effect(
   Effect.gen(function* () {
     const fs = yield* FSUtil.Service
     const proc = yield* AppProcess.Service
-    const scanner = SnapshotScanner.make()
+    const global = yield* Global.Service
+    const scanner = SnapshotScanner.make({ shadowRoot: SnapshotShadow.root(global.data) })
     if (scanner)
       yield* Effect.addFinalizer(() =>
         Effect.promise(async () => {
@@ -599,7 +601,6 @@ const layer = Layer.effect(
         scopes: readonly RelativePath[]
         ignores?: Repository
         maximumUntrackedFileBytes?: number
-        shadowRoot?: AbsolutePath
       }) =>
         Effect.gen(function* () {
           const requestedAt = Date.now()
@@ -608,19 +609,9 @@ const layer = Layer.effect(
             Effect.gen(function* () {
               const acquiredAt = Date.now()
               yield* Effect.forEach(input.scopes, (scope) => refresh({ ...input, scope }), { discard: true })
-              const shadowRoot = input.shadowRoot
-              const native =
-                scanner && shadowRoot
-                  ? yield* Effect.promise((signal) =>
-                      scanner.writeTree(
-                        {
-                          gitDirectory: input.repository.gitDirectory,
-                          shadowRoot,
-                        },
-                        signal,
-                      ),
-                    )
-                  : undefined
+              const native = scanner
+                ? yield* Effect.promise((signal) => scanner.writeTree(input.repository.gitDirectory, signal))
+                : undefined
               const tree = native ? TreeID.make(native) : yield* writeTree(input.repository)
               yield* Effect.logInfo("Git tree capture", {
                 gitDirectory: input.repository.gitDirectory,
@@ -1038,7 +1029,11 @@ const layer = Layer.effect(
   }),
 )
 
-export const node = makeGlobalNode({ service: Service, layer: layer, deps: [FSUtil.node, AppProcess.node] })
+export const node = makeGlobalNode({
+  service: Service,
+  layer: layer,
+  deps: [FSUtil.node, AppProcess.node, Global.node],
+})
 
 interface Result {
   readonly exitCode: number

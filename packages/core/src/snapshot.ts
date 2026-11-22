@@ -167,7 +167,6 @@ const layer = Layer.effect(
             scopes: [yield* scope()],
             ignores: source,
             maximumUntrackedFileBytes: 2 * 1024 * 1024,
-            shadowRoot: AbsolutePath.make(SnapshotShadow.root(global.data)),
           }),
         )
       }).pipe(

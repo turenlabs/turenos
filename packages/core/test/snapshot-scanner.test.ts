@@ -46,9 +46,9 @@ test.skipIf(!resources)("the staged Rust worker matches concurrent Git scans", a
   await Bun.write(path.join(worktree, "outside.txt"), "outside\n")
 
   expect(
-    SnapshotScanner.make(resources, { ...env, GIT_INDEX_FILE: path.join(worktree, "alternate.index") }),
+    SnapshotScanner.make({ resources, env: { ...env, GIT_INDEX_FILE: path.join(worktree, "alternate.index") } }),
   ).toBeUndefined()
-  const scanner = SnapshotScanner.make(resources, env)
+  const scanner = SnapshotScanner.make({ resources, env })
   expect(scanner).toBeDefined()
   if (!scanner) return
   const signal = new AbortController().signal
@@ -96,14 +96,17 @@ test.skipIf(!resources)("the staged worker writes shadow trees with Git-compatib
   const index = path.join(gitDirectory, "index")
   const original = await Bun.file(index).arrayBuffer()
 
-  const scanner = SnapshotScanner.make(resources, { ...env, HOME: root.path, XDG_CONFIG_HOME: root.path })
+  const scanner = SnapshotScanner.make({
+    resources,
+    env: { ...env, HOME: root.path, XDG_CONFIG_HOME: root.path },
+    shadowRoot,
+  })
   expect(scanner).toBeDefined()
   if (!scanner) return
   const signal = new AbortController().signal
-  const input = { shadowRoot, gitDirectory }
   try {
     const [tree, scan] = await Promise.all([
-      scanner.writeTree(input, signal),
+      scanner.writeTree(gitDirectory, signal),
       scanner.scan({ gitDirectory, worktree, scope: "." }, signal),
     ])
     expect(scan).toEqual([[], []])
@@ -112,29 +115,33 @@ test.skipIf(!resources)("the staged worker writes shadow trees with Git-compatib
     expect(await Bun.file(index).arrayBuffer()).toEqual(original)
     expect(git("cat-file", "-t", tree)).toBe("tree")
     expect(tree).toBe(git("write-tree"))
-    expect(await scanner.writeTree({ shadowRoot: root.path, gitDirectory }, signal)).toBeUndefined()
+    expect(await scanner.writeTree(worktree, signal)).toBeUndefined()
     git("update-index", "--add", "--cacheinfo", "160000", "1".repeat(40), "nested")
-    expect(await scanner.writeTree(input, signal)).toBe(git("write-tree"))
+    expect(await scanner.writeTree(gitDirectory, signal)).toBe(git("write-tree"))
     git("update-index", "--force-remove", "nested")
 
     git("config", "core.fsync", "all")
-    expect(await scanner.writeTree(input, signal)).toBeUndefined()
+    expect(await scanner.writeTree(gitDirectory, signal)).toBeUndefined()
     git("config", "--unset", "core.fsync")
     await Bun.write(path.join(worktree, "intent.txt"), "pending\n")
     git("add", "-N", "intent.txt")
-    expect(await scanner.writeTree(input, signal)).toBeUndefined()
+    expect(await scanner.writeTree(gitDirectory, signal)).toBeUndefined()
     expect(git("write-tree")).toBe(tree)
     git("reset", "--", "intent.txt")
     git("update-index", "--split-index")
-    expect(await scanner.writeTree(input, signal)).toBeUndefined()
+    expect(await scanner.writeTree(gitDirectory, signal)).toBeUndefined()
     git("update-index", "--no-split-index")
-    expect(await scanner.writeTree(input, signal)).toBe(tree)
+    expect(await scanner.writeTree(gitDirectory, signal)).toBe(tree)
 
     const objects = path.join(gitDirectory, "objects")
     const outside = path.join(root.path, "redirect")
     await rename(objects, outside)
     await symlink(outside, objects)
-    expect(await scanner.writeTree(input, signal)).toBeUndefined()
+    expect(await scanner.writeTree(gitDirectory, signal)).toBeUndefined()
+    const relocated = path.join(root.path, "redirected-repository")
+    await rename(gitDirectory, relocated)
+    await symlink(relocated, gitDirectory)
+    expect(await scanner.writeTree(gitDirectory, signal)).toBeUndefined()
   } finally {
     await scanner.close()
   }
@@ -150,7 +157,7 @@ test.skipIf(!["darwin", "linux"].includes(process.platform))(
     await Bun.write(binary, '#!/bin/sh\nprintf "start\\n" >> "$0.starts"\nexit 77\n')
     await chmod(binary, 0o755)
     await Bun.write(path.join(directory, "snapshot-scan.gitconfig"), "[diff]\nignoreSubmodules = dirty\n")
-    const scanner = SnapshotScanner.make(root.path, env)
+    const scanner = SnapshotScanner.make({ resources: root.path, env, shadowRoot: root.path })
     expect(scanner).toBeDefined()
     if (!scanner) return
 
@@ -159,7 +166,7 @@ test.skipIf(!["darwin", "linux"].includes(process.platform))(
     try {
       expect(await scanner.scan(input, signal)).toBeUndefined()
       expect(await scanner.scan(input, signal)).toBeUndefined()
-      expect(await scanner.writeTree({ gitDirectory: root.path, shadowRoot: root.path }, signal)).toBeUndefined()
+      expect(await scanner.writeTree(path.join(root.path, "project", "checkout"), signal)).toBeUndefined()
       expect(await Bun.file(binary + ".starts").text()).toBe("start\n")
     } finally {
       await scanner.close()
