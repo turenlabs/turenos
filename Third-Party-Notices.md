@@ -154,6 +154,7 @@ Each row identifies a resolved package and version, its declared license, and it
 | `@internationalized/number` | `3.6.7` | Apache-2.0 | [source](https://github.com/adobe/react-spectrum) |
 | `@ioredis/commands` | `1.10.0` | MIT | [source](https://github.com/ioredis/commands.git) |
 | `@isaacs/fs-minipass` | `4.0.1` | ISC | [source](https://github.com/npm/fs-minipass.git) |
+| `@isaacs/nonrecursive-glob-match` | `1.0.3` | BlueOak-1.0.0 | Not declared |
 | `@isaacs/string-locale-compare` | `1.1.0` | ISC | [source](git+https://github.com/isaacs/string-locale-compare) |
 | `@kobalte/core` | `0.13.11` | MIT | [source](git+https://github.com/kobaltedev/kobalte.git) |
 | `@kobalte/utils` | `0.9.1` | MIT | [source](git+https://github.com/kobaltedev/kobalte.git) |
@@ -728,6 +729,7 @@ Each row identifies a resolved package and version, its declared license, and it
 | `mime-types` | `3.0.2` | MIT | [source](jshttp/mime-types) |
 | `mimic-function` | `5.0.1` | MIT | [source](sindresorhus/mimic-function) |
 | `minimatch` | `10.2.6` | BlueOak-1.0.0 | [source](git@github.com:isaacs/minimatch) |
+| `minimatch` | `11.0.1` | BlueOak-1.0.0 | [source](git@github.com:isaacs/minimatch) |
 | `minimist` | `1.2.8` | MIT | [source](git://github.com/minimistjs/minimist.git) |
 | `minipass` | `3.3.6` | ISC | [source](git+https://github.com/isaacs/minipass.git) |
 | `minipass` | `7.1.3` | BlueOak-1.0.0 | [source](https://github.com/isaacs/minipass) |
@@ -1015,6 +1017,6 @@ Each row identifies a resolved package and version, its declared license, and it
 | `zustand` | `4.5.7` | MIT | [source](git+https://github.com/pmndrs/zustand.git) |
 | `zwitch` | `2.0.4` | MIT | [source](wooorm/zwitch) |
 
-Inventory total: **993 resolved packages**.
+Inventory total: **995 resolved packages**.
 
 This file is regenerated during the desktop prebuild. Do not edit generated inventory content by hand.

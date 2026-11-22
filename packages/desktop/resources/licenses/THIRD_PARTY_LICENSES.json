@@ -1183,6 +1183,14 @@
       ]
     },
     {
+      "name": "@isaacs/nonrecursive-glob-match",
+      "version": "1.0.3",
+      "license": "BlueOak-1.0.0",
+      "licenseFiles": [
+        "LICENSE.md"
+      ]
+    },
+    {
       "name": "@isaacs/string-locale-compare",
       "version": "1.1.0",
       "license": "ISC",
@@ -6257,6 +6265,15 @@
     {
       "name": "minimatch",
       "version": "10.2.6",
+      "license": "BlueOak-1.0.0",
+      "source": "git@github.com:isaacs/minimatch",
+      "licenseFiles": [
+        "LICENSE.md"
+      ]
+    },
+    {
+      "name": "minimatch",
+      "version": "11.0.1",
       "license": "BlueOak-1.0.0",
       "source": "git@github.com:isaacs/minimatch",
       "licenseFiles": [

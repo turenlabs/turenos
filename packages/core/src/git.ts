@@ -441,7 +441,8 @@ const layer = Layer.effect(
         )
       const [tracked, untracked] = yield* Effect.all(
         [
-          list(["diff-files", "--name-only", "-z", "--", input.scope]),
+          // A gitlink records only the nested checkout's HEAD. Its dirty files cannot change the snapshot tree.
+          list(["diff-files", "--ignore-submodules=dirty", "--name-only", "-z", "--", input.scope]),
           list(["ls-files", "--others", "--exclude-standard", "-z", "--", input.scope]),
         ],
         { concurrency: 2 },

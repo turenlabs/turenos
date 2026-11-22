@@ -64,6 +64,7 @@ const expected = [
   "turenlabs/osv-scanner",
   "turenlabs/pagerduty",
   "turenlabs/phishing-database",
+  "turenlabs/redhat",
   "turenlabs/scorecard",
   "turenlabs/secure-code-review",
   "turenlabs/semgrep-hosted",
@@ -120,6 +121,15 @@ const remoteManifest = (input: object = {}) =>
   })
 
 describe("ExtensionCatalog", () => {
+  test("ships Red Hat Security Data as an opt-in CVE lookup without credentials", () => {
+    expect(ExtensionCatalog.contribution("security:redhat")).toMatchObject({
+      type: "data",
+      defaultEnabled: false,
+      secrets: [],
+      tools: { allow: ["redhat_cve_lookup"], write: [] },
+    })
+  })
+
   test("ships zizmor as an opt-in local scanner without credentials or write tools", () => {
     const contribution = ExtensionCatalog.get("turenlabs/zizmor")?.contributions[0]
     expect(contribution).toMatchObject({
