@@ -7,6 +7,7 @@ import { $ } from "bun"
 import { Cause, Effect, Queue, Schema, Stream } from "effect"
 import { execFile, spawn } from "node:child_process"
 import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
+import { realpath } from "node:fs/promises"
 import { homedir, tmpdir } from "node:os"
 import { join } from "node:path"
 import { Readable, Writable } from "node:stream"
@@ -16,7 +17,12 @@ import { DevinCLI } from "../../provider/devin-cli"
 import { ClaudeCodeMcp } from "./claude-code-mcp-namespace"
 
 const ROUTE_ID = "devin-acp"
-export const SUPPORTED_VERSION = "devin 3000.12.28 (91c3aec41579)"
+export const SUPPORTED_BUILDS = [
+  { version: "devin 3000.14.30821 (a09cd7f323ee)", acpArgs: ["--process-model", "in-process"] },
+  { version: "devin 3000.12.57 (96542e930752)", acpArgs: [] },
+  { version: "devin 3000.12.32 (1126aba4a596)", acpArgs: [] },
+  { version: "devin 3000.12.28 (91c3aec41579)", acpArgs: [] },
+] as const
 export const NATIVE_TOOLS = [
   "read",
   "write",
@@ -151,12 +157,13 @@ export const settings = (directory: string) => ({
   },
 })
 
-export const args = (directory: string, modelID: string) => [
+export const args = (directory: string, modelID: string, build: (typeof SUPPORTED_BUILDS)[number]) => [
   "--config",
   join(directory, "config", "devin", "config.json"),
   "--permission-mode",
   "auto",
   "acp",
+  ...build.acpArgs,
   ...(modelID === "default" ? [] : ["--model", modelID]),
 ]
 
@@ -383,22 +390,27 @@ const transport = (input: { executable: string; modelID: string }): TransportDef
           (directory) => Effect.sync(() => rmSync(directory, { recursive: true, force: true })),
         )
         const env = environment(directory)
-        const version = yield* Effect.tryPromise({
-          try: (signal) =>
-            exec(input.executable, ["--version"], {
+        const checked = yield* Effect.tryPromise({
+          try: async (signal) => {
+            // Keep the checked path when Devin's updater retargets its launcher symlink.
+            const executable = await realpath(DevinCLI.resolveExecutable(input.executable) ?? input.executable)
+            const version = await exec(executable, ["--version"], {
               env,
               cwd: directory,
               signal,
               timeout: 10_000,
               maxBuffer: 32 * 1024,
               killSignal: "SIGKILL",
-            }),
+            })
+            return { executable, version: version.stdout.trim() }
+          },
           catch: () => error("Could not check Devin CLI version. Install Devin CLI and run `devin auth login`."),
         })
-        if (version.stdout.trim() !== SUPPORTED_VERSION)
+        const build = SUPPORTED_BUILDS.find((build) => build.version === checked.version)
+        if (!build)
           return yield* Effect.fail(
             error(
-              `Unsupported Devin CLI build. This bridge is qualified for ${SUPPORTED_VERSION}; requalify native-tool isolation before using another build.`,
+              `Unsupported Devin CLI build. Qualified builds: ${SUPPORTED_BUILDS.map((build) => build.version).join(", ")}. Requalify native-tool isolation before using another build.`,
             ),
           )
         const token = ClaudeCodeMcp.requestToken(request.metadata)
@@ -410,7 +422,7 @@ const transport = (input: { executable: string; modelID: string }): TransportDef
         })
         const child = yield* Effect.acquireRelease(
           Effect.sync(() => {
-            const proc = spawn(input.executable, args(directory, input.modelID), {
+            const proc = spawn(checked.executable, args(directory, input.modelID, build), {
               env,
               cwd: join(directory, "workspace"),
               stdio: ["pipe", "pipe", "pipe"],

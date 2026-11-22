@@ -248,7 +248,8 @@ const layer: Layer.Layer<Service, never, Requirements> = Layer.effect(
           yield* sync()
           const [diff, other] = yield* Effect.all(
             [
-              git([...quote, ...args(["diff-files", "--name-only", "-z", "--", "."])], {
+              // Snapshot trees store only the HEAD of nested checkouts.
+              git([...quote, ...args(["diff-files", "--ignore-submodules=dirty", "--name-only", "-z", "--", "."])], {
                 cwd: state.directory,
               }),
               git([...quote, ...args(["ls-files", "--full-name", "--others", "--exclude-standard", "-z", "--", "."])], {

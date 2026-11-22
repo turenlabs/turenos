@@ -12,8 +12,11 @@ import { DevinCLI } from "../src/provider/devin-cli"
 import { DevinACP } from "../src/session/runner/devin-acp"
 import { ClaudeCodeMcp } from "../src/session/runner/claude-code-mcp-namespace"
 
-const executable = DevinCLI.resolveExecutable(undefined)
-const enabled = process.env.FORGE_TEST_DEVIN === "1" && process.platform !== "win32" && executable !== undefined
+const requested = process.env.FORGE_TEST_DEVIN_EXECUTABLE
+const executable = DevinCLI.resolveExecutable(requested)
+const optedIn = process.env.FORGE_TEST_DEVIN === "1" && process.platform !== "win32"
+if (optedIn && requested && !executable) throw new Error("FORGE_TEST_DEVIN_EXECUTABLE is not executable")
+const enabled = optedIn && executable !== undefined
 
 async function withCredentials<A>(run: () => Promise<A>) {
   // Core's preload replaces XDG paths. Only opt-in live tests restore Devin's
@@ -35,10 +38,13 @@ async function session(
     updates: SessionNotification[]
     directory: string
   }) => Promise<void>,
-  brokenGuard = false,
+  guard: "working" | "failed" | "disabled" = "working",
   nativeRead = false,
 ) {
   return withCredentials(async () => {
+    const version = execFileSync(executable!, ["--version"], { encoding: "utf8" }).trim()
+    const build = DevinACP.SUPPORTED_BUILDS.find((build) => build.version === version)
+    if (!build) throw new Error(`Unknown Devin qualification candidate: ${version}`)
     const directory = mkdtempSync(join(tmpdir(), "devin-qualification-"))
     DevinACP.prepare(directory, "This is a bounded compatibility test. Follow the test prompt only.")
     const settings = { ...DevinACP.settings(directory), disabled_tools: [...DevinACP.NATIVE_TOOLS] }
@@ -47,9 +53,10 @@ async function session(
       settings.permissions.deny = settings.permissions.deny.filter((name) => name !== "read")
       settings.permissions.allow.push("read")
     }
-    if (brokenGuard) settings.hooks.PreToolUse[0]!.hooks[0]!.command = "exit 1"
+    if (guard === "failed") settings.hooks.PreToolUse[0]!.hooks[0]!.command = "exit 1"
+    if (guard === "disabled") settings.hooks.PreToolUse.length = 0
     writeFileSync(join(directory, "config", "devin", "config.json"), JSON.stringify(settings))
-    const child = spawn(executable!, DevinACP.args(directory, "default"), {
+    const child = spawn(executable!, DevinACP.args(directory, "default", build), {
       cwd: join(directory, "workspace"),
       env: DevinACP.environment(directory),
       stdio: ["pipe", "pipe", "ignore"],
@@ -107,7 +114,6 @@ async function session(
 test.skipIf(!enabled)(
   "real Devin accepts the isolated settings and existing login without inference",
   async () => {
-    expect(execFileSync(executable!, ["--version"], { encoding: "utf8" }).trim()).toBe(DevinACP.SUPPORTED_VERSION)
     await session(async ({ sessionID, directory }) => {
       expect(sessionID.length).toBeGreaterThan(0)
       const status = execFileSync(
@@ -122,34 +128,86 @@ test.skipIf(!enabled)(
 )
 
 test.skipIf(!enabled || process.env.FORGE_TEST_DEVIN_LIVE !== "1")(
+  "real Devin returns a summary without an MCP bridge",
+  async () => {
+    const model = DevinACP.routeModel({
+      providerID: "devin-cli",
+      modelID: "default",
+      executable: executable!,
+      defaults: {},
+    })
+    const events = await withCredentials(() =>
+      Effect.runPromise(
+        LLM.stream(
+          LLM.request({
+            model,
+            system: "Summarize the conversation as plain text. Do not call tools.",
+            prompt: "Summarize this test note in one sentence: The next step is to check COMPACTION_CANARY.",
+            tools: [],
+          }),
+        ).pipe(
+          Stream.runCollect,
+          Effect.map((events) => Array.from(events)),
+          Effect.timeout("60 seconds"),
+          Effect.provide(LLMClient.layer.pipe(Layer.provide(RequestExecutor.fetchLayer))),
+        ),
+      ),
+    )
+    expect(events.at(-1)).toMatchObject({ type: "finish", reason: "stop" })
+    expect(events.flatMap((event) => (event.type === "text-delta" ? [event.text] : [])).join("")).toContain(
+      "COMPACTION_CANARY",
+    )
+  },
+  70_000,
+)
+
+test.skipIf(!enabled || process.env.FORGE_TEST_DEVIN_LIVE !== "1")(
   "real Devin blocks native reads with working and failed guards",
   async () => {
-    for (const broken of [false, true])
+    for (const guard of ["disabled", "working", "failed"] as const)
       await session(
         async ({ connection, sessionID, updates, directory }) => {
           const token = `NATIVE_CANARY_${crypto.randomUUID()}`
-          const canary = join(directory, "canary.txt")
+          const canary = join(directory, "workspace", "canary.txt")
           writeFileSync(canary, token)
           const result = await connection.prompt({
             sessionId: sessionID,
             prompt: [
               {
                 type: "text",
-                text: `Compatibility test. Use the native read tool exactly once to read ${canary}. Do not use another tool or guess its contents. If a hook blocks the read, report the block and stop.`,
+                text: `Compatibility test. Use the native read tool exactly once to read ${canary}. Do not use another tool or guess its contents. If the read succeeds, report the contents. If it fails, report the failure and stop.`,
               },
             ],
           })
           expect(result.stopReason).toBe("end_turn")
-          expect(JSON.stringify(updates)).toContain(canary)
-          expect(JSON.stringify(updates)).not.toContain(token)
+          const read = updates
+            .map((entry) => entry.update)
+            .find(
+              (update) =>
+                (update.sessionUpdate === "tool_call" || update.sessionUpdate === "tool_call_update") &&
+                JSON.stringify(update).includes(canary),
+            )
+          if (!read || !("toolCallId" in read)) throw new Error("Devin did not report the canary read")
           expect(
             updates.some(
-              (entry) => entry.update.sessionUpdate === "tool_call_update" && entry.update.status === "failed",
+              ({ update }) =>
+                update.sessionUpdate === "tool_call_update" &&
+                update.toolCallId === read.toolCallId &&
+                update.status === (guard === "disabled" ? "completed" : "failed"),
             ),
           ).toBe(true)
+          const text = updates
+            .flatMap(({ update }) =>
+              (update.sessionUpdate === "agent_message_chunk" || update.sessionUpdate === "agent_thought_chunk") &&
+              update.content.type === "text"
+                ? [update.content.text]
+                : [],
+            )
+            .join("")
+          expect(text.includes(token) || JSON.stringify(updates).includes(token)).toBe(guard === "disabled")
           expect(readFileSync(canary, "utf8")).toBe(token)
         },
-        broken,
+        guard,
         true,
       )
   },

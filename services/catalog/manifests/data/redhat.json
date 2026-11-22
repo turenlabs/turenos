@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "turenlabs/redhat",
+  "name": "Red Hat Security Data",
+  "description": "Check Red Hat product and package status for a CVE and find released fixes",
+  "version": "1.0.0",
+  "publisher": "Turen Labs",
+  "trust": "official",
+  "homepage": "https://access.redhat.com/security/data",
+  "contributions": [
+    {
+      "type": "data",
+      "id": "redhat",
+      "name": "Red Hat Security Data",
+      "description": "Check Red Hat product and package status for a CVE and find released fixes",
+      "instructions": "Match the exact Red Hat product, package, and release before drawing conclusions. A released fix does not prove it is installed. Treat missing results as unknown. Preserve Red Hat attribution and source links.",
+      "adapter": "security:redhat",
+      "secrets": [],
+      "endpoints": {
+        "api": "https://access.redhat.com/hydra/rest/securitydata/cve",
+        "advisory": "https://access.redhat.com/errata"
+      },
+      "defaultEnabled": false,
+      "tools": { "allow": ["redhat_cve_lookup"], "write": [] }
+    }
+  ]
+}

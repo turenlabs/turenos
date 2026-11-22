@@ -24,7 +24,10 @@ await writeFile(
       private: true,
       type: "module",
       files: ["dist/", "LICENSE", "NOTICE", "README.md", "SOURCE.json", "SHA256SUMS"],
-      exports: "./dist/turen_text_diff_wasm.js",
+      exports: {
+        ".": "./dist/turen_text_diff_wasm.js",
+        "./turen_text_diff_wasm_bg.wasm": "./dist/turen_text_diff_wasm_bg.wasm",
+      },
     },
     null,
     2,
