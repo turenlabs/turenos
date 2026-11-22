@@ -132,7 +132,7 @@ describe("GrepTool", () => {
             )
             expect(yield* executeTool(registry, call("call-no-match", { pattern: "absent", path: "src" }))).toEqual({
               type: "text",
-              value: "No files found",
+              value: "No matches found",
             })
           }),
         ),
@@ -151,9 +151,7 @@ describe("GrepTool", () => {
             yield* Effect.forEach(["missing.ts", "missing", "{one,two}.ts"], (target) =>
               Effect.gen(function* () {
                 const result = yield* executeTool(registry, call(`call-${target}`, { pattern: "needle", path: target }))
-                expect(result.type).toBe("error")
-                expect(result.type === "error" ? result.value : "").toContain("NotFound")
-                expect(result.type === "error" ? result.value : "").toContain(target)
+                expect(result).toEqual({ type: "error", value: `Search path not found: ${target}` })
               }),
             )
           }),
