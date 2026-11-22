@@ -43,31 +43,33 @@ const resolveWasm = (asset: string) => {
   return fileURLToPath(new URL(asset, import.meta.url))
 }
 
-const parsers = lazy(async () => {
+const treeSitter = lazy(async () => {
   const { Language, Parser } = await import("web-tree-sitter")
   const { default: treeWasm } = await import("web-tree-sitter/tree-sitter.wasm" as string, {
     with: { type: "wasm" },
   })
   await Parser.init({ locateFile: () => resolveWasm(treeWasm) })
-  const { default: bashWasm } = await import("tree-sitter-bash/tree-sitter-bash.wasm" as string, {
-    with: { type: "wasm" },
-  })
-  const { default: psWasm } = await import("tree-sitter-powershell/tree-sitter-powershell.wasm" as string, {
-    with: { type: "wasm" },
-  })
-  const [bashLanguage, psLanguage] = await Promise.all([
-    Language.load(resolveWasm(bashWasm)),
-    Language.load(resolveWasm(psWasm)),
-  ])
-  const bash = new Parser()
-  bash.setLanguage(bashLanguage)
-  const powershell = new Parser()
-  powershell.setLanguage(psLanguage)
-  return { bash, powershell }
+  return { Language, Parser }
 })
 
+const parser = (load: () => Promise<{ default: string }>) =>
+  lazy(async () => {
+    const { Language, Parser } = await treeSitter()
+    const grammar = await load()
+    const parser = new Parser()
+    parser.setLanguage(await Language.load(resolveWasm(grammar.default)))
+    return parser
+  })
+
+const parsers = {
+  bash: parser(() => import("tree-sitter-bash/tree-sitter-bash.wasm" as string, { with: { type: "wasm" } })),
+  powershell: parser(() =>
+    import("tree-sitter-powershell/tree-sitter-powershell.wasm" as string, { with: { type: "wasm" } }),
+  ),
+}
+
 const parseText = async (command: string, shell: Exclude<Kind, "cmd">) => {
-  const tree = (await parsers())[shell].parse(command)
+  const tree = (await parsers[shell]()).parse(command)
   if (!tree) throw new Error("Unable to parse shell command for safety validation")
   return tree
 }
@@ -902,7 +904,16 @@ export const commands = Effect.fn("ShellSafety.commands")(function* (input: {
   const shell = input.shell
   if (shell === "cmd") return [input.command]
   const tree = yield* Effect.promise(() => parseText(input.command, shell))
-  const found = tree.rootNode
+  try {
+    return commandsParsed({ tree, command: input.command })
+  } finally {
+    tree.delete()
+  }
+})
+
+export const commandsParsed = (input: { readonly tree: Tree; readonly command: string }) => {
+  const root = input.tree.rootNode
+  const found = root
     .descendantsOfType("command")
     .filter((node): node is Node => node !== null)
     .map((node) => {
@@ -912,7 +923,5 @@ export const commands = Effect.fn("ShellSafety.commands")(function* (input: {
       return (redirected.parent?.type === "redirected_statement" ? redirected.parent.text : node.text).trim()
     })
     .filter((text) => text.length > 0)
-  const unique = [...new Set(tree.rootNode.hasError || found.length === 0 ? [...found, input.command] : found)]
-  tree.delete()
-  return unique
-})
+  return [...new Set(root.hasError || found.length === 0 ? [...found, input.command] : found)]
+}
