@@ -10,6 +10,8 @@ import { WorkspaceV2 } from "./workspace"
 import { ModelV2 } from "./model"
 import { Location } from "./location"
 import { SessionMessage } from "./session/message"
+import { SessionLeanMessage } from "./session/lean-message"
+import { SessionLeanProjection } from "./session/lean-projection"
 import { Prompt } from "./session/prompt"
 import { PromptInput } from "@turenlabs/schema/prompt-input"
 import { SessionRecovery } from "@turenlabs/schema/session-recovery"
@@ -163,6 +165,7 @@ export interface Interface {
   readonly messages: (input: {
     sessionID: SessionSchema.ID
     limit?: number
+    lean?: boolean
     order?: "asc" | "desc"
     cursor?: {
       id: SessionMessage.ID
@@ -424,9 +427,23 @@ const layer = Layer.effect(
     })
     const decodeMessage = Schema.decodeUnknownEffect(SessionMessage.Message)
     const isDurableSessionEvent = Schema.is(SessionEvent.Durable)
-    const decode = (row: typeof SessionMessageTable.$inferSelect, source?: SessionInput.Source | null) =>
+    const leanProjection = yield* Effect.cached(
+      Effect.gen(function* () {
+        const project = yield* SessionLeanProjection.load
+        if (!project) return
+        // SQLite casts TEXT to bytes in the database encoding, not necessarily UTF-8.
+        const encoding = yield* primary
+          .get<{ encoding: string }>(sql`PRAGMA encoding`)
+          .pipe(Effect.orElseSucceed(() => undefined))
+        return encoding?.encoding === "UTF-8" ? project : undefined
+      }),
+    )
+    const decode = (
+      row: Pick<typeof SessionMessageTable.$inferSelect, "id" | "type" | "session_id"> & { data: unknown },
+      source?: SessionInput.Source | null,
+    ) =>
       decodeMessage({
-        ...row.data,
+        ...(typeof row.data === "object" && row.data !== null ? row.data : {}),
         ...(row.type === "user" && source ? { source } : {}),
         id: row.id,
         type: row.type,
@@ -913,8 +930,24 @@ const layer = Layer.effect(
           ? and(eq(SessionMessageTable.session_id, input.sessionID), boundary)
           : eq(SessionMessageTable.session_id, input.sessionID)
         // Human scrollback follows durable order. Model context is selected separately by SessionHistory.
+        const project = input.lean ? yield* leanProjection : undefined
         const query = primary
-          .select({ message: SessionMessageTable, source: SessionInputTable.source })
+          .select({
+            message: {
+              id: SessionMessageTable.id,
+              session_id: SessionMessageTable.session_id,
+              type: SessionMessageTable.type,
+              data: project
+                ? sql<string | Uint8Array>`CASE
+                    WHEN ${SessionMessageTable.type} = 'assistant' AND
+                      length(CAST(${SessionMessageTable.data} AS BLOB)) BETWEEN ${SessionLeanMessage.LeanToolBodyBytes + 1} AND ${SessionLeanProjection.maxBytes}
+                    THEN CAST(${SessionMessageTable.data} AS BLOB)
+                    ELSE ${SessionMessageTable.data}
+                  END`
+                : SessionMessageTable.data,
+            },
+            source: SessionInputTable.source,
+          })
           .from(SessionMessageTable)
           .leftJoin(SessionInputTable, eq(SessionInputTable.id, SessionMessageTable.id))
           .where(where)
@@ -922,9 +955,17 @@ const layer = Layer.effect(
         const rows = yield* (input.limit === undefined ? query.all() : query.limit(input.limit).all()).pipe(
           Effect.orDie,
         )
-        return yield* Effect.forEach(direction === "previous" ? rows.toReversed() : rows, (row) =>
-          decode(row.message, row.source),
-        )
+        return yield* Effect.forEach(direction === "previous" ? rows.toReversed() : rows, (row) => {
+          if (!input.lean) return decode(row.message, row.source)
+          const raw = row.message.data
+          const parsed =
+            project && (typeof raw === "string" || raw instanceof Uint8Array)
+              ? SessionLeanProjection.decode(raw, project)
+              : undefined
+          return decode(parsed ? { ...row.message, data: parsed.data } : row.message, row.source).pipe(
+            Effect.map((message) => SessionLeanMessage.trim(message, parsed?.elided)),
+          )
+        })
       }),
       message: Effect.fn("V2Session.message")(function* (input) {
         const session = yield* result.get(input.sessionID)
