@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { chmod, mkdir, rename, symlink } from "node:fs/promises"
+import { chmod, mkdir, rename, symlink, utimes } from "node:fs/promises"
 import path from "node:path"
 import { SnapshotScanner } from "@turenlabs/core/snapshot/scanner"
 import { tmpdir } from "./fixture/tmpdir"
@@ -19,6 +19,10 @@ test.skipIf(!resources)("the staged Rust worker matches concurrent Git scans", a
   git("init", "-q")
   await mkdir(path.join(worktree, "scope"))
   await Bun.write(path.join(worktree, "scope", "tracked.txt"), "before\n")
+  const timestampFile = path.join(worktree, "scope", "timestamp.txt")
+  await Bun.write(timestampFile, "unchanged content\n")
+  await utimes(timestampFile, 1_700_000_000.125, 1_700_000_000.125)
+  git("config", "core.trustctime", "false")
   await Bun.write(path.join(worktree, ".gitignore"), "*.ignored\n")
   const nested = path.join(worktree, "nested")
   await mkdir(nested)
@@ -39,6 +43,7 @@ test.skipIf(!resources)("the staged Rust worker matches concurrent Git scans", a
     "seed",
   )
   git("add", ".")
+  await utimes(timestampFile, 1_700_000_001.125, 1_700_000_001.125)
   await Bun.write(path.join(nested, "note.txt"), "dirty nested checkout\n")
   await Bun.write(path.join(worktree, "scope", "tracked.txt"), "after\n")
   await Bun.write(path.join(worktree, "scope", "a b.txt"), "untracked\n")
@@ -63,6 +68,12 @@ test.skipIf(!resources)("the staged Rust worker matches concurrent Git scans", a
         list(git("ls-files", "--others", "--exclude-standard", "-z", "--", scope)),
       ])
     })
+    const timestampScope = { gitDirectory, worktree, scope: "scope/timestamp.txt" }
+    expect(await scanner.scan(timestampScope, signal)).toEqual([["scope/timestamp.txt"], []])
+    await utimes(timestampFile, 1_700_000_000.625, 1_700_000_000.625)
+    expect(await scanner.scan(timestampScope, signal)).toEqual([["scope/timestamp.txt"], []])
+    git("config", "core.checkStat", "minimal")
+    expect(await scanner.scan(timestampScope, signal)).toEqual([[], []])
     expect(await scanner.scan({ gitDirectory: ".git", worktree, scope: "." }, signal)).toBeUndefined()
     await rename(path.join(worktree, "scope"), path.join(worktree, "moved-scope"))
     await symlink("moved-scope", path.join(worktree, "scope"))

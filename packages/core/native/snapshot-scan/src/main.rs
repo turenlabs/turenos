@@ -1,5 +1,5 @@
 use git2::{
-    ConfigLevel, Delta, DiffOptions, ErrorCode, IndexEntryExtendedFlag, Repository,
+    ConfigLevel, Delta, DiffOptions, ErrorCode, FileMode, IndexEntryExtendedFlag, Repository,
     RepositoryOpenFlags,
 };
 use std::collections::{BTreeSet, HashSet};
@@ -11,6 +11,8 @@ use std::os::unix::fs::MetadataExt;
 use std::path::{Component, Path, PathBuf};
 use std::sync::{Mutex, mpsc};
 use std::{env, fs, thread};
+
+const MAX_STAT_REUSE_ENTRIES: usize = 50_000;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let mut args = env::args_os().skip(1);
@@ -65,20 +67,46 @@ fn scan(
         return Err("unexpected Git directory".into());
     }
     repository.set_workdir(&worktree, false)?;
-    apply_worker_config(&mut repository.config()?)?;
+    let mut config = repository.config()?;
+    apply_worker_config(&mut config)?;
     let index = repository.index()?;
+    let trust_ctime = config.get_bool("core.trustctime");
+    let version = git2::Version::get();
+    // In this vendored build, an existing unmodified worktree blob with a zero
+    // ID passed libgit2's stat comparison without hashing. A nonzero ID also
+    // covers racy files and needs the separate metadata comparison.
+    // Large indexes use the stat pass to bound the extra unmodified deltas.
+    let reuse_stat = include_stat
+        && index.len() <= MAX_STAT_REUSE_ENTRIES
+        && version.vendored()
+        && version.libgit2_version() == (1, 9, 7)
+        && (trust_ctime.is_ok()
+            || matches!(&trust_ctime, Err(error) if error.code() == ErrorCode::NotFound));
     let mut options = DiffOptions::new();
     options
         .include_untracked(true)
         .recurse_untracked_dirs(true)
         .include_typechange(true)
-        .include_unreadable(true);
+        .include_unreadable(true)
+        .include_unmodified(reuse_stat);
     if scope != "." {
         options.pathspec(scope);
     }
     let diff = repository.diff_index_to_workdir(Some(&index), Some(&mut options))?;
     let mut changes = BTreeSet::new();
+    let mut stat_matched = HashSet::new();
     for entry in diff.deltas() {
+        if entry.status() == Delta::Unmodified {
+            let file = entry.new_file();
+            if file.exists()
+                && file.id().is_zero()
+                && matches!(file.mode(), FileMode::Blob | FileMode::BlobExecutable)
+                && let Some(path) = file.path_bytes()
+            {
+                stat_matched.insert(path);
+            }
+            continue;
+        }
         let kind = if entry.status() == Delta::Untracked {
             b'U'
         } else {
@@ -93,8 +121,7 @@ fn scan(
         changes.insert((kind, path.to_vec()));
     }
     if include_stat {
-        let config = repository.config()?;
-        let trust_ctime = config.get_bool("core.trustctime").unwrap_or(true);
+        let trust_ctime = trust_ctime.unwrap_or(true);
         let minimal_stat = config
             .get_string("core.checkStat")
             .is_ok_and(|value| value == "minimal");
@@ -132,6 +159,9 @@ fn scan(
                     Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
                     _ => return Err("redirected index entry parent requires Git".into()),
                 }
+            }
+            if regular && stat_matched.contains(path) {
+                continue;
             }
             let Ok(metadata) = fs::symlink_metadata(worktree_path) else {
                 continue;
