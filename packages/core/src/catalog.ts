@@ -3,6 +3,7 @@ export * as Catalog from "./catalog"
 import { makeLocationNode } from "./effect/app-node"
 import { Array, Context, Effect, Layer, Option, Order, pipe, Schema } from "effect"
 import { Catalog } from "@turenlabs/schema/catalog"
+import { freeze } from "immer"
 import { ModelV2 } from "./model"
 import { ProviderV2 } from "./provider"
 import { EventV2 } from "./event"
@@ -17,12 +18,15 @@ export type ProviderRecord = {
 
 export type DefaultModel = { providerID: ProviderV2.ID; modelID: ModelV2.ID }
 
+declare const templateBrand: unique symbol
+export type ModelTemplate = ModelV2.MutableInfo & { readonly [templateBrand]: true }
+
 export const PolicyActions = Schema.Literals(["provider.use"])
 
 export const Event = Catalog.Event
 
 type Data = {
-  providers: Map<ProviderV2.ID, ProviderRecord>
+  providers: Map<ProviderV2.ID, { provider: ProviderV2.MutableInfo; models: ModelDrafts }>
   defaultModel?: DefaultModel
 }
 
@@ -35,6 +39,8 @@ export type Draft = {
   }
   model: {
     get: (providerID: ProviderV2.ID, modelID: ModelV2.ID) => ModelV2.Info | undefined
+    seed: (model: ModelTemplate) => boolean
+    forEach: (fn: (model: ModelV2.Info) => void) => void
     update: (providerID: ProviderV2.ID, modelID: ModelV2.ID, fn: (model: ModelV2.MutableInfo) => void) => void
     remove: (providerID: ProviderV2.ID, modelID: ModelV2.ID) => void
     default: {
@@ -61,6 +67,71 @@ export interface Interface extends State.Transformable<Draft> {
 
 export class Service extends Context.Service<Service, Interface>()("@forge/v2/Catalog") {}
 
+const modelTemplates = new WeakSet<ModelV2.Info>()
+
+function normalizeApi(item: ProviderV2.MutableInfo | ModelV2.MutableInfo) {
+  if (typeof item.request.body.baseURL !== "string") return
+  item.api.url = item.request.body.baseURL
+  delete item.request.body.baseURL
+}
+
+export function modelTemplate(
+  providerID: ProviderV2.ID,
+  modelID: ModelV2.ID,
+  configure: (model: ModelV2.MutableInfo) => void,
+) {
+  const model = ModelV2.Info.empty(providerID, modelID) as ModelV2.MutableInfo
+  configure(model)
+  model.id = modelID
+  model.providerID = providerID
+  normalizeApi(model)
+  const template = freeze(model, true) as ModelTemplate
+  modelTemplates.add(template)
+  return template
+}
+
+// Catalog reads can share a template. Plugin drafts expose mutable Map values, so
+// a draft access copies a shared model into that location's own map first.
+class ModelDrafts extends Map<ModelV2.ID, ModelV2.MutableInfo> {
+  seed(model: ModelTemplate) {
+    if (this.has(model.id)) return false
+    this.set(model.id, model)
+    return true
+  }
+
+  read(id: ModelV2.ID): ModelV2.Info | undefined {
+    return super.get(id)
+  }
+
+  readAll(): MapIterator<ModelV2.Info> {
+    return super.values()
+  }
+
+  override get(id: ModelV2.ID) {
+    const model = super.get(id)
+    if (!model || !modelTemplates.has(model)) return model
+    const copy = structuredClone(model)
+    this.set(id, copy)
+    return copy
+  }
+
+  override entries() {
+    return super.entries().map(([id, model]): [ModelV2.ID, ModelV2.MutableInfo] => [id, this.get(id) ?? model])
+  }
+
+  override values() {
+    return this.entries().map((entry) => entry[1])
+  }
+
+  override [Symbol.iterator]() {
+    return this.entries()
+  }
+
+  override forEach(callback: (model: ModelV2.MutableInfo, id: ModelV2.ID, map: this) => void, target?: unknown) {
+    for (const [id, model] of this) callback.call(target, model, id, this)
+  }
+}
+
 const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
@@ -75,7 +146,10 @@ const layer = Layer.effect(
       return provider.integrationID === undefined && !integration
     }
 
-    const projectModel = (model: ModelV2.Info, provider: ProviderV2.Info) => {
+    const projectModel = (source: ModelV2.Info, provider: ProviderV2.Info) => {
+      // Schema construction can retain nested references, which must stay private
+      // to this projection when a caller receives a model derived from a template.
+      const model = modelTemplates.has(source) ? structuredClone(source) : source
       const api =
         model.api.type === "native" && !model.api.url && Object.keys(model.api.settings).length === 0
           ? { ...provider.api, id: model.api.id }
@@ -96,30 +170,27 @@ const layer = Layer.effect(
       })
     }
 
-    const normalizeApi = (item: ProviderV2.MutableInfo | ModelV2.MutableInfo) => {
-      if (typeof item.request.body.baseURL !== "string") return
-      item.api.url = item.request.body.baseURL
-      delete item.request.body.baseURL
-    }
-
     const state = State.create<Data, Draft>({
       initial: () => ({ providers: new Map() }),
       draft: (draft) => {
+        const providerRecord = (providerID: ProviderV2.ID) => {
+          const current = draft.providers.get(providerID)
+          if (current) return current
+          const record = {
+            provider: ProviderV2.Info.empty(providerID) as ProviderV2.MutableInfo,
+            models: new ModelDrafts(),
+          }
+          draft.providers.set(providerID, record)
+          return record
+        }
         const result: Draft = {
           provider: {
-            list: () => Array.fromIterable(draft.providers.values()) as ProviderRecord[],
+            list: () => Array.fromIterable(draft.providers.values()),
             get: (providerID) => draft.providers.get(providerID),
             update: (providerID, fn) => {
-              let current = draft.providers.get(providerID)
-              if (!current) {
-                current = {
-                  provider: ProviderV2.Info.empty(providerID) as ProviderV2.MutableInfo,
-                  models: new Map<ModelV2.ID, ModelV2.MutableInfo>(),
-                }
-                draft.providers.set(providerID, current)
-              }
-              fn(current.provider)
-              normalizeApi(current.provider)
+              const provider = providerRecord(providerID).provider
+              fn(provider)
+              normalizeApi(provider)
             },
             remove: (providerID) => {
               draft.providers.delete(providerID)
@@ -127,15 +198,14 @@ const layer = Layer.effect(
           },
           model: {
             get: (providerID, modelID) => draft.providers.get(providerID)?.models.get(modelID),
-            update: (providerID, modelID, fn) => {
-              let record = draft.providers.get(providerID)
-              if (!record) {
-                record = {
-                  provider: ProviderV2.Info.empty(providerID) as ProviderV2.MutableInfo,
-                  models: new Map<ModelV2.ID, ModelV2.MutableInfo>(),
-                }
-                draft.providers.set(providerID, record)
+            seed: (model) => providerRecord(model.providerID).models.seed(model),
+            forEach: (fn) => {
+              for (const record of draft.providers.values()) {
+                for (const model of record.models.readAll()) fn(model)
               }
+            },
+            update: (providerID, modelID, fn) => {
+              const record = providerRecord(providerID)
               const model =
                 record.models.get(modelID) ?? (ModelV2.Info.empty(providerID, modelID) as ModelV2.MutableInfo)
               if (!record.models.has(modelID)) record.models.set(modelID, model)
@@ -168,6 +238,17 @@ const layer = Layer.effect(
         yield* events.publish(Event.Updated, {})
       }),
     })
+    const listModels = (providers?: ReadonlySet<ProviderV2.ID>) =>
+      pipe(
+        Array.fromIterable(state.get().providers.values()),
+        Array.flatMap((record) =>
+          Array.fromIterable(record.models.readAll())
+            .filter((model) => !providers || (model.enabled && providers.has(model.providerID)))
+            .map((model) => projectModel(model, record.provider)),
+        ),
+        Array.sortWith((item) => item.time.released, Order.flip(Order.Number)),
+      )
+
     const result: Interface = {
       transform: state.transform,
       reload: state.reload,
@@ -193,23 +274,15 @@ const layer = Layer.effect(
         get: Effect.fn("CatalogV2.model.get")(function* (providerID, modelID) {
           const record = state.get().providers.get(providerID)
           if (!record) return
-          const model = record.models.get(modelID)
+          const model = record.models.read(modelID)
           return model && projectModel(model, record.provider)
         }),
 
-        all: Effect.fn("CatalogV2.model.all")(function* () {
-          return pipe(
-            Array.fromIterable(state.get().providers.values()),
-            Array.flatMap((record) => {
-              return Array.fromIterable(record.models.values()).map((model) => projectModel(model, record.provider))
-            }),
-            Array.sortWith((item) => item.time.released, Order.flip(Order.Number)),
-          )
-        }),
+        all: Effect.fn("CatalogV2.model.all")(() => Effect.sync(() => listModels())),
 
         available: Effect.fn("CatalogV2.model.available")(function* () {
           const providers = new Set((yield* result.provider.available()).map((provider) => provider.id))
-          return (yield* result.model.all()).filter((model) => providers.has(model.providerID) && model.enabled)
+          return listModels(providers)
         }),
 
         default: Effect.fn("CatalogV2.model.default")(function* () {
@@ -242,12 +315,12 @@ const layer = Layer.effect(
           }
 
           if (providerID === ProviderV2.ID.opencode) {
-            const gpt5Nano = record.models.get(ModelV2.ID.make("gpt-5-nano"))
+            const gpt5Nano = record.models.read(ModelV2.ID.make("gpt-5-nano"))
             if (gpt5Nano?.enabled && gpt5Nano.status === "active") return projectModel(gpt5Nano, provider)
           }
 
           const candidates = pipe(
-            Array.fromIterable(record.models.values()),
+            Array.fromIterable(record.models.readAll()),
             Array.filter(
               (model) =>
                 model.providerID === providerID &&

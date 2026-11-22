@@ -1,9 +1,11 @@
 import { define } from "./define"
-import type { ModelV2Info } from "@turenlabs/plugin/v2/types"
 import { Effect, Stream } from "effect"
+import { Catalog } from "../catalog"
 import { EventV2 } from "../event"
+import { ModelV2 } from "../model"
 import { ModelsDev } from "../models-dev"
 import { ProviderV2 } from "../provider"
+import type { ModelV2Info } from "@turenlabs/plugin/v2/types"
 
 function released(date: string) {
   const time = Date.parse(date)
@@ -22,7 +24,7 @@ function cost(input: ModelsDev.Model["cost"]): ModelV2Info["cost"] {
   return [
     base,
     ...(input?.tiers?.map((item) => ({
-      tier: item.tier,
+      tier: { ...item.tier },
       input: item.input,
       output: item.output,
       cache: {
@@ -166,8 +168,40 @@ function applyModel(
     input: model.limit.input,
     output: model.limit.output,
   }
-  Object.assign(draft.request.headers, input.request?.headers ?? {})
-  Object.assign(draft.request.body, input.request?.body ?? {})
+  if (input.request?.headers) Object.assign(draft.request.headers, input.request.headers)
+  if (input.request?.body) Object.assign(draft.request.body, structuredClone(input.request.body))
+}
+
+const prepared = new WeakMap<
+  ModelsDev.Provider,
+  readonly { model: Catalog.ModelTemplate; apply: (draft: ModelV2.MutableInfo) => void }[]
+>()
+
+function prepareModels(provider: ModelsDev.Provider, providerID: ProviderV2.ID) {
+  const cached = prepared.get(provider)
+  if (cached) return cached
+  const prepare = (id: string, apply: (draft: ModelV2.MutableInfo) => void) => ({
+    model: Catalog.modelTemplate(providerID, ModelV2.ID.make(id), apply),
+    apply,
+  })
+  const models = Object.values(provider.models).flatMap((model) => {
+    const variants = () => reasoningVariants(model, model.provider?.npm ?? provider.npm)
+    return [
+      prepare(model.id, (draft) => applyModel(draft, model, provider, { variants: variants() })),
+      ...Object.entries(model.experimental?.modes ?? {}).map(([mode, options]) =>
+        prepare(`${model.id}-${mode}`, (draft) =>
+          applyModel(draft, model, provider, {
+            name: modeName(model, mode),
+            cost: mergeCost(cost(model.cost), options.cost),
+            variants: variants(),
+            request: options.provider,
+          }),
+        ),
+      ),
+    ]
+  })
+  prepared.set(provider, models)
+  return models
 }
 
 export const ModelsDevPlugin = define({
@@ -175,6 +209,7 @@ export const ModelsDevPlugin = define({
   effect: Effect.fn(function* (ctx) {
     const modelsDev = yield* ModelsDev.Service
     const events = yield* EventV2.Service
+    const catalog = yield* Catalog.Service
     yield* ctx.integration.transform(
       Effect.fn(function* (integrations) {
         const data = yield* modelsDev.get()
@@ -193,7 +228,7 @@ export const ModelsDevPlugin = define({
         }
       }),
     )
-    yield* ctx.catalog.transform(
+    yield* catalog.transform(
       Effect.fn(function* (catalog) {
         const data = yield* modelsDev.get()
         for (const item of Object.values(data)) {
@@ -213,22 +248,9 @@ export const ModelsDevPlugin = define({
                 }
           })
 
-          for (const model of Object.values(item.models)) {
-            const baseCost = cost(model.cost)
-            const variants = reasoningVariants(model, model.provider?.npm ?? item.npm)
-            catalog.model.update(providerID, model.id, (draft) =>
-              applyModel(draft, model, item, { cost: baseCost, variants }),
-            )
-            for (const [mode, options] of Object.entries(model.experimental?.modes ?? {})) {
-              catalog.model.update(providerID, `${model.id}-${mode}`, (draft) =>
-                applyModel(draft, model, item, {
-                  name: modeName(model, mode),
-                  cost: mergeCost(baseCost, options.cost),
-                  variants,
-                  request: options.provider,
-                }),
-              )
-            }
+          for (const entry of prepareModels(item, providerID)) {
+            if (catalog.model.seed(entry.model)) continue
+            catalog.model.update(providerID, entry.model.id, entry.apply)
           }
         }
       }),
