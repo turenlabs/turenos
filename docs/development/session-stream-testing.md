@@ -4,6 +4,16 @@ Test delayed global events against an already completed transcript, not just aga
 durable stream and the global live stream can catch up independently; a global reconnect can deliver old fragments
 after a snapshot has already displayed the complete answer.
 
+## Global replay window
+
+`/global/event` retains up to 16,384 frames with a 32 MiB budget for serialized JSON and event IDs. The budget counts two bytes
+per UTF-16 code unit. When either limit is reached, the server evicts the oldest frames. A single frame larger than the
+budget still reaches live subscribers and starts a new replay window.
+
+A reconnect gets `resume: "ok"` when its live cursor is still retained and the missed frames fit in the replay response.
+A sync copy shares its live event's ID and remains eligible for replay after an earlier cursor. The server requires the
+live frame to anchor its own cursor. A replay gap returns `resume: "gap"`, and the App refreshes its stores.
+
 ## Regression fixture
 
 From `packages/app`, run:
@@ -61,6 +71,9 @@ The live acceptance exercises text; reasoning uses the same delta path and is co
 ## Source
 
 - [Timeline controller](../../packages/app/src/pages/session/goal/session-v2-timeline-controller.ts)
+- [App reconnect handling](../../packages/app/src/context/global-sync/event-reducer.ts)
 - [Server session store](../../packages/app/src/context/server-session.ts)
+- [Global replay buffer](../../packages/forge/src/bus/global.ts)
+- [Global SSE route](../../packages/forge/src/server/routes/instance/httpapi/handlers/global.ts)
 - [Regression wrapper](../../packages/app/test-browser/session-stream-replay.test.ts)
 - [Controller/store fixture](../../packages/app/test-browser/fixtures/session-stream-replay.ts)

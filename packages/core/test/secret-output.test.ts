@@ -29,6 +29,7 @@ function providers(all: Credential.Interface["all"], extensions: Partial<Extensi
         get: unused,
         desired: unused,
         enabled: unused,
+        enabledSkills: unused,
         configuration: unused,
         secretsSet: unused,
         update: unused,

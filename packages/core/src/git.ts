@@ -435,13 +435,19 @@ const layer = Layer.effect(
       ignores?: Repository
       maximumUntrackedFileBytes?: number
     }) {
+      // Concurrent sessions already run independent scans. Keep each scan from starting its own index worker pool.
       const list = (args: string[]) =>
-        repositoryOperation("refresh", input.repository, args).pipe(
-          Effect.map((result) => result.text.split("\0").filter(Boolean)),
-        )
+        repositoryOperation("refresh", input.repository, [
+          "-c",
+          "index.threads=1",
+          "-c",
+          "core.preloadIndex=false",
+          ...args,
+        ]).pipe(Effect.map((result) => result.text.split("\0").filter(Boolean)))
       const [tracked, untracked] = yield* Effect.all(
         [
-          list(["diff-files", "--name-only", "-z", "--", input.scope]),
+          // A gitlink records only the nested checkout's HEAD. Its dirty files cannot change the snapshot tree.
+          list(["diff-files", "--ignore-submodules=dirty", "--name-only", "-z", "--", input.scope]),
           list(["ls-files", "--others", "--exclude-standard", "-z", "--", input.scope]),
         ],
         { concurrency: 2 },

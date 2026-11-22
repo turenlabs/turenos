@@ -45,6 +45,7 @@ export interface Interface {
   readonly get: (id: Extension.ID | string) => Effect.Effect<Extension.Manifest | undefined>
   readonly desired: (id: Extension.ID | string) => Effect.Effect<Desired | undefined>
   readonly enabled: (id: Extension.ID | string) => Effect.Effect<boolean>
+  readonly enabledSkills: () => Effect.Effect<ReadonlyArray<EnabledSkill>>
   readonly configuration: (id: Extension.ID | string) => Effect.Effect<Record<string, string>>
   readonly secret: (id: Extension.ID | string, name: string) => Effect.Effect<string | undefined>
   readonly storedSecretFields: (fields: ReadonlyArray<SecretField>) => Effect.Effect<ReadonlyArray<SecretField>>
@@ -68,27 +69,7 @@ export type EnabledSkill = {
 
 export type SecretField = { readonly id: string; readonly name: string }
 
-export const enabledSkills = Effect.fn("Extension.enabledSkills")(function* (runtime: Interface) {
-  const manifests = (yield* runtime.manifests()).filter((manifest) =>
-    manifest.contributions.some((contribution) => contribution.type === "skill"),
-  )
-  return (yield* Effect.forEach(
-    manifests,
-    (manifest) =>
-      runtime
-        .enabled(manifest.id)
-        .pipe(
-          Effect.map((enabled) =>
-            enabled
-              ? manifest.contributions.flatMap((contribution) =>
-                  contribution.type === "skill" ? [{ manifest, contribution }] : [],
-                )
-              : [],
-          ),
-        ),
-    { concurrency: 8 },
-  )).flat()
-})
+export const enabledSkills = (runtime: Interface) => runtime.enabledSkills()
 
 export class Service extends Context.Service<Service, Interface>()("@forge/Extension") {}
 
@@ -104,22 +85,38 @@ export const layer = Layer.effect(
     })
     const declaredSecrets = (manifest: Extension.Manifest) =>
       manifest.contributions.flatMap((contribution) => contribution.secrets)
-    const installed = Effect.fnUntraced(function* () {
-      const entries = yield* storage.list({ scope })
-      return entries.flatMap((entry) => {
+    const installed = (entries: ReadonlyArray<Storage.State>) =>
+      entries.flatMap((entry) => {
         if (!String(entry.key).startsWith("manifest/")) return []
         const manifest = Option.getOrUndefined(decodeManifest(entry.value))
         return manifest ? [manifest] : []
       })
-    })
-    const manifests = Effect.fn("Extension.manifests")(function* () {
+    const catalog = (entries: ReadonlyArray<Storage.State>) => {
       const builtins = new Set(ExtensionCatalog.manifests.map((manifest) => String(manifest.id)))
-      return [...ExtensionCatalog.manifests, ...(yield* installed()).filter((manifest) => !builtins.has(manifest.id))]
+      return [...ExtensionCatalog.manifests, ...installed(entries).filter((manifest) => !builtins.has(manifest.id))]
+    }
+    const manifests = Effect.fn("Extension.manifests")(function* () {
+      return catalog(yield* storage.list({ scope }))
     })
     const get = Effect.fn("Extension.get")(function* (id: Extension.ID | string) {
       const builtin = ExtensionCatalog.get(id)
       if (builtin) return builtin
-      return (yield* installed()).find((manifest) => manifest.id === id)
+      return installed(yield* storage.list({ scope })).find((manifest) => manifest.id === id)
+    })
+    const enabledSkills = Effect.fn("Extension.enabledSkills")(function* () {
+      // Installed manifests and desired state share this storage scope.
+      const entries = yield* storage.list({ scope })
+      const desired = new Map(entries.map((entry) => [entry.key, entry.value]))
+      return catalog(entries).flatMap((manifest) => {
+        const skills = manifest.contributions.filter((item) => item.type === "skill")
+        if (!skills.length) return []
+        const value = desired.get(desiredKey(manifest.id))
+        const enabled =
+          value === undefined
+            ? manifest.contributions.some((item) => item.defaultEnabled)
+            : Option.getOrUndefined(decodeDesired(value))?.enabled === true
+        return enabled ? skills.map((contribution) => ({ manifest, contribution })) : []
+      })
     })
     const read = Effect.fn("Extension.readDesired")(function* (
       id: Extension.ID | string,
@@ -307,6 +304,7 @@ export const layer = Layer.effect(
       get,
       desired,
       enabled,
+      enabledSkills,
       configuration,
       secret,
       storedSecretFields,
