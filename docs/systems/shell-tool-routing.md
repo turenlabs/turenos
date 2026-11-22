@@ -95,9 +95,9 @@ also stays in Bash because `edit` and `apply_patch` are workspace mutation tools
 
 ## Parsing
 
-Bash and PowerShell commands are parsed with tree-sitter. The legacy shell tool reuses the tree it already produced for
-shell safety (`ShellToolRouting.inspectParsed`); the V2 `bash` tool calls `ShellToolRouting.inspect`, which parses the
-command again. The router examines command nodes in document order, accounts for common wrappers such as `command` and
+Bash and PowerShell commands are parsed with tree-sitter. Both shell tools pass their safety inspection tree to
+`ShellToolRouting.inspectParsed`. The V2 `bash` tool also uses that tree to derive permission resources or extract
+an `apply_patch` heredoc. The router examines command nodes in document order, accounts for common wrappers such as `command` and
 `env`, distinguishes a pipeline consumer from a workspace search, and inspects file redirects separately from
 descriptor duplication.
 
