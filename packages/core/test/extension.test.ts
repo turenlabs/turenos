@@ -318,6 +318,11 @@ describe("ExtensionRuntime", () => {
       )
       expect(enabled?.manifest.trust).toBe("official")
       expect(enabled?.contribution.source).toMatchObject({ type: "catalog" })
+
+      yield* extensions.update(review, { enabled: false })
+      expect((yield* ExtensionRuntime.enabledSkills(extensions)).some((item) => item.manifest.id === review)).toBe(
+        false,
+      )
     }),
   )
 })

@@ -205,6 +205,48 @@ describe("Git trees", () => {
     }),
   )
 
+  it.live("captures nested checkout commit changes and deletions", () =>
+    Effect.gen(function* () {
+      const root = yield* Effect.acquireRelease(
+        Effect.promise(() => tmpdir()),
+        (dir) => Effect.promise(() => dir[Symbol.asyncDispose]()),
+      )
+      const project = path.join(root.path, "project")
+      const nested = path.join(project, "nested")
+      yield* Effect.promise(async () => {
+        await fs.mkdir(nested, { recursive: true })
+        await initRepo(project)
+        await initRepo(nested)
+        await fs.writeFile(path.join(nested, "file.txt"), "one\n")
+        await runGit(nested, "add", "file.txt")
+        await runGit(nested, "commit", "-m", "initial nested file")
+      })
+
+      const git = yield* Git.Service
+      const source = yield* git.repo.discover(AbsolutePath.make(project))
+      if (!source) throw new Error("Repository not found")
+      const repository = yield* git.repo.create({
+        worktree: source.worktree,
+        gitDirectory: AbsolutePath.make(path.join(root.path, "shadow")),
+        seed: source,
+      })
+      const capture = () => git.tree.capture({ repository, scopes: [RelativePath.make(".")], ignores: source })
+      const original = yield* capture()
+
+      yield* Effect.promise(() => fs.writeFile(path.join(nested, "file.txt"), "two\n"))
+      expect(yield* capture()).toBe(original)
+
+      yield* Effect.promise(() => runGit(nested, "commit", "-am", "update nested file"))
+      const updated = yield* capture()
+      expect(updated).not.toBe(original)
+      expect(yield* git.tree.files({ repository, from: original, to: updated })).toEqual([RelativePath.make("nested")])
+
+      yield* Effect.promise(() => fs.rm(nested, { recursive: true }))
+      const removed = yield* capture()
+      expect(yield* git.tree.files({ repository, from: updated, to: removed })).toEqual([RelativePath.make("nested")])
+    }),
+  )
+
   // The oracle is plain `git diff` for one file, which is what this code ran for every file before it was batched.
   it.live("batches tree diffs and still matches git file by file, across more files than one batch", () =>
     Effect.gen(function* () {

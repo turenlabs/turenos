@@ -36,6 +36,16 @@ describe("markdown stream", () => {
     ])
   })
 
+  test.each([
+    ["- [complete] [docs](/guide)\n- **unfinished", "- [complete] [docs](/guide)\n- **unfinished**"],
+    ["- [docs](/guide)\n- [pending](/gu", "- [docs](/guide)\n- pending"],
+    ["- [docs](/guide)\n- ![pending](/im", "- [docs](/guide)\n- "],
+    ["- [docs](/guide)\n- [pending [nested", "- [docs](/guide)\n- pending [nested"],
+    ["[keep<unfinished]", "keep"],
+  ])("repairs streaming Markdown %j", (raw, src) => {
+    expect(stream(raw, true)).toEqual([{ raw, src, mode: "live" }])
+  })
+
   test("splits an unfinished trailing code fence from stable content", () => {
     expect(stream("before\n\n```ts\nconst x = 1", true)).toEqual([
       { raw: "before\n\n", src: "before\n\n", mode: "full" },

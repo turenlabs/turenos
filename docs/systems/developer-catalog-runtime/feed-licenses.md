@@ -1,6 +1,6 @@
 # Threat intelligence feed rights
 
-The catalog admits threat feeds only when the data, not merely client code, has clear product-compatible rights. TurenOS performs bounded point lookup or event retrieval and preserves source provenance. This page covers threat feeds and the MITRE CAPEC taxonomy; it does not record data rights for the catalog's other data sources.
+The catalog admits data sources only when the data, not merely client code, has clear product-compatible rights. TurenOS performs bounded point lookups or event retrieval and preserves source attribution. This page records rights for selected sources.
 
 | Source                                                     | Data rights                                                                                                             | Product handling                                                                                          |
 | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
@@ -13,6 +13,10 @@ The catalog admits threat feeds only when the data, not merely client code, has 
 | MITRE CAPEC                                                | Royalty-free for research, development, and commercial purposes; MITRE requires its copyright designation and license to accompany copies. | Return MITRE attribution with results and reproduce the required copyright, license, and disclaimer notices below. |
 
 Public access is not a licence. IPsum, Block List Project, HaGeZi, DShield, GreenSnow, Binary Defense, blocklist.de, CINSscore, URLhaus, ThreatFox, MalwareBazaar, OpenPhish, GreyNoise, OTX, Shodan InternetDB, and VirusTotal free tiers are excluded because upstream rights are mixed, commercial/product use is restricted, or redistribution terms are unclear. Feodo Tracker, SSLBL, and Spamhaus DROP are excluded because their overarching formal terms conflict with the permissions on their feed pages.
+
+## Red Hat Security Data
+
+Red Hat licenses its [Security Data API](https://access.redhat.com/security/data) under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). TurenOS returns a summary of each record with Red Hat Product Security attribution and a link to the original.
 
 ## MITRE CAPEC
 

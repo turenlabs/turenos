@@ -1201,6 +1201,7 @@ const layer = Layer.effect(
           yield* SessionContextRequest.save(db, session.id, {
             baselineSeq: system.baselineSeq,
             identity,
+            known: prepared.known,
             generation: prepared.generation + (prepared.frame === undefined ? 0 : 1),
             reason: "pressure",
             frame: {
@@ -1258,6 +1259,7 @@ const layer = Layer.effect(
       yield* SessionContextRequest.save(db, session.id, {
         baselineSeq: system.baselineSeq,
         identity,
+        known: prepared.known,
         generation: prepared.generation,
         reason: prepared.reason,
         frame: { entries: measured, messages: request.messages, sources: prepared.sources, turn },

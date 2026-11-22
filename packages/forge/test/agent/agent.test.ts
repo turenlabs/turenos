@@ -15,8 +15,7 @@ import { Provider } from "../../src/provider/provider"
 import { Skill } from "../../src/skill"
 import { Truncate } from "../../src/tool/truncate"
 import { ExtensionRuntime } from "@turenlabs/core/extension"
-import { Extension } from "@turenlabs/schema"
-import { ExtensionCatalog } from "@turenlabs/extensions"
+import { CatalogAgentFixture } from "../../../core/test/fixture/catalog-agent"
 
 const agentLayer = (flags: Partial<RuntimeFlags.Info> = {}) =>
   LayerNode.compile(
@@ -26,43 +25,12 @@ const agentLayer = (flags: Partial<RuntimeFlags.Info> = {}) =>
 
 const it = testEffect(agentLayer())
 
-const catalogAgentManifest = new Extension.Manifest({
-  schemaVersion: 1,
-  id: Extension.ID.make("community", "vulnerability-analyst"),
-  name: "Vulnerability Analyst",
-  description: "Read-only vulnerability analysis",
-  version: "1.0.0",
-  publisher: "Community",
-  trust: "community",
-  contributions: [
-    {
-      type: "skill",
-      id: Extension.ContributionID.make("vulnerability-analyst"),
-      name: "Vulnerability Analyst",
-      description: "Correlate vulnerability evidence",
-      instructions: "Use defensively.",
-      adapter: "skill:vulnerability-analyst",
-      secrets: [],
-      defaultEnabled: false,
-      source: { type: "catalog", content: "Correlate supplied vulnerability evidence." },
-      requires: ["nvd_cve_detail"],
-      agent: { profile: "data", steps: 10 },
-    },
-  ],
-})
-
 const catalogAgentIt = testEffect(
   LayerNode.compile(
     LayerNode.group([Agent.node, Plugin.node, Provider.node, Config.node, Skill.node, RuntimeFlags.node]),
     [
       [RuntimeFlags.node, RuntimeFlags.layer({})],
-      [
-        ExtensionRuntime.node,
-        Layer.mock(ExtensionRuntime.Service, {
-          enabled: () => Effect.succeed(true),
-          manifests: () => Effect.succeed([catalogAgentManifest, ExtensionCatalog.get("turenlabs/nvd")!]),
-        }),
-      ],
+      [ExtensionRuntime.node, Layer.mock(ExtensionRuntime.Service, CatalogAgentFixture.extensionMethods)],
     ],
   ),
 )
