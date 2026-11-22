@@ -4,6 +4,7 @@ import { Effect } from "effect"
 import { Database } from "@turenlabs/core/database/database"
 import { DatabaseMigration } from "@turenlabs/core/database/migration"
 import teamHistoryIndexes from "@turenlabs/core/database/migration/20261012142833_team-history-indexes"
+import teamRuntimeIndexes from "@turenlabs/core/database/migration/20261122210727_team-runtime-poll"
 import { AppNodeBuilder } from "@turenlabs/core/effect/app-node-builder"
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
 import { Loop } from "@turenlabs/core/loop"
@@ -42,6 +43,14 @@ describe("Team state query plans", () => {
       expect(recentTaskPlan.map((row) => row.detail).join(" ")).toContain("team_task_room_time_idx")
       expect(activeTaskPlan.map((row) => row.detail).join(" ")).toContain("team_task_active_room_time_idx")
       expect(factoryRunPlan.map((row) => row.detail).join(" ")).toContain("team_factory_run_room_time_idx")
+      const pendingFactoryPlan = yield* db.all<{ detail: string }>(sql`
+        EXPLAIN QUERY PLAN SELECT id FROM team_factory_run WHERE status = 'running' LIMIT 1
+      `)
+      const publishedDutyPlan = yield* db.all<{ detail: string }>(sql`
+        EXPLAIN QUERY PLAN SELECT id FROM team_message WHERE run_id = ${"run_fixture"}
+      `)
+      expect(pendingFactoryPlan.map((row) => row.detail).join(" ")).toContain("team_factory_run_running_idx")
+      expect(publishedDutyPlan.map((row) => row.detail).join(" ")).toContain("team_message_run_idx")
       const activeRoomsPlan = yield* db.all<{ detail: string }>(sql`
         EXPLAIN QUERY PLAN
         SELECT DISTINCT room_id FROM team_task WHERE status IN ('queued', 'claimed', 'running')
@@ -75,19 +84,23 @@ describe("Team state query plans", () => {
       yield* db.run(sql`DROP INDEX team_task_room_time_idx`)
       yield* db.run(sql`DROP INDEX team_task_active_room_time_idx`)
       yield* db.run(sql`DROP INDEX team_factory_run_room_time_idx`)
-      yield* db.run(sql`DELETE FROM migration WHERE id = ${teamHistoryIndexes.id}`)
-      yield* DatabaseMigration.applyOnly(db, [teamHistoryIndexes])
-      yield* DatabaseMigration.applyOnly(db, [teamHistoryIndexes])
+      yield* db.run(sql`DROP INDEX team_factory_run_running_idx`)
+      yield* db.run(sql`DROP INDEX team_message_run_idx`)
+      yield* db.run(sql`DELETE FROM migration WHERE id IN (${teamHistoryIndexes.id}, ${teamRuntimeIndexes.id})`)
+      yield* DatabaseMigration.applyOnly(db, [teamHistoryIndexes, teamRuntimeIndexes])
+      yield* DatabaseMigration.applyOnly(db, [teamHistoryIndexes, teamRuntimeIndexes])
       const upgraded = yield* team.state({ roomID: room.id })
       expect(upgraded.messages.map((message) => message.text)).toEqual(["Preserved history"])
       expect(upgraded.tasks.map((task) => [task.id, task.status])).toEqual([["history-task", "running"]])
       expect(upgraded.factoryRuns?.map((run) => [run.id, run.taskIDs])).toEqual([["history-run", ["history-task"]]])
       expect(
         yield* db.all(
-          sql`SELECT name FROM sqlite_master WHERE name IN ('team_task_room_time_idx', 'team_task_active_room_time_idx', 'team_factory_run_room_time_idx') ORDER BY name`,
+          sql`SELECT name FROM sqlite_master WHERE name IN ('team_task_room_time_idx', 'team_task_active_room_time_idx', 'team_factory_run_room_time_idx', 'team_factory_run_running_idx', 'team_message_run_idx') ORDER BY name`,
         ),
       ).toEqual([
         { name: "team_factory_run_room_time_idx" },
+        { name: "team_factory_run_running_idx" },
+        { name: "team_message_run_idx" },
         { name: "team_task_active_room_time_idx" },
         { name: "team_task_room_time_idx" },
       ])

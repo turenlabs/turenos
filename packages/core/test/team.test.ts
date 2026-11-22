@@ -1,12 +1,13 @@
 import { describe, expect } from "bun:test"
-import { eq } from "drizzle-orm"
+import { eq, sql } from "drizzle-orm"
 import { Effect } from "effect"
 import { Database } from "@turenlabs/core/database/database"
 import { AppNodeBuilder } from "@turenlabs/core/effect/app-node-builder"
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
 import { Loop } from "@turenlabs/core/loop"
+import { LoopRunTable } from "@turenlabs/core/loop/sql"
 import { TeamWorkspace } from "@turenlabs/core/team/workspace"
-import { TeamDutyTable, TeamDutyRunTable, TeamRoomTable, TeamTaskTable } from "@turenlabs/core/team/workspace.sql"
+import { TeamDutyTable, TeamDutyRunTable, TeamMessageTable, TeamRoomTable, TeamTaskTable } from "@turenlabs/core/team/workspace.sql"
 import { testEffect } from "./lib/effect"
 
 const it = testEffect(AppNodeBuilder.build(LayerNode.group([Database.node, Loop.node, TeamWorkspace.node])))
@@ -33,6 +34,20 @@ function claimDuty(owner: string, workflow?: Loop.Workflow) {
 }
 
 describe("TeamWorkspace", () => {
+  it.effect("leaves the writer available when there are no factory runs or task claims", () =>
+    Effect.gen(function* () {
+      const team = yield* TeamWorkspace.Service
+      const database = yield* Database.Service
+      const db = Database.primary(database.db)
+      yield* db.run(sql`PRAGMA query_only = ON`).pipe(Effect.orDie)
+      yield* Effect.gen(function* () {
+        yield* team.syncFactoryRuns()
+        expect(yield* team.claimTasks({ owner: "idle" })).toEqual([])
+        expect(yield* team.claimTasks({ owner: " " }).pipe(Effect.flip)).toBeInstanceOf(TeamWorkspace.InvalidRequestError)
+      }).pipe(Effect.ensuring(db.run(sql`PRAGMA query_only = OFF`).pipe(Effect.orDie)))
+    }),
+  )
+
   it.effect("gates scheduled factory tasks on the linked Loop lease", () =>
     Effect.gen(function* () {
       const team = yield* TeamWorkspace.Service
@@ -1480,6 +1495,47 @@ describe("TeamWorkspace", () => {
       )
       expect(persisted.find((duty) => duty.loop_id === loop.id)?.teammate_id).toBe(replacement.id)
       expect(recorded.find((entry) => entry.run_id === run.id)?.teammate_id).toBe(original.id)
+
+      yield* loops.finishRun({ id: run.id, owner: "manual", status: "failed", error: "Fixture failure" })
+      yield* Effect.all([team.syncDutyReports(), team.syncDutyReports()], { concurrency: 2 })
+      const reports = (yield* team.state({ roomID: original.roomID })).messages.filter((message) => message.runID === run.id)
+      expect(reports).toHaveLength(1)
+      expect(reports[0]).toMatchObject({ author: original.name, teammateID: original.id, text: "Fixture failure" })
+    }),
+  )
+
+  it.effect("publishes the oldest unreported duty first and recognizes reports from older databases", () =>
+    Effect.gen(function* () {
+      const team = yield* TeamWorkspace.Service
+      const loops = yield* Loop.Service
+      const database = yield* Database.Service
+      const db = Database.primary(database.db)
+      const teammate = yield* team.createTeammate({ name: "Reporter", handle: "reporter", role: "Owner", mission: "Report" })
+      const runs = yield* Effect.forEach([3, 1, 2], (completed) =>
+        Effect.gen(function* () {
+          const loop = yield* loops.create({
+            name: `Duty ${completed}`,
+            prompt: "Report",
+            intervalSeconds: Loop.MIN_INTERVAL_SECONDS,
+            teammateID: teammate.id,
+          })
+          const run = yield* loops.runNow({ id: loop.id, owner: "fixture" })
+          yield* loops.finishRun({ id: run.id, owner: "fixture", status: "succeeded" })
+          yield* db.update(LoopRunTable).set({ time_completed: completed }).where(eq(LoopRunTable.id, run.id)).run()
+          return run.id
+        }),
+      )
+      const previous = yield* team.postMessage({ id: "msg_legacy_report", roomID: teammate.roomID, text: "Already reported" })
+      yield* db
+        .update(TeamMessageTable)
+        .set({ run_id: runs[2], source_key: null })
+        .where(eq(TeamMessageTable.id, previous.message.id))
+        .run()
+
+      yield* team.syncDutyReports()
+      yield* team.syncDutyReports()
+      const reports = (yield* team.state({ roomID: teammate.roomID })).messages.filter((message) => message.runID)
+      expect(reports.map((message) => message.runID)).toEqual([runs[2], runs[1], runs[0]])
     }),
   )
 })

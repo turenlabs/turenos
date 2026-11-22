@@ -1,9 +1,9 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "ab3d8082-f4e6-4ea1-9705-5a75507ca3ff",
+  "id": "05ffbc7f-3625-4a33-81e1-6229bb791179",
   "prevIds": [
-    "c842adb5-3a5e-4d7c-a37b-98a59bd8986b"
+    "ab3d8082-f4e6-4ea1-9705-5a75507ca3ff"
   ],
   "ddl": [
     {
@@ -8045,6 +8045,20 @@
     {
       "columns": [
         {
+          "value": "id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": "\"team_factory_run\".\"status\" = 'running'",
+      "origin": "manual",
+      "name": "team_factory_run_running_idx",
+      "entityType": "indexes",
+      "table": "team_factory_run"
+    },
+    {
+      "columns": [
+        {
           "value": "room_id",
           "isExpression": false
         },
@@ -8089,6 +8103,20 @@
       "where": null,
       "origin": "manual",
       "name": "team_message_room_time_idx",
+      "entityType": "indexes",
+      "table": "team_message"
+    },
+    {
+      "columns": [
+        {
+          "value": "run_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": "\"team_message\".\"run_id\" IS NOT NULL",
+      "origin": "manual",
+      "name": "team_message_run_idx",
       "entityType": "indexes",
       "table": "team_message"
     },
