@@ -881,6 +881,9 @@ describe("TeamWorkspace", () => {
       expect(latest.hasMore).toBe(true)
       const earlier = yield* team.state({ roomID: room.id, before: 3, limit: 2 })
       expect(earlier.messages.map((message) => message.seq)).toEqual([1, 2])
+      const later = yield* team.state({ roomID: room.id, after: 1, limit: 1 })
+      expect(later.messages.map((message) => message.seq)).toEqual([2])
+      expect(later.hasMore).toBe(true)
       const conflict = yield* team
         .postMessage({ id: "msg_page_2", roomID: room.id, text: "different content" })
         .pipe(Effect.flip)
