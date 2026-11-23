@@ -287,13 +287,21 @@ describe("SessionProjector", () => {
         timestamp: created,
         text: "synthetic context",
       })
-      yield* events.publish(SessionEvent.Shell.Started, {
-        sessionID,
-        messageID: SessionMessage.ID.create(),
-        timestamp: created,
-        callID: "shell-1",
-        command: "pwd",
-      })
+      const previousShellID = SessionMessage.ID.create()
+      const targetShellID = SessionMessage.ID.create()
+      const otherShellID = SessionMessage.ID.create()
+      for (const entry of [
+        { messageID: previousShellID, callID: "shell-1" },
+        { messageID: targetShellID, callID: "shell-1" },
+        { messageID: otherShellID, callID: "shell-2" },
+      ]) {
+        yield* events.publish(SessionEvent.Shell.Started, {
+          sessionID,
+          ...entry,
+          timestamp: created,
+          command: "pwd",
+        })
+      }
       yield* events.publish(SessionEvent.Shell.Ended, {
         sessionID,
         timestamp: DateTime.makeUnsafe(1),
@@ -355,12 +363,16 @@ describe("SessionProjector", () => {
         "model-switched",
         "synthetic",
         "shell",
+        "shell",
+        "shell",
         "compaction",
       ])
-      expect(messages.find((message) => message.type === "shell")).toMatchObject({
+      expect(messages.find((message) => message.id === targetShellID)).toMatchObject({
         output: "/project",
         time: { completed: DateTime.makeUnsafe(1) },
       })
+      expect(messages.find((message) => message.id === previousShellID)).toMatchObject({ status: "running", output: "" })
+      expect(messages.find((message) => message.id === otherShellID)).toMatchObject({ status: "running", output: "" })
       expect(messages.find((message) => message.type === "compaction")).toMatchObject({
         summary: "summary",
         recent: "recent context",
