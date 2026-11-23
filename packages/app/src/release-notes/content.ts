@@ -2,6 +2,24 @@ import type { ReleaseNote } from "../release-notes"
 
 export const notes: readonly ReleaseNote[] = [
   {
+    version: "1.0.52",
+    summary:
+      "A faster core across snapshots, sessions, and transcripts, plus a Red Hat CVE lookup tool.",
+    changes: {
+      new: [
+        "Look up Red Hat CVEs from security tooling.",
+      ],
+      improved: [
+        "Git snapshots run on a native worker with batched discovery, and nested worktrees and shell parsing are faster on Apple silicon.",
+        "Sessions persist smaller frames, transcripts decode leaner rows, and event replay memory is bounded.",
+        "Patch application, wildcard matching, and model template resolution reuse compiled state.",
+      ],
+      fixed: [
+        "Dependabot dependency alerts are resolved, and session delegation is reduced with clearer activity.",
+      ],
+    },
+  },
+  {
     version: "1.0.51",
     summary:
       "GPT-6.2 Astra and Sol support, and a deduped OpenAI model list.",
