@@ -12,10 +12,10 @@ export function mergeMessages<M extends { id: string; seq: number }>(existing: r
 
 export function replyContext<M extends { id: string; author: string; text: string; replyTo?: string | null }>(
   message: M,
-  messages: readonly M[],
+  messages: readonly M[] | ReadonlyMap<string, M>,
 ) {
   if (!message.replyTo) return
-  const source = messages.find((item) => item.id === message.replyTo)
+  const source = "get" in messages ? messages.get(message.replyTo) : messages.find((item) => item.id === message.replyTo)
   if (!source) return
   const text = source.text.replace(/\s+/g, " ").trim()
   return { author: source.author, excerpt: text.length > 160 ? `${text.slice(0, 159)}…` : text }

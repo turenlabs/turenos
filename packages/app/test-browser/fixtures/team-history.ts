@@ -110,6 +110,7 @@ const messages: Team.Message[] = [
     kind: "system",
     author: "Factory",
     text: "New factory update",
+    replyTo: "message-a",
     time: 2,
   },
   { id: "message-b", roomID: "room-b", seq: 1, kind: "human", author: "Tom", text: "Second room history", time: 3 },
@@ -224,6 +225,7 @@ try {
 
   polls()
   await until(() => !!log().textContent?.includes("New factory update"), "Pending duties blocked new messages")
+  assert.match(log().querySelector('[aria-label="Reply context"]')?.textContent ?? "", /Reply to Tom.*Keep this history/)
   assert.equal(log().querySelector("article"), original, "Incremental poll remounted unchanged history")
   settleDuties?.(Response.json({ data: [] }))
   await flush()
