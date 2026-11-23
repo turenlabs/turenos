@@ -539,7 +539,7 @@ export function parts(messageID: MessageID) {
   })
 }
 
-export const get = Effect.fn("MessageV2.get")(function* (input: { sessionID: SessionID; messageID: MessageID }) {
+export const findInfo = Effect.fn("MessageV2.findInfo")(function* (input: { sessionID: SessionID; messageID: MessageID }) {
   const { db } = yield* Database.Service
   yield* assertLegacyReadable(db, input.sessionID)
   const row = yield* db
@@ -548,9 +548,14 @@ export const get = Effect.fn("MessageV2.get")(function* (input: { sessionID: Ses
     .where(and(eq(MessageTable.id, input.messageID), eq(MessageTable.session_id, input.sessionID)))
     .get()
     .pipe(Effect.orDie)
-  if (!row) return yield* new NotFoundError({ message: `Message not found: ${input.messageID}` })
+  return row ? info(row) : undefined
+})
+
+export const get = Effect.fn("MessageV2.get")(function* (input: { sessionID: SessionID; messageID: MessageID }) {
+  const message = yield* findInfo(input)
+  if (!message) return yield* new NotFoundError({ message: `Message not found: ${input.messageID}` })
   return {
-    info: info(row),
+    info: message,
     parts: yield* parts(input.messageID),
   }
 })
