@@ -537,6 +537,25 @@ describe("SwarmRoom", () => {
     }),
   )
 
+  it.effect("uses the worker's latest own entry to decide whether it is blocked", () =>
+    Effect.gen(function* () {
+      const root = yield* setup("member-state")
+      const rooms = yield* SwarmRoom.Service
+      const room = yield* rooms.open(root)
+      const task = yield* spawnWorker(root, "member-state")
+      const worker = { sessionID: task.childSessionID }
+      const state = () =>
+        rooms.members(room.id).pipe(Effect.map((members) => members.find((member) => member.sessionID === worker.sessionID)?.state))
+
+      yield* rooms.post({ roomID: room.id, actor: worker, kind: "question", text: "Which file should I use?" })
+      yield* rooms.post({ roomID: room.id, actor: { sessionID: root }, kind: "finding", text: "Found the file" })
+      expect(yield* state()).toBe("blocked")
+
+      yield* rooms.post({ roomID: room.id, actor: worker, kind: "finding", text: "Read the file" })
+      expect(yield* state()).toBe("active")
+    }),
+  )
+
   it.effect("flags entries addressed to a lane's claimant as 'to you'", () =>
     Effect.gen(function* () {
       const root = yield* setup("addressed")
