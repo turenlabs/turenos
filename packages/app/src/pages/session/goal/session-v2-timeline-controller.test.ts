@@ -44,6 +44,8 @@ import {
   SESSION_V2_MESSAGE_PAGE_LIMIT,
   SESSION_V2_SNAPSHOT_RESTAKE_LIMIT,
   SESSION_V2_WINDOW_PAGE_LIMIT,
+  appendSessionV2Delta,
+  type LiveDelta,
   type SessionV2ToolEvent,
 } from "./session-v2-timeline-controller"
 
@@ -602,6 +604,22 @@ describe("V2 timeline pagination", () => {
 })
 
 describe("V2 timeline live reconciliation", () => {
+  test("appends fragments in order without copying or mixing buffers", () => {
+    const buffers = new Map<string, LiveDelta[]>()
+    const first = { sequence: 1, messageID: "m1", partID: "text", field: "text", delta: "Hel" } as const
+    const second = { ...first, sequence: 2, delta: "lo" }
+    const other = { ...first, sequence: 3, messageID: "m2", delta: "other" }
+
+    appendSessionV2Delta(buffers, "s1", first)
+    const firstBuffer = buffers.get("s1")
+    appendSessionV2Delta(buffers, "s2", other)
+    appendSessionV2Delta(buffers, "s1", second)
+
+    expect(buffers.get("s1")).toBe(firstBuffer)
+    expect(firstBuffer).toEqual([first, second])
+    expect(buffers.get("s2")).toEqual([other])
+  })
+
   test("keeps deltas until a snapshot covers their streamed text", () => {
     const deltas = [
       { sequence: 1, messageID: "msg", partID: "part", field: "text" as const, delta: "Hel" },
