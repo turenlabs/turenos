@@ -4,7 +4,8 @@
   "upstream": {
     "zip": {
       "repository": "https://github.com/zip-rs/zip2",
-      "version": "4.6.1",
+      "version": "9.0.5",
+      "commit": "0123ed144cfa7d672dae78b79a034d8900f9aaeb",
       "license": "MIT"
     },
     "flate2": {
@@ -25,7 +26,7 @@
   "rust": "1.97.1",
   "wasmPack": "0.15.0",
   "wasmBindgen": true,
-  "runtimeDependencies": ["zip 4.6.1", "flate2 1.1.10 (rust_backend/miniz_oxide)", "sha2 0.10.9"],
+  "runtimeDependencies": ["zip 9.0.5", "flate2 1.1.10 (rust_backend/miniz_oxide)", "sha2 0.10.9"],
   "network": false,
   "filesystem": false,
   "executesInput": false,

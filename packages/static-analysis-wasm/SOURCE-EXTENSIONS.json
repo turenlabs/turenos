@@ -1,12 +1,15 @@
 {
   "crate": "turen-static-analysis-wasm",
-  "sourceCommit": "c0f1500e71f04e5b5de28a8f6c0bf9a1ae449814",
+  "sourceCommit": "d265ebbb0c5f9801c8eb446563a77cab670e4be2",
   "dependencies": {
     "cfb": "0.10.0",
     "quickXml": "0.38.3",
-    "zip": "4.6.1"
+    "zip": "9.0.5"
+  },
+  "zipSource": {
+    "repository": "https://github.com/zip-rs/zip2",
+    "commit": "0123ed144cfa7d672dae78b79a034d8900f9aaeb"
   },
   "rust": "1.97.1",
-  "wasmPack": "0.15.0",
-  "run": "36869876182"
+  "wasmPack": "0.15.0"
 }

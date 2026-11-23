@@ -619,7 +619,7 @@ Each row identifies a resolved package and version, its declared license, and it
 | `get-proto` | `1.0.1` | MIT | [source](git+https://github.com/ljharb/get-proto.git) |
 | `ghostty-web` | `0.3.0` | MIT | [source](https://github.com/coder/ghostty-web.git) |
 | `gitlab-ai-provider` | `6.11.1` | MIT | [source](git+https://gitlab.com/vglafirov/gitlab-ai-provider.git) |
-| `glob` | `13.0.5` | BlueOak-1.0.0 | [source](git@github.com:isaacs/node-glob.git) |
+| `glob` | `14.0.2` | BlueOak-1.0.0 | [source](git@github.com:isaacs/node-glob.git) |
 | `glur` | `1.1.2` | MIT | [source](nodeca/glur) |
 | `google-auth-library` | `10.5.0` | Apache-2.0 | [source](googleapis/google-auth-library-nodejs.git) |
 | `google-logging-utils` | `1.1.3` | Apache-2.0 | [source](https://github.com/googleapis/google-cloud-node-core.git) |
@@ -711,6 +711,7 @@ Each row identifies a resolved package and version, its declared license, and it
 | `lodash.throttle` | `4.1.1` | MIT | [source](lodash/lodash) |
 | `lru_map` | `0.4.1` | MIT | [source](git+https://github.com/rsms/js-lru.git) |
 | `lru-cache` | `11.5.1` | BlueOak-1.0.0 | [source](git+ssh://git@github.com/isaacs/node-lru-cache.git) |
+| `lru-cache` | `11.5.2` | BlueOak-1.0.0 | [source](git+ssh://git@github.com/isaacs/node-lru-cache.git) |
 | `luxon` | `3.6.1` | MIT | [source](https://github.com/moment/luxon) |
 | `make-fetch-happen` | `15.0.6` | ISC | [source](git+https://github.com/npm/make-fetch-happen.git) |
 | `marked` | `15.0.12` | MIT | [source](git://github.com/markedjs/marked.git) |
@@ -733,7 +734,6 @@ Each row identifies a resolved package and version, its declared license, and it
 | `mime-db` | `1.54.0` | MIT | [source](jshttp/mime-db) |
 | `mime-types` | `3.0.2` | MIT | [source](jshttp/mime-types) |
 | `mimic-function` | `5.0.1` | MIT | [source](sindresorhus/mimic-function) |
-| `minimatch` | `10.2.6` | BlueOak-1.0.0 | [source](git@github.com:isaacs/minimatch) |
 | `minimatch` | `11.0.1` | BlueOak-1.0.0 | [source](git@github.com:isaacs/minimatch) |
 | `minimist` | `1.2.8` | MIT | [source](git://github.com/minimistjs/minimist.git) |
 | `minipass` | `3.3.6` | ISC | [source](git+https://github.com/isaacs/minipass.git) |
@@ -802,7 +802,7 @@ Each row identifies a resolved package and version, its declared license, and it
 | `path-expression-matcher` | `1.5.0` | MIT | [source](https://github.com/NaturalIntelligence/path-expression-matcher) |
 | `path-expression-matcher` | `1.6.2` | MIT | [source](https://github.com/NaturalIntelligence/path-expression-matcher) |
 | `path-key` | `3.1.1` | MIT | [source](sindresorhus/path-key) |
-| `path-scurry` | `2.0.2` | BlueOak-1.0.0 | [source](git+https://github.com/isaacs/path-scurry) |
+| `path-scurry` | `3.0.0` | BlueOak-1.0.0 | [source](git+https://github.com/isaacs/path-scurry) |
 | `path-to-regexp` | `8.4.2` | MIT | [source](https://github.com/pillarjs/path-to-regexp.git) |
 | `perfect-freehand` | `1.2.0` | MIT | [source](https://github.com/steveruizok/perfect-freehand) |
 | `pica` | `7.1.1` | MIT | [source](nodeca/pica) |

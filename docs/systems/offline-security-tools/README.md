@@ -52,7 +52,10 @@ reproduce every operation in the base artifact
 `bun run build:wasm static-analysis` and `.github/workflows/build-static-analysis.yml`
 build `tools/static-analysis` with the 256 MiB memory maximum, run its parser
 tests, and overlay the result onto `packages/static-analysis-wasm/dist/extensions`,
-checked by `SHA256SUMS.extensions`.
+checked by `SHA256SUMS.extensions`. The base runtime in
+`packages/static-analysis-wasm/dist` also builds from `tools/static-analysis`,
+which includes `office_inspect`. Its build provenance is recorded in
+`SOURCE.json` and its files are verified by `SHA256SUMS`.
 
 The imported snapshots in `packages/email-security-wasm/source-106` and
 `packages/static-analysis-wasm/source-106` hold the modified crate sources and
