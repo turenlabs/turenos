@@ -28,6 +28,7 @@ import { eq } from "drizzle-orm"
 import { inArray } from "drizzle-orm"
 import { lt } from "drizzle-orm"
 import { or } from "drizzle-orm"
+import { sql } from "drizzle-orm"
 import {
   MessageTable,
   PartTable,
@@ -449,13 +450,24 @@ export const page = Effect.fn("MessageV2.page")(function* (input: {
   sessionID: SessionID
   limit: number
   before?: string
+  turnID?: MessageID
 }) {
   const { db } = yield* Database.Service
   yield* assertLegacyReadable(db, input.sessionID)
   const before = input.before ? cursor.decode(input.before) : undefined
-  const where = before
-    ? and(eq(MessageTable.session_id, input.sessionID), older(before))
-    : eq(MessageTable.session_id, input.sessionID)
+  const where = and(
+    eq(MessageTable.session_id, input.sessionID),
+    before ? older(before) : undefined,
+    input.turnID === undefined
+      ? undefined
+      : or(
+          eq(MessageTable.id, input.turnID),
+          and(
+            sql`json_extract(${MessageTable.data}, '$.role') = 'assistant'`,
+            sql`(${MessageTable.data} -> '$.parentID') = ${JSON.stringify(input.turnID)}`,
+          ),
+        ),
+  )
   const rows = yield* db
     .select()
     .from(MessageTable)
@@ -490,13 +502,13 @@ export const page = Effect.fn("MessageV2.page")(function* (input: {
   }
 })
 
-export function stream(sessionID: SessionID) {
+export function stream(sessionID: SessionID, options?: { turnID: MessageID }) {
   const size = 50
   return Effect.gen(function* () {
     const result = [] as WithParts[]
     let before: string | undefined
     while (true) {
-      const next = yield* page({ sessionID, limit: size, before })
+      const next = yield* page({ sessionID, limit: size, before, turnID: options?.turnID })
       if (next.items.length === 0) break
       for (let i = next.items.length - 1; i >= 0; i--) {
         const item = next.items[i]

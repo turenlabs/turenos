@@ -242,6 +242,7 @@ describe("MessageV2.page", () => {
 
         const page = yield* MessageV2.page({ sessionID, limit: 10 }).pipe(Effect.flip)
         const stream = yield* MessageV2.stream(sessionID).pipe(Effect.flip)
+        const turn = yield* MessageV2.stream(sessionID, { turnID: messageID }).pipe(Effect.flip)
         const message = yield* MessageV2.get({ sessionID, messageID }).pipe(Effect.flip)
         const parts = yield* MessageV2.parts(messageID).pipe(Effect.catchDefect(Effect.succeed))
         const currentParts = yield* MessageV2.parts(v2OnlyID).pipe(Effect.catchDefect(Effect.succeed))
@@ -251,7 +252,7 @@ describe("MessageV2.page", () => {
         // `fork` is deliberately absent: it reads the Session V2 transcript, not
         // the legacy tables, and must keep working after adoption. See fork.test.ts.
 
-        for (const error of [page, stream, message, parts, currentParts, messages, found, part]) {
+        for (const error of [page, stream, turn, message, parts, currentParts, messages, found, part]) {
           expect(error).toBeInstanceOf(NotFoundError)
           expect(error instanceof Error ? error.message : "").toBe(expected)
         }
@@ -372,6 +373,25 @@ describe("MessageV2.page", () => {
 })
 
 describe("MessageV2.stream", () => {
+  it.instance("reads only the requested turn across page boundaries", () =>
+    withSession(({ sessionID }) =>
+      Effect.gen(function* () {
+        const turnID = yield* addUser(sessionID, "Requested turn")
+        const otherID = yield* addUser(sessionID, "Unrelated turn")
+        const ids = [turnID]
+        for (let i = 0; i < 52; i++) {
+          ids.push(yield* addAssistant(sessionID, turnID))
+          if (i % 10 === 0) yield* addAssistant(sessionID, otherID)
+        }
+        const all = yield* MessageV2.stream(sessionID)
+        const turn = yield* MessageV2.stream(sessionID, { turnID })
+        expect(turn).toEqual(all.filter((row) => ids.includes(row.info.id)))
+        expect(turn).toHaveLength(53)
+        expect(turn.at(-1)?.parts[0]).toMatchObject({ type: "text", text: "Requested turn" })
+      }),
+    ),
+  )
+
   it.instance("yields items newest first", () =>
     withSession(({ sessionID }) =>
       Effect.gen(function* () {

@@ -1,9 +1,11 @@
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
+import { Database } from "@turenlabs/core/database/database"
 import { Effect, Layer, Context, Schema } from "effect"
 import { SessionV1 } from "@turenlabs/core/v1/session"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { Snapshot } from "@/snapshot"
 import { Session } from "./session"
+import { MessageV2 } from "./message-v2"
 import { SessionID, MessageID } from "./schema"
 import { Config } from "@/config/config"
 
@@ -75,6 +77,7 @@ const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
     const sessions = yield* Session.Service
+    const database = yield* Database.Service
     const snapshot = yield* Snapshot.Service
     const events = yield* EventV2Bridge.Service
     const config = yield* Config.Service
@@ -103,7 +106,10 @@ const layer = Layer.effect(
       sessionID: SessionID
       messageID: MessageID
     }) {
-      const all = yield* sessions.messages({ sessionID: input.sessionID }).pipe(Effect.orDie)
+      const messages = (yield* MessageV2.stream(input.sessionID, { turnID: input.messageID }).pipe(
+        Effect.provideService(Database.Service, database),
+        Effect.orDie,
+      )).reverse()
       yield* sessions.setSummary({
         sessionID: input.sessionID,
         summary: {
@@ -114,11 +120,6 @@ const layer = Layer.effect(
       })
       yield* events.publish(Session.Event.Diff, { sessionID: input.sessionID, diff: [] })
       if ((yield* config.get()).snapshot === false) return
-      if (!all.length) return
-
-      const messages = all.filter(
-        (m) => m.info.id === input.messageID || (m.info.role === "assistant" && m.info.parentID === input.messageID),
-      )
       const target = messages.find((m) => m.info.id === input.messageID)
       if (!target || target.info.role !== "user") return
       const msgDiffs = yield* computeDiff({ messages })
@@ -154,7 +155,7 @@ export type DiffInput = Schema.Schema.Type<typeof DiffInput>
 export const node = LayerNode.make({
   service: Service,
   layer: layer,
-  deps: [Session.node, Snapshot.node, EventV2Bridge.node, Config.node],
+  deps: [Session.node, Database.node, Snapshot.node, EventV2Bridge.node, Config.node],
 })
 
 export * as SessionSummary from "./summary"
