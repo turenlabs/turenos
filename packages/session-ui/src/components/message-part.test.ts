@@ -2,9 +2,27 @@ import { describe, expect, test } from "bun:test"
 import type { ToolPart } from "@turenlabs/sdk/v2"
 import { partDefaultOpen } from "./part-default-open"
 import { readPartText } from "./message-part-text"
+import { latestTaskSessionID } from "./task-session"
 import { taskThinkingState } from "./task-thinking-state"
 import { toolResultCleared } from "./tool-cleared"
 import { tokensPerSecond } from "./tokens-per-second"
+
+test("selects the newest matching child Session and keeps the first on ties", () => {
+  const child = (id: string, created: number, title = "Check output @Build", parentID = "parent", archived?: number) =>
+    ({ id, parentID, title, time: { created, updated: created, archived } })
+  const sessions = [
+    child("older", 1),
+    child("first", 2),
+    child("second", 2),
+    child("wrong-parent", 3, "Check output @Build", "other"),
+    child("wrong-description", 4, "Other @Build"),
+    child("wrong-agent", 5, "Check output @Review"),
+    child("archived", 6, "Check output @Build", "parent", 7),
+  ]
+  expect(latestTaskSessionID(sessions, "parent", "Check output", "Build")).toBe("first")
+  expect(latestTaskSessionID(sessions, "parent", "", undefined)).toBe("wrong-agent")
+  expect(latestTaskSessionID(sessions, "missing", "", undefined)).toBeUndefined()
+})
 
 describe("tokensPerSecond", () => {
   test("calculates output tokens over the response duration, excluding earlier task time", () => {
