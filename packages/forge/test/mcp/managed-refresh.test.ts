@@ -43,13 +43,26 @@ const fixture = new Extension.Manifest({
 })
 
 let extensionEnabled = true
+let snapshotEnabled: boolean | undefined
 
 const runtimeOverride = (): [[typeof ExtensionRuntime.node, Layer.Layer<ExtensionRuntime.Service>]] => [
   [
     ExtensionRuntime.node,
     Layer.mock(ExtensionRuntime.Service, {
       manifests: () => Effect.succeed([...ExtensionCatalog.manifests, fixture]),
+      manifestSnapshot: () =>
+        Effect.sync(() => {
+          const enabled = snapshotEnabled ?? extensionEnabled
+          return {
+            manifests: [...ExtensionCatalog.manifests, fixture],
+            enabled: (manifest) => manifest.id === fixture.id && enabled,
+          }
+        }),
       enabled: (id) => Effect.succeed(String(id) === String(fixture.id) && extensionEnabled),
+      desired: (id) =>
+        Effect.sync(() =>
+          id === fixture.id ? { enabled: extensionEnabled, configuration: {}, revision: 1 } : undefined,
+        ),
       configuration: () => Effect.succeed({}),
       secret: () => Effect.succeed(undefined),
       secretsSet: () => Effect.succeed({}),
@@ -89,7 +102,13 @@ const awaitStatus = (name: string, expected: string) =>
     `managed server ${name} did not reach ${expected}`,
   )
 
-const restoreCatalog = Effect.addFinalizer(() => Effect.sync(() => McpIntegration.sync(ExtensionCatalog.manifests)))
+const restoreCatalog = Effect.addFinalizer(() =>
+  Effect.sync(() => {
+    extensionEnabled = true
+    snapshotEnabled = undefined
+    McpIntegration.sync(ExtensionCatalog.manifests)
+  }),
+)
 
 it.instance("admitted managed config carries the runtime policy marker", () =>
   Effect.gen(function* () {
@@ -103,7 +122,7 @@ it.instance("admitted managed config carries the runtime policy marker", () =>
   }),
 )
 
-it.instance("skips admission while the extension is disabled", () =>
+it.instance("picks up activation changes for managed discovery in the same directory", () =>
   Effect.gen(function* () {
     yield* restoreCatalog
     extensionEnabled = false
@@ -113,6 +132,8 @@ it.instance("skips admission while the extension is disabled", () =>
     expect(yield* statusOf(NAME)).toBeUndefined()
     expect(yield* mcp.configuration(NAME)).toBeUndefined()
     extensionEnabled = true
+    yield* mcp.tools()
+    yield* awaitStatus(NAME, "failed")
   }),
 )
 
@@ -172,8 +193,16 @@ itNoCooldown.instance("does not reconnect to needs_auth until credentials change
     yield* Effect.sleep("250 millis")
     expect(server.mcpRequests()).toBe(attempts)
 
-    // Fresh credentials (re-auth or a silent refresh) retry without the cooldown.
     yield* auth.set(NAME, { tokens: { accessToken: "fresh-token" } }, ENDPOINT)
+    // A disable after discovery must leave the fresh credentials available for retry.
+    snapshotEnabled = true
+    extensionEnabled = false
+    yield* mcp.tools()
+    expect(yield* statusOf(NAME)).toBe("needs_auth")
+    expect(server.mcpRequests()).toBe(attempts)
+
+    snapshotEnabled = undefined
+    extensionEnabled = true
     yield* mcp.tools()
     yield* pollWithTimeout(
       Effect.sync(() => (server.mcpRequests() > attempts ? (true as const) : undefined)),

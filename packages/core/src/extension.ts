@@ -42,6 +42,10 @@ export class InvalidUpdate extends Schema.TaggedErrorClass<InvalidUpdate>()("Ext
 
 export interface Interface {
   readonly manifests: () => Effect.Effect<ReadonlyArray<Extension.Manifest>>
+  readonly manifestSnapshot: () => Effect.Effect<{
+    readonly manifests: ReadonlyArray<Extension.Manifest>
+    readonly enabled: (manifest: Extension.Manifest) => boolean
+  }>
   readonly get: (id: Extension.ID | string) => Effect.Effect<Extension.Manifest | undefined>
   readonly desired: (id: Extension.ID | string) => Effect.Effect<Desired | undefined>
   readonly enabled: (id: Extension.ID | string) => Effect.Effect<boolean>
@@ -92,11 +96,27 @@ export const layer = Layer.effect(
         return manifest ? [manifest] : []
       })
     const catalog = (entries: ReadonlyArray<Storage.State>) => {
-      const builtins = new Set(ExtensionCatalog.manifests.map((manifest) => String(manifest.id)))
-      return [...ExtensionCatalog.manifests, ...installed(entries).filter((manifest) => !builtins.has(manifest.id))]
+      const additions = installed(entries).filter((manifest) => !ExtensionCatalog.get(manifest.id))
+      return additions.length ? [...ExtensionCatalog.manifests, ...additions] : ExtensionCatalog.manifests
     }
     const manifests = Effect.fn("Extension.manifests")(function* () {
       return catalog(yield* storage.list({ scope }))
+    })
+    const manifestSnapshot = Effect.fn("Extension.manifestSnapshot")(function* () {
+      // Both kinds of record share a scope, so one read observes them together.
+      const entries = yield* storage.list({ scope })
+      const desired = new Map(
+        entries.flatMap((entry) => (entry.key.startsWith("desired/") ? [[entry.key, entry.value] as const] : [])),
+      )
+      return {
+        manifests: catalog(entries),
+        enabled: (manifest: Extension.Manifest) => {
+          const stored = desired.get(desiredKey(manifest.id))
+          return stored === undefined
+            ? defaultEnabled(manifest)
+            : Option.getOrUndefined(decodeDesired(stored))?.enabled === true
+        },
+      }
     })
     const get = Effect.fn("Extension.get")(function* (id: Extension.ID | string) {
       const builtin = ExtensionCatalog.get(id)
@@ -113,7 +133,7 @@ export const layer = Layer.effect(
         const value = desired.get(desiredKey(manifest.id))
         const enabled =
           value === undefined
-            ? manifest.contributions.some((item) => item.defaultEnabled)
+            ? defaultEnabled(manifest)
             : Option.getOrUndefined(decodeDesired(value))?.enabled === true
         return enabled ? skills.map((contribution) => ({ manifest, contribution })) : []
       })
@@ -128,7 +148,7 @@ export const layer = Layer.effect(
       if (!stored) {
         return {
           value: {
-            enabled: manifest.contributions.some((contribution) => contribution.defaultEnabled),
+            enabled: defaultEnabled(manifest),
             configuration: {},
             revision: 0,
           } satisfies Desired,
@@ -301,6 +321,7 @@ export const layer = Layer.effect(
 
     return Service.of({
       manifests,
+      manifestSnapshot,
       get,
       desired,
       enabled,
@@ -313,6 +334,10 @@ export const layer = Layer.effect(
     })
   }),
 )
+
+function defaultEnabled(manifest: Extension.Manifest) {
+  return manifest.contributions.some((contribution) => contribution.defaultEnabled)
+}
 
 function invalid(id: Extension.ID | string, reason: string) {
   return new InvalidUpdate({ id: String(id), reason })
