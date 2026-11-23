@@ -359,7 +359,7 @@ const layer = Layer.effect(
           : undefined
       return ChildProcess.make(launch?.command ?? "git", repositoryArgs(repository, args), {
         cwd: repository.worktree,
-        env: launch ? { ...launch.env, ...env } : env,
+        env: launch && env ? { ...launch.env, ...env } : launch?.env ?? env,
         extendEnv: !launch,
       })
     })

@@ -91,6 +91,9 @@ mac("replays the active launcher environment and preserves the staged blob", () 
     const changed = yield* resolve(root.path, { ...env, CPATH: path.join(root.path, "different") })
     expect(changed?.env.CPATH).toContain("different")
     expect(changed?.env.CPATH).not.toContain("includes with spaces")
+    const added = yield* resolve(root.path, { ...env, GIT_LAUNCHER_FIXTURE: "present" })
+    expect(added?.env.GIT_LAUNCHER_FIXTURE).toBe("present")
+    expect((yield* resolve(root.path, env))?.env.GIT_LAUNCHER_FIXTURE).toBeUndefined()
     const tools = { ...env, DEVELOPER_DIR: "/Library/Developer/CommandLineTools" }
     const toolsGit = yield* proc.run(ChildProcess.make("/usr/bin/xcrun", ["--find", "git"], { env: tools }))
     if (toolsGit.exitCode === 0 && !toolsGit.stderr.length) {

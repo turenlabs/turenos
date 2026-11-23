@@ -1,6 +1,5 @@
 export * as GitLauncher from "./git-launcher"
 
-import { createHash } from "node:crypto"
 import { realpath } from "node:fs/promises"
 import path from "node:path"
 import { Effect, Semaphore } from "effect"
@@ -11,7 +10,8 @@ type Launch = { command: string; env: NodeJS.ProcessEnv }
 type Resolution = {
   selection: string
   link: string | undefined
-  environment: string
+  environment: NodeJS.ProcessEnv
+  environmentSize: number
   expiresAt: number
   launch: Launch | undefined
 }
@@ -37,30 +37,37 @@ export const make = Effect.fnUntraced(function* (proc: AppProcess.Interface) {
 
   return Effect.fnUntraced(function* (cwd: string, env: NodeJS.ProcessEnv = process.env) {
     if (process.platform !== "darwin" || typeof Bun === "undefined") return
-    const environment = { ...env }
+    const gitPath = env.PATH
+    const developerDir = env.DEVELOPER_DIR
     if (
-      !environment.PATH ||
-      environment.PATH.split(path.delimiter).some((entry) => !path.isAbsolute(entry)) ||
-      Bun.which("git", { PATH: environment.PATH }) !== "/usr/bin/git" ||
-      Object.keys(environment).some((key) => key.startsWith("xcrun_")) ||
-      (environment.DEVELOPER_DIR !== undefined && !path.isAbsolute(environment.DEVELOPER_DIR)) ||
-      [environment.SDKROOT, environment.TOOLCHAINS].some((value) => value?.includes("/") && !path.isAbsolute(value))
+      !gitPath ||
+      gitPath.split(path.delimiter).some((entry) => !path.isAbsolute(entry)) ||
+      Bun.which("git", { PATH: gitPath }) !== "/usr/bin/git" ||
+      (developerDir !== undefined && !path.isAbsolute(developerDir))
     )
       return
 
-    const key = createHash("sha256").update(JSON.stringify(environment)).digest("hex")
     const link =
-      environment.DEVELOPER_DIR === undefined
+      developerDir === undefined
         ? yield* Effect.promise(() => realpath("/var/db/xcode_select_link").catch(() => undefined))
         : undefined
+    if (
+      env.PATH !== gitPath ||
+      env.DEVELOPER_DIR !== developerDir ||
+      [env.SDKROOT, env.TOOLCHAINS].some((value) => value?.includes("/") && !path.isAbsolute(value))
+    )
+      return
     // Use the system link only after xcode-select reports the same directory.
-    if (link && cached?.link === link && reusable(cached, key)) return cached.launch
+    if (link && cached?.link === link && reusable(cached, env)) return cached.launch
 
+    const environment = { ...env }
+    const keys = Object.keys(environment)
+    if (keys.some((key) => key.startsWith("xcrun_"))) return
     const selection = parsePath(yield* query(cwd, environment, "/usr/bin/xcode-select", ["--print-path"]))
     if (!selection) return
     return yield* lock.withPermit(
       Effect.gen(function* () {
-        if (cached?.selection === selection && reusable(cached, key)) {
+        if (cached?.selection === selection && reusable(cached, environment, keys)) {
           cached.link = link === selection ? link : undefined
           return cached.launch
         }
@@ -87,7 +94,8 @@ export const make = Effect.fnUntraced(function* (proc: AppProcess.Interface) {
         cached = {
           selection,
           link: link === selection ? link : undefined,
-          environment: key,
+          environment,
+          environmentSize: keys.length,
           expiresAt: Date.now() + (launch ? 60_000 : 2_000),
           launch,
         }
@@ -97,8 +105,13 @@ export const make = Effect.fnUntraced(function* (proc: AppProcess.Interface) {
   })
 })
 
-function reusable(entry: Resolution, key: string) {
-  return entry.environment === key && entry.expiresAt > Date.now() && (!entry.launch || Bun.which(entry.launch.command))
+function reusable(entry: Resolution, environment: NodeJS.ProcessEnv, keys = Object.keys(environment)) {
+  return (
+    entry.expiresAt > Date.now() &&
+    keys.length === entry.environmentSize &&
+    keys.every((key) => Object.hasOwn(entry.environment, key) && environment[key] === entry.environment[key]) &&
+    (!entry.launch || Bun.which(entry.launch.command))
+  )
 }
 
 function parsePath(output: string | undefined) {
