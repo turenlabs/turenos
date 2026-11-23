@@ -51,7 +51,11 @@ await writeFile(
       dependencies: {
         cfb: "0.10.0",
         quickXml: "0.38.3",
-        zip: "4.6.1",
+        zip: "9.0.5",
+      },
+      zipSource: {
+        repository: "https://github.com/zip-rs/zip2",
+        commit: "0123ed144cfa7d672dae78b79a034d8900f9aaeb",
       },
       rust: process.env.RUST_TOOLCHAIN,
       wasmPack: process.env.WASM_PACK_VERSION,

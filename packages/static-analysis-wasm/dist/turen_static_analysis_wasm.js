@@ -36,6 +36,17 @@ export function analyze(operation, bytes, options_json) {
         wasm.__wbindgen_export3(deferred5_0, deferred5_1, 1);
     }
 }
+
+/**
+ * @param {Uint8Array} bytes
+ * @returns {boolean}
+ */
+export function supports_archive(bytes) {
+    const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_export);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.supports_archive(ptr0, len0);
+    return ret !== 0;
+}
 function __wbg_get_imports() {
     const import0 = {
         __proto__: null,

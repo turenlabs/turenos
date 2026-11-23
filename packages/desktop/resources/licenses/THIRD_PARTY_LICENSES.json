@@ -5291,7 +5291,7 @@
     },
     {
       "name": "glob",
-      "version": "13.0.5",
+      "version": "14.0.2",
       "license": "BlueOak-1.0.0",
       "source": "git@github.com:isaacs/node-glob.git",
       "licenseFiles": [
@@ -6110,6 +6110,15 @@
       ]
     },
     {
+      "name": "lru-cache",
+      "version": "11.5.2",
+      "license": "BlueOak-1.0.0",
+      "source": "git+ssh://git@github.com/isaacs/node-lru-cache.git",
+      "licenseFiles": [
+        "LICENSE.md"
+      ]
+    },
+    {
       "name": "luxon",
       "version": "3.6.1",
       "license": "MIT",
@@ -6303,15 +6312,6 @@
       "source": "sindresorhus/mimic-function",
       "licenseFiles": [
         "license"
-      ]
-    },
-    {
-      "name": "minimatch",
-      "version": "10.2.6",
-      "license": "BlueOak-1.0.0",
-      "source": "git@github.com:isaacs/minimatch",
-      "licenseFiles": [
-        "LICENSE.md"
       ]
     },
     {
@@ -6927,7 +6927,7 @@
     },
     {
       "name": "path-scurry",
-      "version": "2.0.2",
+      "version": "3.0.0",
       "license": "BlueOak-1.0.0",
       "source": "git+https://github.com/isaacs/path-scurry",
       "licenseFiles": [

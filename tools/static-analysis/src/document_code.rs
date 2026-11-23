@@ -242,6 +242,7 @@ pub fn vba_extract(bytes: &[u8], options: &Value) -> Result<Value, String> {
             let entry = zip.by_index(i).map_err(|e| e.to_string())?;
             if entry
                 .name()
+                .map_err(|e| e.to_string())?
                 .rsplit('/')
                 .next()
                 .is_some_and(|n| n.eq_ignore_ascii_case("vbaProject.bin"))
