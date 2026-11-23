@@ -365,7 +365,7 @@ const layer = Layer.effect(
               .returning()
               .get()
               .pipe(Effect.orDie)
-            yield* indexDrawer(tx, {
+            yield* indexDrawers(tx, {
               id,
               wingID: input.wingID,
               title: input.title,
@@ -485,7 +485,7 @@ const layer = Layer.effect(
               .pipe(Effect.orDie)
             if (!updated) return undefined
             yield* tx.run(sql`DELETE FROM ${FTS} WHERE drawer_id = ${input.id}`).pipe(Effect.orDie)
-            yield* indexDrawer(tx, {
+            yield* indexDrawers(tx, {
               id: input.id,
               wingID: input.wingID,
               title: input.title,
@@ -580,8 +580,10 @@ const layer = Layer.effect(
           Effect.gen(function* () {
             const rows = yield* tx.select().from(MemoryDrawerTable).all().pipe(Effect.orDie)
             yield* tx.run(sql`DELETE FROM ${FTS}`).pipe(Effect.orDie)
-            for (const row of rows) {
-              yield* indexDrawer(tx, {
+            // Five parameters per drawer. Keep each batch below SQLite's 999-parameter limit.
+            const batchSize = 100
+            for (let start = 0; start < rows.length; start += batchSize) {
+              const batch = rows.slice(start, start + batchSize).map((row) => ({
                 id: row.id,
                 wingID: row.wing_id,
                 title: row.title,
@@ -592,7 +594,8 @@ const layer = Layer.effect(
                   ...(row.anchor_commit ? { commit: row.anchor_commit } : {}),
                   ...(row.anchor_symbol ? { symbol: row.anchor_symbol } : {}),
                 },
-              }).pipe(Effect.orDie)
+              }))
+              yield* indexDrawers(tx, ...batch).pipe(Effect.orDie)
             }
             return rows.length
           }),
@@ -624,10 +627,11 @@ type Indexable = {
   anchor: Anchor
 }
 
-function indexDrawer(tx: Parameters<Parameters<Database.Interface["db"]["transaction"]>[0]>[0], input: Indexable) {
-  return tx.run(
-    sql`INSERT INTO ${FTS} (drawer_id, wing_id, title, body, anchor) VALUES (${input.id}, ${input.wingID}, ${MemoryTokenize.normalize(input.title)}, ${MemoryTokenize.normalize(input.body)}, ${MemoryTokenize.normalize(MemoryKey.indexable(input.anchor))})`,
+function indexDrawers(tx: Parameters<Parameters<Database.Interface["db"]["transaction"]>[0]>[0], ...drawers: Indexable[]) {
+  const values = drawers.map(
+    (input) => sql`(${input.id}, ${input.wingID}, ${MemoryTokenize.normalize(input.title)}, ${MemoryTokenize.normalize(input.body)}, ${MemoryTokenize.normalize(MemoryKey.indexable(input.anchor))})`,
   )
+  return tx.run(sql`INSERT INTO ${FTS} (drawer_id, wing_id, title, body, anchor) VALUES ${sql.join(values, sql`, `)}`)
 }
 
 export const node = makeGlobalNode({ service: Service, layer, deps: [Database.node] })
