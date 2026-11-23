@@ -14,11 +14,6 @@ export type SessionV2Presentation = {
   parts: Array<{ id: string; parts: Part[] }>
 }
 
-export type SessionV2TimelineProjection = SessionV2Presentation & {
-  ownedMessageIDs: Set<string>
-  removedMessageIDs: string[]
-}
-
 type ShellMessage = Extract<SessionMessage, { type: "shell" }> & {
   timeout?: number
   status?: "running" | "completed" | "cancelled" | "timed_out" | "failed"
@@ -382,49 +377,29 @@ export function mergeSessionV2Parts(current: readonly Part[] | undefined, incomi
   })
 }
 
-export function mergeSessionV2Presentation(input: {
+export function mergeSessionV2Messages(input: {
   messages: Message[]
-  parts: Record<string, Part[] | undefined>
+  incoming: Message[]
   previousOwnedMessageIDs: Set<string>
-  presentation: SessionV2Presentation
   preservedMessageIDs?: Set<string>
   removeMissing?: boolean
-}): SessionV2TimelineProjection {
-  const incoming = new Set(input.presentation.messages.map((message) => message.id))
+}) {
+  const incoming = new Set(input.incoming.map((message) => message.id))
   const preserved = input.preservedMessageIDs ?? new Set<string>()
   const messages =
     input.removeMissing === false
-      ? mergeIncrementalMessages(input.messages, input.presentation.messages)
+      ? mergeIncrementalMessages(input.messages, input.incoming)
       : mergeIncrementalMessages(
           input.messages.filter(
             (message) =>
               (!input.previousOwnedMessageIDs.has(message.id) || preserved.has(message.id)) &&
               !incoming.has(message.id),
           ),
-          input.presentation.messages,
+          input.incoming,
         )
-  const parts =
-    input.removeMissing === false
-      ? mergeIncrementalParts(input.parts, input.presentation.parts)
-      : [
-          ...Object.entries(input.parts).flatMap(([messageID, value]) => {
-            if (
-              !value ||
-              (input.previousOwnedMessageIDs.has(messageID) && !preserved.has(messageID)) ||
-              incoming.has(messageID)
-            )
-              return []
-            return [{ id: messageID, parts: value }]
-          }),
-          ...input.presentation.parts.map((entry) => ({
-            id: entry.id,
-            parts: mergeSessionV2Parts(input.parts[entry.id], entry.parts),
-          })),
-        ]
 
   return {
     messages,
-    parts,
     ownedMessageIDs:
       input.removeMissing === false ? new Set([...input.previousOwnedMessageIDs, ...incoming]) : incoming,
     removedMessageIDs:
@@ -455,17 +430,6 @@ export function mergeIncrementalMessages(current: Message[], incoming: Message[]
   }
   merged.push(...incoming.slice(index))
   return merged
-}
-
-function mergeIncrementalParts(
-  current: Record<string, Part[] | undefined>,
-  incoming: Array<{ id: string; parts: Part[] }>,
-) {
-  const parts = new Map(
-    Object.entries(current).flatMap(([messageID, value]) => (value ? [[messageID, value] as const] : [])),
-  )
-  incoming.forEach((entry) => parts.set(entry.id, mergeSessionV2Parts(parts.get(entry.id), entry.parts)))
-  return [...parts].map(([id, value]) => ({ id, parts: value }))
 }
 
 function presentShell(sessionID: string, messageID: string, shell: ShellMessage): ToolPart {
