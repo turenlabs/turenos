@@ -1106,9 +1106,10 @@ describe("SessionProjector usage roll-up", () => {
 
   it.effect("takes a reverted turn back out of the roll-up", () =>
     Effect.gen(function* () {
+      const removedID = SessionMessage.ID.make('msg_assistant_"2"')
       const db = yield* seed([
         assistantRow(SessionMessage.ID.make("msg_assistant_1"), 0),
-        assistantRow(SessionMessage.ID.make("msg_assistant_2"), 1),
+        assistantRow(removedID, 1),
       ])
       const events = yield* EventV2.Service
       yield* events.publish(SessionEvent.Step.Ended, {
@@ -1123,7 +1124,7 @@ describe("SessionProjector usage roll-up", () => {
       yield* events.publish(SessionEvent.Step.Ended, {
         sessionID,
         timestamp: DateTime.makeUnsafe(2),
-        assistantMessageID: SessionMessage.ID.make("msg_assistant_2"),
+        assistantMessageID: removedID,
         finish: "stop",
         cost: 0.5,
         tokens: { input: 200, output: 10, reasoning: 5, cache: { read: 1_000, write: 100 } },
