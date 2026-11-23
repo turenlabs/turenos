@@ -28,6 +28,7 @@ import {
   nextSessionEventRetry,
   nextSessionV2WindowMinimum,
   parseDurableEvent,
+  reconcileSessionV2DeltaBases,
   reduceTurnActivity,
   sessionActiveSnapshotStatus,
   shouldPollSessionUntilIdle,
@@ -602,6 +603,21 @@ describe("V2 timeline pagination", () => {
 })
 
 describe("V2 timeline live reconciliation", () => {
+  test("only advances delta bases when no retained fragment predates the watermark", () => {
+    const current = ["settled", "before", "after", "before", "outside"].map((partID, index) => ({
+      sequence: index + 1,
+      messageID: "msg",
+      partID,
+      field: "text" as const,
+      delta: "text",
+    }))
+    const pending = current.slice(1, 4)
+    const deltaBases = new Map(current.map((delta) => [`msg\0${delta.partID}`, "old base"]))
+    const snapshotText = new Map(current.map((delta) => [`msg\0${delta.partID}`, "new base"]))
+    expect(reconcileSessionV2DeltaBases({ current, pending, through: 2, snapshotText, deltaBases })).toEqual(pending)
+    expect([...deltaBases]).toEqual([["msg\0before", "old base"], ["msg\0after", "new base"]])
+  })
+
   test("keeps deltas until a snapshot covers their streamed text", () => {
     const deltas = [
       { sequence: 1, messageID: "msg", partID: "part", field: "text" as const, delta: "Hel" },
