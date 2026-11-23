@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from "bun:test"
 import { connect } from "../src/server"
-import { folderContains, folderName, inFolder, onThisComputer, startFolder } from "../src/working-folders"
+import { createDashboardState } from "../src/state"
+import { emptyWorkingFolders, folderContains, folderName, inFolder, onThisComputer, startFolder } from "../src/working-folders"
 
 test("working folders include nested directories but not prefix siblings", () => {
   expect(folderContains("/srv/repo", "/srv/repo/package")).toBe(true)
@@ -13,6 +14,34 @@ test("working folders include nested directories but not prefix siblings", () =>
   expect(folderContains("\\\\wsl$\\Ubuntu\\Repo", "\\\\wsl$\\Ubuntu\\repo\\src")).toBe(false)
   expect(folderContains("\\\\?\\C:\\Repo", "c:/repo/src")).toBe(true)
   expect(folderContains("\\\\?\\UNC\\wsl$\\Ubuntu\\Repo", "\\\\wsl$\\Ubuntu\\repo")).toBe(false)
+})
+
+test("empty working folders preserve path boundaries and the original folder order", () => {
+  const state = createDashboardState()
+  state.snapshot = {
+    location: { directory: "/", project: { id: "project", directory: "/" } },
+    sessions: ["/repo/src", "c:/work/src", "\\\\wsl$\\Ubuntu\\Repo\\src"].map((directory) => ({
+      id: directory,
+      projectID: "project",
+      title: directory,
+      location: { directory },
+      time: { created: 1, updated: 1 },
+      cost: 0,
+      tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+    })),
+    active: {},
+    terminals: [],
+    terminalsAvailable: true,
+    loops: [],
+    inventoryErrors: { terminals: "", automations: "" },
+    terminalFolderErrors: [],
+    updated: 1,
+    more: false,
+    workingFolders: ["/", "/rep", "/repo/", "C:\\", "C:\\WORK", "\\\\wsl$\\Ubuntu\\Repo", "\\\\wsl$\\Ubuntu\\repo"],
+  }
+  expect(emptyWorkingFolders(state)).toEqual(["/rep", "\\\\wsl$\\Ubuntu\\repo"])
+  state.folder = { directory: "/repo" }
+  expect(emptyWorkingFolders(state)).toEqual([])
 })
 
 test("the start folder is the one the client starts in, except the home folder", () => {
