@@ -2,7 +2,7 @@ export * as SwarmRoom from "./room"
 
 import { SwarmRoom as Contract } from "@turenlabs/schema/swarm-room"
 import { isWithReplicas } from "@turenlabs/effect-drizzle-sqlite"
-import { and, asc, desc, eq, gt, inArray, isNotNull, isNull } from "drizzle-orm"
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, or, sql } from "drizzle-orm"
 import { Context, Effect, Layer, Option, Queue, Schema } from "effect"
 import { AgentV2 } from "../agent"
 import { Database } from "../database/database"
@@ -795,16 +795,27 @@ const layer = Layer.effect(
     const lanes = Effect.fn("SwarmRoom.lanes")(function* (roomID: ID) {
       yield* requireRoom(roomID)
       const entries = yield* primary
-        .select()
+        .select({
+          kind: SwarmRoomEntryTable.kind,
+          seq: SwarmRoomEntryTable.seq,
+          member_id: SwarmRoomEntryTable.member_id,
+          actor_name: SwarmRoomEntryTable.actor_name,
+          payload: SwarmRoomEntryTable.payload,
+        })
         .from(SwarmRoomEntryTable)
-        .where(eq(SwarmRoomEntryTable.room_id, roomID))
+        .where(
+          and(
+            eq(SwarmRoomEntryTable.room_id, roomID),
+            // Any post with a string lane key can introduce a lane.
+            or(eq(SwarmRoomEntryTable.kind, "plan"), sql`json_type(${SwarmRoomEntryTable.payload}, '$.lane') = 'text'`),
+          ),
+        )
         .orderBy(asc(SwarmRoomEntryTable.seq))
         .all()
         .pipe(Effect.orDie)
       const laneOrder: string[] = []
       const laneMap = new Map<string, LaneState>()
       const claimOwner = new Map<string, { memberID: MemberID; name: string; seq: number }>()
-      const memberName = (row: typeof SwarmRoomEntryTable.$inferSelect) => row.actor_name
 
       for (const entry of entries) {
         const payload = entry.payload as Record<string, unknown> | null
@@ -841,8 +852,8 @@ const layer = Layer.effect(
         }
         const lane = laneMap.get(laneKey)!
         if (entry.kind === "claim") {
-          claimOwner.set(laneKey, { memberID: entry.member_id, name: memberName(entry), seq: entry.seq })
-          laneMap.set(laneKey, { ...lane, status: "claimed", claimedBy: entry.member_id, claimedByName: memberName(entry), updatedSeq: entry.seq })
+          claimOwner.set(laneKey, { memberID: entry.member_id, name: entry.actor_name, seq: entry.seq })
+          laneMap.set(laneKey, { ...lane, status: "claimed", claimedBy: entry.member_id, claimedByName: entry.actor_name, updatedSeq: entry.seq })
         }
         if (entry.kind === "release") {
           claimOwner.delete(laneKey)

@@ -575,6 +575,25 @@ describe("SwarmRoom", () => {
     }),
   )
 
+  it.effect("includes lane keys from advisory posts without treating them as status updates", () =>
+    Effect.gen(function* () {
+      const root = yield* setup("advisory-lane")
+      const rooms = yield* SwarmRoom.Service
+      const room = yield* rooms.open(root)
+      const actor = { sessionID: root }
+      const audit = Contract.LaneKey.make("audit")
+      yield* rooms.post({ roomID: room.id, actor, kind: "finding", text: "No lane", payload: { lane: 42 } })
+      yield* rooms.post({
+        roomID: room.id,
+        actor,
+        kind: "finding",
+        text: "Found a lane",
+        payload: { lane: audit, state: "done" },
+      })
+      expect(yield* rooms.lanes(room.id)).toEqual([{ key: audit, title: "audit", status: "open", updatedSeq: 0 }])
+    }),
+  )
+
   it.effect("lists a lane dropped and re-added by later plans once, in the latest plan order", () =>
     Effect.gen(function* () {
       const root = yield* setup("lane_readd_order")
