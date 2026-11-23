@@ -32,7 +32,7 @@ tar = "0.4.44"
 tlsh2 = "1.1.0"
 wasm-bindgen = "0.2.108"
 x509-parser = "0.17.0"
-zip = { version = "4.6.1", default-features = false, features = ["deflate"] }
+zip = { version = "=9.0.5", default-features = false, features = ["deflate"] }
 yaxpeax-arm = "=0.4.0"
 yaxpeax-arch = "=0.3.2"
 sevenz-rust = { version = "=0.6.1", path = "vendor/sevenz-rust", default-features = false }

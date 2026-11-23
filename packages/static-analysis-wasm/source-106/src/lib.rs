@@ -740,15 +740,18 @@ fn list_zip(bytes: &[u8], envelope: &mut Envelope) -> serde_json::Value {
             envelope.truncated = true;
             break;
         }
-        match archive.by_index(index) {
-            Ok(file) => entries.push(serde_json::json!({
+        let entry = archive.by_index(index).and_then(|file| {
+            Ok(serde_json::json!({
                 "index": index,
-                "name": clean(file.name()),
+                "name": clean(file.name()?.as_ref()),
                 "size": file.size(),
                 "compressedSize": file.compressed_size(),
                 "encrypted": file.encrypted(),
                 "directory": file.is_dir(),
-            })),
+            }))
+        });
+        match entry {
+            Ok(entry) => entries.push(entry),
             Err(error) => envelope.warnings.push(clean(&error.to_string())),
         }
     }
@@ -776,6 +779,13 @@ fn extract_zip(
             return serde_json::json!({ "format": "zip" });
         }
     };
+    let name = match file.name() {
+        Ok(name) => clean(name.as_ref()),
+        Err(error) => {
+            envelope.warnings.push(clean(&error.to_string()));
+            return serde_json::json!({ "format": "zip" });
+        }
+    };
     if file.size() > max_output as u64 {
         envelope
             .warnings
@@ -783,19 +793,19 @@ fn extract_zip(
         return serde_json::json!({
             "format": "zip",
             "index": index,
-            "name": clean(file.name()),
+            "name": name,
             "size": file.size(),
         });
     }
     let mut data = Vec::new();
     if let Err(error) = file.read_to_end(&mut data) {
         envelope.warnings.push(clean(&error.to_string()));
-        return serde_json::json!({ "format": "zip", "index": index, "name": clean(file.name()) });
+        return serde_json::json!({ "format": "zip", "index": index, "name": name });
     }
     serde_json::json!({
         "format": "zip",
         "index": index,
-        "name": clean(file.name()),
+        "name": name,
         "size": data.len(),
         "sha256": hex::encode(Sha256::digest(&data)),
         "bytesHex": hex::encode(&data[..data.len().min(MAX_OVERLAY_PREVIEW)]),

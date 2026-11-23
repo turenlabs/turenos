@@ -199,11 +199,11 @@ pub(crate) fn extract_dex(data: &[u8], dex_index: u32) -> Result<Vec<u8>, String
     };
     let mut archive = open_zip(data)?;
     for i in 0..archive.len().min(MAX_LIST) {
-        let name = archive
+        let matches = archive
             .by_index(i)
-            .map(|f| f.name().to_string())
-            .unwrap_or_default();
-        if name == wanted {
+            .and_then(|file| Ok(file.name()?.as_ref() == wanted))
+            .unwrap_or(false);
+        if matches {
             let (bytes, _size, truncated) = read_entry(&mut archive, i, MAX_ENTRY_BYTES)?;
             if truncated {
                 return Err("dex_entry_too_large".into());
@@ -375,7 +375,13 @@ pub(crate) fn inspect_apk(data: &[u8], options: &ApkOptions) -> Result<Value, St
                 continue;
             }
         };
-        let name = file.name().to_string();
+        let name = match file.name() {
+            Ok(name) => name.into_owned(),
+            Err(_) => {
+                warn(&mut warnings, "entry_header_failed");
+                continue;
+            }
+        };
         let lower = name.to_ascii_lowercase();
         if name == "AndroidManifest.xml" {
             manifest_index = Some(i);
