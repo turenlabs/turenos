@@ -1,6 +1,6 @@
 {
   "crate": "turen-static-analysis-wasm",
-  "sourceCommit": "d265ebbb0c5f9801c8eb446563a77cab670e4be2",
+  "sourceCommit": "bd110a3bd407178ef4383c72885d172ac7f38c0f",
   "dependencies": {
     "cfb": "0.10.0",
     "quickXml": "0.38.3",
@@ -11,5 +11,6 @@
     "commit": "0123ed144cfa7d672dae78b79a034d8900f9aaeb"
   },
   "rust": "1.97.1",
-  "wasmPack": "0.15.0"
+  "wasmPack": "0.15.0",
+  "run": "45103995980"
 }
