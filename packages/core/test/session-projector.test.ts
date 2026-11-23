@@ -290,9 +290,10 @@ describe("SessionProjector", () => {
       const previousShellID = SessionMessage.ID.create()
       const targetShellID = SessionMessage.ID.create()
       const otherShellID = SessionMessage.ID.create()
+      const callID = "shell-1\u0000\ud800"
       for (const entry of [
-        { messageID: previousShellID, callID: "shell-1" },
-        { messageID: targetShellID, callID: "shell-1" },
+        { messageID: previousShellID, callID },
+        { messageID: targetShellID, callID },
         { messageID: otherShellID, callID: "shell-2" },
       ]) {
         yield* events.publish(SessionEvent.Shell.Started, {
@@ -305,7 +306,7 @@ describe("SessionProjector", () => {
       yield* events.publish(SessionEvent.Shell.Ended, {
         sessionID,
         timestamp: DateTime.makeUnsafe(1),
-        callID: "shell-1",
+        callID,
         output: "/project",
         status: "completed",
       })

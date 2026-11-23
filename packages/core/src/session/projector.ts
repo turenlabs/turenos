@@ -529,7 +529,8 @@ function run(db: DatabaseService, event: SessionEvent.Event) {
               and(
                 eq(SessionMessageTable.session_id, event.data.sessionID),
                 eq(SessionMessageTable.type, "shell"),
-                sql`json_extract(${SessionMessageTable.data}, '$.callID') = ${callID}`,
+                // Compare JSON text so binding preserves unpaired surrogates in the call ID.
+                sql`(${SessionMessageTable.data} -> '$.callID') = ${JSON.stringify(callID)}`,
               ),
             )
             .orderBy(desc(SessionMessageTable.seq))
