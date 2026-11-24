@@ -1,9 +1,11 @@
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
+import { Database } from "@turenlabs/core/database/database"
 import { Effect, Layer, Context, Schema } from "effect"
 import { SessionV1 } from "@turenlabs/core/v1/session"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { Snapshot } from "@/snapshot"
 import { Session } from "./session"
+import { MessageV2 } from "./message-v2"
 import { SessionID, MessageID } from "./schema"
 import { Config } from "@/config/config"
 
@@ -75,6 +77,7 @@ const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
     const sessions = yield* Session.Service
+    const database = yield* Database.Service
     const snapshot = yield* Snapshot.Service
     const events = yield* EventV2Bridge.Service
     const config = yield* Config.Service
@@ -128,11 +131,16 @@ const layer = Layer.effect(
 
     const diff = Effect.fn("SessionSummary.diff")(function* (input: { sessionID: SessionID; messageID?: MessageID }) {
       if (!input.messageID) return []
-      const message = (yield* sessions.messages({ sessionID: input.sessionID }).pipe(Effect.orDie)).find(
-        (item) => item.info.id === input.messageID,
+      const message = yield* MessageV2.findInfo({ sessionID: input.sessionID, messageID: input.messageID }).pipe(
+        Effect.provideService(Database.Service, database),
+        Effect.orDie,
       )
-      if (!message || message.info.role !== "user") return []
-      const diffs = message.info.summary?.diffs ?? []
+      if (!message) {
+        yield* sessions.get(input.sessionID).pipe(Effect.orDie)
+        return []
+      }
+      if (message.role !== "user") return []
+      const diffs = message.summary?.diffs ?? []
       return diffs.map((item) => {
         if (item.file === undefined) return item
         const file = unquoteGitPath(item.file)
@@ -154,7 +162,7 @@ export type DiffInput = Schema.Schema.Type<typeof DiffInput>
 export const node = LayerNode.make({
   service: Service,
   layer: layer,
-  deps: [Session.node, Snapshot.node, EventV2Bridge.node, Config.node],
+  deps: [Session.node, Database.node, Snapshot.node, EventV2Bridge.node, Config.node],
 })
 
 export * as SessionSummary from "./summary"
