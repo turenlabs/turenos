@@ -1,6 +1,6 @@
 import { httpStatus, type Connection } from "../server"
 import type { DashboardState } from "../state"
-import { folderKey, folderContains, inFolder, type Folder } from "./folder"
+import { folderKey, inFolder, type Folder } from "./folder"
 
 /** The server answered that it cannot list the folder. */
 export class FolderNotFound extends Error {
@@ -48,8 +48,16 @@ export function defaultDirectory(state: DashboardState) {
 /** Open working folders without recent sessions, named under the list; none while the dashboard shows one folder. */
 export function emptyWorkingFolders(state: DashboardState) {
   const snapshot = state.snapshot
-  if (state.folder || !snapshot) return []
-  return (snapshot.workingFolders ?? []).filter(
-    (directory) => !snapshot.sessions.some((session) => folderContains(directory, session.location.directory)),
-  )
+  const folders = snapshot?.workingFolders
+  if (state.folder || !snapshot || !folders?.length) return []
+  const occupied = new Set<string>()
+  for (const directory of new Set(snapshot.sessions.map((session) => session.location.directory))) {
+    const path = folderKey(directory)
+    occupied.add(path)
+    for (let end = path.indexOf("/"); end !== -1; end = path.indexOf("/", end + 1)) {
+      occupied.add(path.slice(0, end))
+      occupied.add(path.slice(0, end + 1)) // POSIX and drive roots retain the slash.
+    }
+  }
+  return folders.filter((directory) => !occupied.has(folderKey(directory)))
 }
