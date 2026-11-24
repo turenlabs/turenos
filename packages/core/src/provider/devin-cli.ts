@@ -8,6 +8,7 @@ export const NAME = "Devin CLI (local)"
 export const API_URL = "local://devin-cli"
 export const DEFAULT_EXECUTABLE = "devin"
 export const EXECUTABLE_KEY = "executable"
+export const FALLBACK_CONTEXT = 32_768
 
 export type ProbeResult =
   | { readonly status: "installed"; readonly executable: string }
@@ -39,7 +40,7 @@ export const MODELS: ReadonlyArray<ModelDefinition> = [
     apiID: "default",
     name: "Devin default",
     // Conservative offline fallbacks, not verified Devin model limits.
-    context: 32_768,
+    context: FALLBACK_CONTEXT,
     output: 8_192,
   },
 ]

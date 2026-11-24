@@ -1,7 +1,12 @@
 export * as DevinACP from "./devin-acp"
 
-import type { ClientSideConnection, SessionNotification } from "@agentclientprotocol/sdk"
-import { LLMError, LLMEvent, LLMRequest, TransportReason } from "@turenlabs/llm"
+import type {
+  ClientSideConnection,
+  NewSessionResponse,
+  SessionConfigOption,
+  SessionNotification,
+} from "@agentclientprotocol/sdk"
+import { LLMError, LLMEvent, LLMRequest, TransportReason, Usage } from "@turenlabs/llm"
 import { Endpoint, Protocol, Route, type RouteDefaultsInput, type TransportDef } from "@turenlabs/llm/route"
 import { $ } from "bun"
 import { Cause, Effect, Queue, Schema, Stream } from "effect"
@@ -15,6 +20,7 @@ import { promisify } from "node:util"
 import { ModelV2 } from "../../model"
 import { DevinCLI } from "../../provider/devin-cli"
 import { ClaudeCodeMcp } from "./claude-code-mcp-namespace"
+import { DevinOptions } from "./devin-options"
 
 export const ROUTE_ID = "devin-acp"
 export const SUPPORTED_BUILDS = [
@@ -361,16 +367,325 @@ export function frames(source: ReadableStream<Uint8Array>, schemas: FrameSchemas
   )
 }
 
-const transport = (input: { executable: string; modelID: string }): TransportDef<LLMRequest, LLMRequest, LLMEvent> => ({
+type AcpSession = {
+  readonly session: NewSessionResponse
+  readonly configure: (id: string, value: string, timeout?: number) => Promise<readonly SessionConfigOption[]>
+  readonly prompt: (text: string) => ReturnType<ClientSideConnection["prompt"]>
+}
+
+const withSession = Effect.fnUntraced(function* <A>(
+  input: {
+    readonly executable: string
+    readonly modelID: string
+    readonly system: string
+    readonly token?: ReturnType<typeof ClaudeCodeMcp.requestToken>
+    readonly update?: (update: SessionNotification["update"]) => void
+  },
+  use: (client: AcpSession) => Promise<A>,
+) {
+  if (process.platform === "win32")
+    return yield* Effect.fail(
+      error("Devin CLI transport currently requires macOS or Linux. Use a WSL backend on Windows."),
+    )
+  const directory = yield* Effect.acquireRelease(
+    Effect.try({
+      try: () => mkdtempSync(join(tmpdir(), "turen-devin-")),
+      catch: () => error("Could not create Devin transport directory"),
+    }),
+    (directory) => Effect.sync(() => rmSync(directory, { recursive: true, force: true })),
+  )
+  const env = environment(directory)
+  const checked = yield* Effect.tryPromise({
+    try: async (signal) => {
+      // Keep the checked path when Devin's updater retargets its launcher symlink.
+      const executable = await realpath(DevinCLI.resolveExecutable(input.executable) ?? input.executable)
+      const version = await exec(executable, ["--version"], {
+        env,
+        cwd: directory,
+        signal,
+        timeout: 10_000,
+        maxBuffer: 32 * 1024,
+        killSignal: "SIGKILL",
+      })
+      return { executable, version: version.stdout.trim() }
+    },
+    catch: () => error("Could not check Devin CLI version. Install Devin CLI and run `devin auth login`."),
+  })
+  const build = SUPPORTED_BUILDS.find((build) => build.version === checked.version)
+  if (!build)
+    return yield* Effect.fail(
+      error(
+        `Unsupported Devin CLI build. Qualified builds: ${SUPPORTED_BUILDS.map((build) => build.version).join(", ")}. Requalify native-tool isolation before using another build.`,
+      ),
+    )
+  yield* Effect.try({
+    try: () => prepare(directory, input.system),
+    catch: () => error("Could not prepare the isolated Devin CLI workspace"),
+  })
+  const child = yield* Effect.acquireRelease(
+    Effect.sync(() => {
+      const proc = spawn(checked.executable, args(directory, input.modelID, build), {
+        env,
+        cwd: join(directory, "workspace"),
+        stdio: ["pipe", "pipe", "pipe"],
+        detached: true,
+        windowsHide: true,
+      })
+      const exit = new Promise<void>((resolve) => proc.once("close", () => resolve()))
+      // Diagnostics can contain credentials. Drain without forwarding them.
+      proc.stderr.resume()
+      proc.on("error", () => undefined)
+      return {
+        proc,
+        exit,
+        connection: undefined as ClientSideConnection | undefined,
+        sessionID: undefined as string | undefined,
+        closed: false,
+      }
+    }),
+    (child) =>
+      Effect.promise(async () => {
+        child.closed = true
+        if (child.sessionID)
+          await Promise.race([
+            child.connection?.cancel({ sessionId: child.sessionID }).catch(() => undefined),
+            new Promise<void>((resolve) => setTimeout(resolve, 250)),
+          ])
+        const signal = (value: NodeJS.Signals) => {
+          if (!child.proc.pid) return
+          try {
+            process.kill(-child.proc.pid, value)
+          } catch {
+            /* Owned process group already exited. */
+          }
+        }
+        signal("SIGTERM")
+        await Promise.race([child.exit, new Promise<void>((resolve) => setTimeout(resolve, 500))])
+        signal("SIGKILL")
+        await Promise.race([child.exit, new Promise<void>((resolve) => setTimeout(resolve, 1_000))])
+      }),
+  )
+  // Revoke host tool access before waiting for the CLI's process teardown.
+  const mcp = input.token
+    ? yield* ClaudeCodeMcp.serve(input.token).pipe(Effect.mapError((cause) => error(cause.message)))
+    : undefined
+  return yield* Effect.tryPromise({
+    try: async (signal) => {
+      const { ClientSideConnection, ndJsonStream } = await import("@agentclientprotocol/sdk")
+      const { zNewSessionResponse, zSessionNotification, zRequestPermissionRequest, zSetSessionConfigOptionResponse } =
+        await import("@agentclientprotocol/sdk/dist/schema/zod.gen.js")
+      // Stream cleanup can close the process before this promise receives an abort signal.
+      const requireActive = () => {
+        signal.throwIfAborted()
+        if (child.closed) throw new Error("Devin ACP turn stopped")
+      }
+      requireActive()
+      const pending = new Set<number>()
+      const sequence = { id: 0 }
+      // SDK 0.21.0 assigns numeric IDs from zero. Track requests before dispatch
+      // so unsolicited responses cannot reach its raw-payload error logger.
+      const call = <T>(request: () => Promise<T>, timeout: number) => {
+        requireActive()
+        const id = sequence.id++
+        pending.add(id)
+        return deadline(request(), timeout).finally(() => pending.delete(id))
+      }
+      const output = frames(
+        // Node and DOM stream reader overloads differ across package typecheck configurations.
+        Readable.toWeb(child.proc.stdout) as unknown as ReadableStream<Uint8Array>,
+        {
+          zSessionNotification,
+          zRequestPermissionRequest,
+        },
+        pending,
+      )
+      const connection = new ClientSideConnection(
+        () => ({
+          requestPermission: async () => ({ outcome: { outcome: "cancelled" } }),
+          sessionUpdate: async (notification) => {
+            if (child.closed || notification.sessionId !== child.sessionID) return
+            input.update?.(notification.update)
+          },
+        }),
+        ndJsonStream(Writable.toWeb(child.proc.stdin), output),
+      )
+      child.connection = connection
+      const init = await call(
+        () =>
+          connection.initialize({
+            protocolVersion: 1,
+            clientCapabilities: {},
+            clientInfo: { name: "turenos", version: "1" },
+          }),
+        START_TIMEOUT,
+      )
+      requireActive()
+      if (init.protocolVersion !== 1 || (mcp && !init.agentCapabilities?.mcpCapabilities?.http))
+        throw new Error("Devin ACP capabilities are incompatible")
+      const session = zNewSessionResponse.parse(
+        await call(
+          () =>
+            connection.newSession({
+              cwd: join(directory, "workspace"),
+              mcpServers: mcp
+                ? [
+                    {
+                      type: "http",
+                      name: "forge",
+                      url: mcp.url,
+                      headers: [{ name: "Authorization", value: mcp.authorization }],
+                    },
+                  ]
+                : [],
+            }),
+          START_TIMEOUT,
+        ),
+      )
+      requireActive()
+      child.sessionID = session.sessionId
+      return await use({
+        session,
+        configure: async (configId, value, timeout = START_TIMEOUT) =>
+          zSetSessionConfigOptionResponse.parse(
+            await call(
+              () => connection.setSessionConfigOption({ sessionId: session.sessionId, configId, value }),
+              timeout,
+            ),
+          ).configOptions,
+        prompt: (text) =>
+          call(
+            () => connection.prompt({ sessionId: session.sessionId, prompt: [{ type: "text", text }] }),
+            TURN_TIMEOUT,
+          ),
+      }).finally(() => {
+        child.closed = true
+      })
+    },
+    catch: (cause) => cause,
+  })
+})
+
+type RouteOptions = {
+  readonly executable: string
+  readonly modelID: string
+  readonly selection?: DevinOptions.Selection
+}
+type Telemetry = { readonly size: number; readonly used: number }
+
+const selections = new Map<string, DevinOptions.Options>()
+const windows = new Map<string, { readonly size: number; readonly observedAt: number }>()
+const modelKey = (executable: string, id: string) => JSON.stringify([executable, id])
+const windowKey = (input: RouteOptions) =>
+  JSON.stringify([input.executable, input.modelID, ...DevinOptions.keys.map((key) => input.selection?.[key])])
+
+function remember<T>(cache: Map<string, T>, key: string, value: T) {
+  cache.delete(key)
+  cache.set(key, value)
+  if (cache.size > 512) cache.delete(cache.keys().next().value!)
+}
+
+export const observedOptions = (executable: string, modelID: string) => selections.get(modelKey(executable, modelID))
+export const observedContext = (input: RouteOptions) => {
+  const value = windows.get(windowKey(input))
+  if (value && Date.now() - value.observedAt < 10 * 60_000) return value.size
+}
+
+async function configure(client: AcpSession, input: RouteOptions) {
+  let config: readonly SessionConfigOption[] | undefined | null = client.session.configOptions
+  const model = DevinOptions.select(config, "model")
+  if (model && input.modelID !== "default" && model.currentValue !== input.modelID) {
+    if (!DevinOptions.choices(model).some((choice) => choice.id === input.modelID))
+      throw error("The requested Devin model is unavailable. Refresh Local Providers.")
+    config = await client.configure(model.id, input.modelID)
+    if (DevinOptions.select(config, "model")?.currentValue !== input.modelID)
+      throw error("Devin did not apply the requested model.")
+  }
+  if (config) remember(selections, modelKey(input.executable, input.modelID), DevinOptions.options(config))
+  for (const key of DevinOptions.keys) {
+    const value = input.selection?.[key]
+    if (value === undefined) continue
+    const selector = DevinOptions.select(config, key)
+    if (
+      !selector ||
+      (key === "mode" && !DevinOptions.allowedMode(value)) ||
+      !DevinOptions.choices(selector).some((choice) => choice.id === value)
+    )
+      throw error(`Devin no longer offers the requested ${key} option. Refresh Local Providers.`)
+    if (selector.currentValue === value) continue
+    config = await client.configure(selector.id, value)
+  }
+  if (DevinOptions.select(config, "mode")?.currentValue === "bypass")
+    throw error("Devin selected an unsupported mode. Select Code, Smart, Ask, or Plan.")
+  for (const key of DevinOptions.keys) {
+    const value = input.selection?.[key]
+    if (value !== undefined && DevinOptions.select(config, key)?.currentValue !== value)
+      throw error(`Devin did not apply the requested ${key} option.`)
+  }
+  if (config) remember(selections, modelKey(input.executable, input.modelID), DevinOptions.options(config))
+  return DevinOptions.select(config, "model")?.currentValue
+}
+
+// Enumerating models is one handshake and no inference. Only warm a few common
+// option sets here; a turn learns the rest when its selected model is opened.
+export const discover = Effect.fnUntraced(function* (executable: string) {
+  return yield* withSession({ executable, modelID: "default", system: "" }, async (client) => {
+    const initial = client.session.configOptions
+    const model = DevinOptions.select(initial, "model")
+    if (!model) return []
+    const choices = DevinOptions.choices(model)
+    const defaultOptions = DevinOptions.options(initial)
+    remember(selections, modelKey(executable, "default"), defaultOptions)
+    remember(selections, modelKey(executable, model.currentValue), defaultOptions)
+    const started = performance.now()
+    for (const choice of choices.slice(0, 12)) {
+      if (performance.now() - started >= 1_500) break
+      if (choice.id === model.currentValue) continue
+      const config = await client.configure(model.id, choice.id, 500).catch(() => undefined)
+      if (!config) break
+      if (DevinOptions.select(config, "model")?.currentValue === choice.id)
+        remember(selections, modelKey(executable, choice.id), DevinOptions.options(config))
+    }
+    return choices
+  }).pipe(
+    Effect.scoped,
+    Effect.timeout("5 seconds"),
+    Effect.orElseSucceed(() => []),
+  )
+})
+
+function turnUsage(usage: Awaited<ReturnType<AcpSession["prompt"]>>["usage"], context: Telemetry | undefined) {
+  if (!usage) return
+  const input = usage.inputTokens
+  const output = usage.outputTokens
+  const read = usage.cachedReadTokens ?? 0
+  const write = usage.cachedWriteTokens ?? 0
+  const reasoning = usage.thoughtTokens ?? 0
+  if (
+    ![input, output, read, write, reasoning].every((value) => Number.isSafeInteger(value) && value >= 0) ||
+    read + write > input
+  )
+    return
+  const turn = {
+    nonCachedInputTokens: input - read - write,
+    cacheReadInputTokens: read,
+    cacheWriteInputTokens: write,
+    outputTokens: output,
+    reasoningTokens: Math.min(reasoning, output),
+  }
+  // An ACP turn can include several model calls. Only treat these totals as
+  // occupancy when they agree with the provider's separate context report.
+  return Usage.make({
+    turn,
+    ...(context?.used === input + output ? turn : undefined),
+  })
+}
+
+const transport = (input: RouteOptions): TransportDef<LLMRequest, LLMRequest, LLMEvent> => ({
   id: ROUTE_ID,
   prepare: (value) => Effect.succeed(value.request),
   frames: (request) =>
     Stream.callback<LLMEvent, LLMError>((queue) =>
       Effect.gen(function* () {
-        if (process.platform === "win32")
-          return yield* Effect.fail(
-            error("Devin CLI transport currently requires macOS or Linux. Use a WSL backend on Windows."),
-          )
         const text = yield* Effect.try({
           try: () => prompt(request),
           catch: (cause) => error(cause instanceof Error ? cause.message : "Could not prepare Devin prompt"),
@@ -382,189 +697,55 @@ const transport = (input: { executable: string; modelID: string }): TransportDef
         ].join("\n\n")
         if (Buffer.byteLength(system) > PROMPT_LIMIT)
           return yield* Effect.fail(error("Devin CLI system context exceeds the 4 MiB limit"))
-        const directory = yield* Effect.acquireRelease(
-          Effect.try({
-            try: () => mkdtempSync(join(tmpdir(), "turen-devin-")),
-            catch: () => error("Could not create Devin transport directory"),
-          }),
-          (directory) => Effect.sync(() => rmSync(directory, { recursive: true, force: true })),
-        )
-        const env = environment(directory)
-        const checked = yield* Effect.tryPromise({
-          try: async (signal) => {
-            // Keep the checked path when Devin's updater retargets its launcher symlink.
-            const executable = await realpath(DevinCLI.resolveExecutable(input.executable) ?? input.executable)
-            const version = await exec(executable, ["--version"], {
-              env,
-              cwd: directory,
-              signal,
-              timeout: 10_000,
-              maxBuffer: 32 * 1024,
-              killSignal: "SIGKILL",
-            })
-            return { executable, version: version.stdout.trim() }
-          },
-          catch: () => error("Could not check Devin CLI version. Install Devin CLI and run `devin auth login`."),
-        })
-        const build = SUPPORTED_BUILDS.find((build) => build.version === checked.version)
-        if (!build)
-          return yield* Effect.fail(
-            error(
-              `Unsupported Devin CLI build. Qualified builds: ${SUPPORTED_BUILDS.map((build) => build.version).join(", ")}. Requalify native-tool isolation before using another build.`,
-            ),
-          )
         const token = ClaudeCodeMcp.requestToken(request.metadata)
         if (request.tools.length > 0 && !token)
           return yield* Effect.fail(error("Devin CLI requires the host MCP tool bridge"))
-        yield* Effect.try({
-          try: () => prepare(directory, system),
-          catch: () => error("Could not prepare the isolated Devin CLI workspace"),
-        })
-        const child = yield* Effect.acquireRelease(
-          Effect.sync(() => {
-            const proc = spawn(checked.executable, args(directory, input.modelID, build), {
-              env,
-              cwd: join(directory, "workspace"),
-              stdio: ["pipe", "pipe", "pipe"],
-              detached: true,
-              windowsHide: true,
-            })
-            const exit = new Promise<void>((resolve) => proc.once("close", () => resolve()))
-            // Diagnostics can contain credentials. Drain without forwarding them.
-            proc.stderr.resume()
-            proc.on("error", () => undefined)
-            return {
-              proc,
-              exit,
-              connection: undefined as ClientSideConnection | undefined,
-              sessionID: undefined as string | undefined,
-              closed: false,
-            }
-          }),
-          (child) =>
-            Effect.promise(async () => {
-              child.closed = true
-              if (child.sessionID)
-                await Promise.race([
-                  child.connection?.cancel({ sessionId: child.sessionID }).catch(() => undefined),
-                  new Promise<void>((resolve) => setTimeout(resolve, 250)),
-                ])
-              const signal = (value: NodeJS.Signals) => {
-                if (!child.proc.pid) return
-                try {
-                  process.kill(-child.proc.pid, value)
-                } catch {
-                  /* Owned process group already exited. */
-                }
-              }
-              signal("SIGTERM")
-              await Promise.race([child.exit, new Promise<void>((resolve) => setTimeout(resolve, 500))])
-              signal("SIGKILL")
-              await Promise.race([child.exit, new Promise<void>((resolve) => setTimeout(resolve, 1_000))])
-            }),
-        )
-        // Revoke host tool access before waiting for the CLI's process teardown.
-        const mcp = token
-          ? yield* ClaudeCodeMcp.serve(token).pipe(Effect.mapError((cause) => error(cause.message)))
-          : undefined
         const state = adapterState()
-        Queue.offerUnsafe(queue, LLMEvent.stepStart({ index: 0 }))
-        const outcome = yield* Effect.tryPromise({
-          try: async (signal) => {
-            const { ClientSideConnection, ndJsonStream } = await import("@agentclientprotocol/sdk")
-            const { zSessionNotification, zRequestPermissionRequest } = await import(
-              "@agentclientprotocol/sdk/dist/schema/zod.gen.js"
-            )
-            // Stream cleanup can close the process before this promise receives an abort signal.
-            const requireActive = () => {
-              signal.throwIfAborted()
-              if (child.closed) throw new Error("Devin ACP turn stopped")
-            }
-            requireActive()
-            const pending = new Set<number>()
-            const sequence = { id: 0 }
-            // SDK 0.21.0 assigns numeric IDs from zero. Track requests before dispatch
-            // so unsolicited responses cannot reach its raw-payload error logger.
-            const call = <T>(request: () => Promise<T>, timeout: number) => {
-              requireActive()
-              const id = sequence.id++
-              pending.add(id)
-              return deadline(request(), timeout).finally(() => pending.delete(id))
-            }
-            const output = frames(
-              // Node and DOM stream reader overloads differ across package typecheck configurations.
-              Readable.toWeb(child.proc.stdout) as unknown as ReadableStream<Uint8Array>,
-              {
-                zSessionNotification,
-                zRequestPermissionRequest,
-              },
-              pending,
-            )
-            const connection = new ClientSideConnection(
-              () => ({
-                requestPermission: async () => ({ outcome: { outcome: "cancelled" } }),
-                sessionUpdate: async (notification) => {
-                  if (child.closed || notification.sessionId !== child.sessionID) return
-                  toEvents(state, notification.update).forEach((event) => Queue.offerUnsafe(queue, event))
-                },
-              }),
-              ndJsonStream(Writable.toWeb(child.proc.stdin), output),
-            )
-            child.connection = connection
-            const init = await call(
-              () =>
-                connection.initialize({
-                  protocolVersion: 1,
-                  clientCapabilities: {},
-                  clientInfo: { name: "turenos", version: "1" },
-                }),
-              START_TIMEOUT,
-            )
-            requireActive()
-            if (init.protocolVersion !== 1 || (mcp && !init.agentCapabilities?.mcpCapabilities?.http))
-              throw new Error("Devin ACP capabilities are incompatible")
-            const session = await call(
-              () =>
-                connection.newSession({
-                  cwd: join(directory, "workspace"),
-                  mcpServers: mcp
-                    ? [
-                        {
-                          type: "http",
-                          name: "forge",
-                          url: mcp.url,
-                          headers: [{ name: "Authorization", value: mcp.authorization }],
-                        },
-                      ]
-                    : [],
-                }),
-              START_TIMEOUT,
-            )
-            requireActive()
-            child.sessionID = session.sessionId
-            return await call(
-              () => connection.prompt({ sessionId: session.sessionId, prompt: [{ type: "text", text }] }),
-              TURN_TIMEOUT,
-            )
+        let context: Telemetry | undefined
+        const outcome = yield* withSession(
+          {
+            ...input,
+            system,
+            token,
+            update: (update) => {
+              if (
+                update.sessionUpdate === "usage_update" &&
+                Number.isSafeInteger(update.size) &&
+                Number.isSafeInteger(update.used) &&
+                update.size > 0 &&
+                update.size <= 4_000_000 &&
+                update.used >= 0 &&
+                update.used <= update.size
+              )
+                context = { size: update.size, used: update.used }
+              toEvents(state, update).forEach((event) => Queue.offerUnsafe(queue, event))
+            },
           },
-          catch: (cause) => cause,
-        }).pipe(
-          Effect.match({
-            onFailure: (cause) => ({ ok: false as const, cause }),
-            onSuccess: (value) => ({ ok: true as const, value }),
+          async (client) => {
+            const selected = await configure(client, input)
+            Queue.offerUnsafe(queue, LLMEvent.stepStart({ index: 0 }))
+            return { result: await client.prompt(text), selected }
+          },
+        ).pipe(
+          Effect.matchEffect({
+            onFailure: (cause) =>
+              cause instanceof LLMError ? Effect.fail(cause) : Effect.succeed({ ok: false as const, cause }),
+            onSuccess: (value) => Effect.succeed({ ok: true as const, value }),
           }),
         )
         if (!outcome.ok) Queue.offerUnsafe(queue, safeProviderError(outcome.cause))
         if (outcome.ok) {
           closeContent(state).forEach((event) => Queue.offerUnsafe(queue, event))
-          const stopped = outcome.value.stopReason
+          const stopped = outcome.value.result.stopReason
           if (stopped === "end_turn" || stopped === "max_tokens") {
             const reason = stopped === "end_turn" ? "stop" : "length"
-            Queue.offerUnsafe(queue, LLMEvent.stepFinish({ index: 0, reason }))
-            Queue.offerUnsafe(queue, LLMEvent.finish({ reason }))
+            const stable = outcome.value.selected !== "adaptive"
+            if (context && stable) remember(windows, windowKey(input), { size: context.size, observedAt: Date.now() })
+            const usage = turnUsage(outcome.value.result.usage, stable ? context : undefined)
+            Queue.offerUnsafe(queue, LLMEvent.stepFinish({ index: 0, reason, usage }))
+            Queue.offerUnsafe(queue, LLMEvent.finish({ reason, usage }))
           } else Queue.offerUnsafe(queue, safeProviderError(new Error(`Devin ACP turn stopped: ${stopped}`)))
         }
-        child.closed = true
         Queue.endUnsafe(queue)
       }).pipe(
         Effect.catchCauseIf(
@@ -583,15 +764,24 @@ export const routeModel = (input: {
   modelID: string
   executable: string
   defaults: RouteDefaultsInput
-}) =>
-  Route.make({
+  selection?: DevinOptions.Selection
+}) => {
+  const reported = observedContext(input)
+  const configured = input.defaults.limits?.context
+  const context =
+    reported !== undefined && configured && configured !== DevinCLI.FALLBACK_CONTEXT
+      ? Math.min(reported, configured)
+      : reported
+  return Route.make({
     id: ROUTE_ID,
     provider: input.providerID,
     protocol,
     endpoint: Endpoint.path("", { baseURL: "https://devin-cli.invalid" }),
     transport: transport(input),
-    defaults: input.defaults,
+    defaults:
+      context === undefined ? input.defaults : { ...input.defaults, limits: { ...input.defaults.limits, context } },
   }).model({ id: input.modelID, compatibility: { mediaInput: false } })
+}
 
 export const model = (input: { model: ModelV2.Info; defaults: RouteDefaultsInput }) => {
   const configured = input.model.request.body[DevinCLI.EXECUTABLE_KEY]
@@ -602,5 +792,6 @@ export const model = (input: { model: ModelV2.Info; defaults: RouteDefaultsInput
       DevinCLI.resolveExecutable(configured) ??
       (typeof configured === "string" ? configured : DevinCLI.DEFAULT_EXECUTABLE),
     defaults: input.defaults,
+    selection: DevinOptions.selection(input.model.request.body),
   })
 }

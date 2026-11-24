@@ -10,13 +10,16 @@ TurenOS Session V2 can use an installed Devin CLI and its existing login. This l
 4. Run `devin auth login` if login is needed.
 5. Open **Settings > Local Providers** in TurenOS.
 6. Select **Devin CLI (local)** and select **Refresh**.
-7. Select **Devin default** (`devin-cli/default`) in the model picker.
+7. Choose a Devin model in the model picker. **Devin default** follows the CLI's default selection.
+8. Choose a variant for reasoning effort, mode, or speed when Devin offers those options.
 
 See the [Devin installation guide](https://docs.devin.ai/cli) for installation options. TurenOS does not install, update, or sign in to Devin. For SSH or WSL, install and authenticate it on that backend, not only on the Desktop machine.
 
-Discovery checks the executable without starting Devin or reading credentials. A connected provider means installed, not authenticated. The first request checks CLI compatibility, login, and model access. Refresh after installing the executable or changing its global configuration.
+Discovery checks whether the configured executable is installed. With an existing login file, TurenOS opens an isolated ACP session to read the available models and their options. Discovery sends no model prompt and caches the model list for 30 seconds. **Devin default** is available while discovery is unavailable.
 
-The catalog exposes one model, `default`. The adapter omits `--model`, so Devin selects its account default. It does not enumerate models or import the user's Devin model configuration.
+ACP reports the options for the current model. TurenOS checks the default model and a bounded set of initial choices during discovery. It learns additional options when those models run. Refresh Local Providers to show newly learned options.
+
+Variants combine the advertised reasoning effort, speed, and Code, Smart, Ask, or Plan mode. For example, `plan-high-fast` selects Plan mode, High reasoning, and Fast speed where the model supports that combination. TurenOS validates the selected values against ACP before sending the prompt. The host MCP bridge applies TurenOS tool permissions in each mode.
 
 ## Tool routing
 
@@ -92,8 +95,8 @@ Linux, WSL, and packaged Desktop execution still need qualification. See the [De
 - Native Windows execution fails explicitly. Use a WSL backend.
 - ACP initialization and session creation each have a 30-second deadline. A model prompt has a 15-minute deadline.
 - Prompt and system text each have a 4 MiB limit. ACP output has an 8 MiB frame limit and 32 MiB total limit.
-- The catalog uses estimated context and output limits of 32,768 and 8,192 tokens. TurenOS bases automatic compaction on the messages it replays in the ACP prompt. Devin loads system rules and MCP tool definitions separately.
-- Token usage and API costs remain unavailable. Devin's account plan controls billing; local execution does not mean offline inference.
+- TurenOS budgets the messages it replays in the ACP prompt. A fixed model starts with estimated limits of 32,768 context tokens and 8,192 output tokens. When ACP reports a window size, TurenOS uses that size for the same selection for ten minutes. Adaptive routing uses the fallback because its underlying model can change.
+- ACP turn usage supplies processed-token totals. TurenOS uses those totals as context occupancy when they match the separate ACP context report. Devin's account plan controls billing.
 - This provider targets Core Session V2. It does not add a Devin route to the legacy Forge session processor.
 - Cloud sessions, `/handoff`, saved Devin-session loading, and live model switching are outside this preview.
 
@@ -105,6 +108,7 @@ The [adopted research](../experimental/devin-cli/README.md) records protocol evi
 - [`packages/core/src/plugin/provider/devin-cli.ts`](../../packages/core/src/plugin/provider/devin-cli.ts)
 - [`packages/core/src/plugin/provider.ts`](../../packages/core/src/plugin/provider.ts)
 - [`packages/core/src/session/runner/devin-acp.ts`](../../packages/core/src/session/runner/devin-acp.ts)
+- [`packages/core/src/session/runner/devin-options.ts`](../../packages/core/src/session/runner/devin-options.ts)
 - [`packages/core/src/session/runner/model.ts`](../../packages/core/src/session/runner/model.ts)
 - [`packages/core/src/session/runner/llm.ts`](../../packages/core/src/session/runner/llm.ts)
 - [`packages/core/src/session/runner/claude-code-mcp.ts`](../../packages/core/src/session/runner/claude-code-mcp.ts)

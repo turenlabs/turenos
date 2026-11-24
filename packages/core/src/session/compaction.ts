@@ -21,6 +21,8 @@ import { SessionSchema } from "./schema"
 import { Token } from "../util/token"
 import { matchesModel, toLLMMessages, type CatalogRef } from "./runner/to-llm-message"
 import { ToolResultStore } from "../tool-result-store"
+import { DevinCLI } from "../provider/devin-cli"
+import { DevinACP } from "./runner/devin-acp"
 
 const DEFAULT_BUFFER = 20_000
 /**
@@ -1371,6 +1373,9 @@ export const reportedOccupancy = (
   model: Model,
   ref: CatalogRef = { providerID: model.provider, id: model.id },
 ) => {
+  // After restart or cache expiry, a recorded Devin turn may have used a much larger window
+  // than the offline fallback. Resume estimating the ACP replay until the window is observed again.
+  if (model.route.id === DevinACP.ROUTE_ID && model.route.defaults.limits?.context === DevinCLI.FALLBACK_CONTEXT) return
   const checkpoint = entries.findLast((entry) => entry.message.type === "compaction")?.message
   const checkpointMillis = checkpoint === undefined ? undefined : DateTime.toEpochMillis(checkpoint.time.created)
   const index = entries.findLastIndex((entry) => {
