@@ -600,13 +600,14 @@ const layer = Layer.effect(
         .pipe(Effect.orDie)
     })
 
+    // Build the FTS ID set once instead of scanning its unindexed ID column for every drawer.
     const indexState = yield* primary
       .all<{ drawers: number; index_rows: number; missing: number }>(
         sql`SELECT
           (SELECT count(*) FROM ${MemoryDrawerTable}) AS drawers,
           (SELECT count(*) FROM ${FTS}) AS index_rows,
-          (SELECT count(*) FROM ${MemoryDrawerTable} AS d
-            WHERE NOT EXISTS (SELECT 1 FROM ${FTS} AS f WHERE f.drawer_id = d.id)) AS missing`,
+          EXISTS (SELECT 1 FROM ${MemoryDrawerTable} AS d
+            WHERE d.id IS NULL OR d.id NOT IN (SELECT drawer_id FROM ${FTS} WHERE drawer_id IS NOT NULL)) AS missing`,
       )
       .pipe(Effect.orDie)
     const state = indexState[0]
