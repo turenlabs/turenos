@@ -26,6 +26,7 @@ export interface OpenAIOptionsInput {
   // `ResponseIncludable[]` union exactly so AI SDK callers and direct
   // native-SDK callers share one shape and no translation is required.
   readonly include?: ReadonlyArray<OpenAIResponseIncludable>
+  readonly parallelToolCalls?: boolean
   readonly textVerbosity?: TextVerbosity
   readonly serviceTier?: OpenAIServiceTier
 }
@@ -47,6 +48,7 @@ const openAIProviderOptions = (options: OpenAIOptionsInput | undefined): Provide
       reasoningMode: options?.reasoningMode,
       reasoningContext: options?.reasoningContext,
       include: options?.include,
+      parallelToolCalls: options?.parallelToolCalls,
       textVerbosity: options?.textVerbosity,
       serviceTier: options?.serviceTier,
     }),

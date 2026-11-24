@@ -34,7 +34,7 @@ const layer = Layer.effectDiscard(
         }),
         [stateName]: Tool.make({
           description:
-            "Persist the current prediction, explicit hypotheses, and next action before uncertain work; update it after external results so assumptions are resolved against evidence.",
+            "Persist the current prediction, explicit hypotheses, and next action before genuinely uncertain work or root-cause debugging; update it after external results so assumptions are resolved against evidence. Skip for routine reads or direct, well-specified edits, and batch with your next tool call when possible.",
           input: Schema.Struct({
             prediction: Reflection.WorkState.fields.prediction,
             hypotheses: Reflection.WorkState.fields.hypotheses.annotate({

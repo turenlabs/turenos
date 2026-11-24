@@ -77,7 +77,7 @@ const decodeCompletion = Schema.decodeUnknownOption(Schema.fromJsonString(Comple
 
 export const GUIDANCE = [
   "Embedded work discipline:",
-  "- Before a non-trivial action with an uncertain outcome, call reflection_state with a concise prediction, explicit hypotheses, and the next action.",
+  "- Before an action with a genuinely uncertain outcome or competing root-cause hypotheses, call reflection_state with a concise prediction, explicit hypotheses, and the next action. Skip reflection_state for routine reads, searches, and direct, well-specified edits; when you do call it, batch it in the same turn with your next tool call whenever possible.",
   "- Use reflection_read when a prior prediction may already exist, especially after compaction, interruption, or resuming a Session.",
   "- Treat assumptions as open hypotheses. After tool, test, build, or user results arrive, update each relevant hypothesis to supported, rejected, or inconclusive and cite that external evidence.",
   "- Do not claim success while a material hypothesis remains open. Verify the final result against an authoritative external result, not only your own implementation or reasoning.",

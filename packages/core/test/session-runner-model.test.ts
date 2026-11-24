@@ -404,6 +404,7 @@ describe("SessionRunnerModel", () => {
       expect(resolved.route.defaults.generation).toMatchObject({ temperature: 0.2 })
       expect(resolved.route.defaults.providerOptions).toEqual({
         openai: {
+          parallelToolCalls: true,
           store: false,
           reasoningEffort: "high",
           serviceTier: "priority",
@@ -901,6 +902,44 @@ describe("SessionRunnerModel", () => {
       ])
       expect(events.find((event) => event.type === "text-delta")).toMatchObject({ text: "Codex ready." })
       expect(JSON.stringify(requests)).not.toContain("must-not-project")
+    }),
+  )
+
+  it.effect("asks the ChatGPT Codex route for reasoning summaries and parallel tool calls", () =>
+    Effect.gen(function* () {
+      const catalog = model({ type: "aisdk", package: "@ai-sdk/openai" })
+      const resolved = yield* SessionRunnerModel.fromCatalogModelWithAISDK(
+        ModelV2.Info.make({
+          ...catalog,
+          providerID: ProviderV2.ID.openai,
+          api: { ...catalog.api, id: ModelV2.ID.make("gpt-6.2-sol") },
+          request: {
+            headers: {},
+            body: { store: false, reasoningEffort: "low", include: ["reasoning.encrypted_content"] },
+          },
+        }),
+        Credential.OAuth.make({
+          type: "oauth",
+          methodID: Integration.MethodID.make("chatgpt-browser"),
+          access: "chatgpt-access",
+          refresh: "chatgpt-refresh",
+          expires: Date.now() + 60_000,
+        }),
+      ).pipe(Effect.provide(AISDK.locationLayer))
+      const prepared = yield* LLMClient.prepare(
+        LLM.request({
+          model: resolved,
+          prompt: "Hello.",
+          tools: [{ name: "lookup", description: "Lookup data", inputSchema: { type: "object" } }],
+        }),
+      )
+
+      // The catalog's effort still applies beside the route's summary default.
+      expect(prepared.body).toMatchObject({
+        reasoning: { effort: "low", summary: "auto" },
+        include: ["reasoning.encrypted_content"],
+        parallel_tool_calls: true,
+      })
     }),
   )
 

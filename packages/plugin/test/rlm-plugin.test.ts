@@ -199,6 +199,35 @@ describe("RLM plugin", () => {
     expect(await search("हिन्दी")).toEqual([{ line: 4, score: 2, text: "हिन्दी दस्तावेज़" }])
     expect(await search("→")).toEqual([{ line: 5, score: 1, text: "deploy → verify" }])
   })
+
+  test("externalizes uppercase RLM-CONTEXT tags and reuses parsed lines when unchanged", async () => {
+    const hooks = await createRlmPlugin()({} as PluginInput)
+    const info: UserMessage = {
+      id: "message-upper",
+      sessionID: "session-upper",
+      role: "user",
+      time: { created: 0 },
+      agent: "build",
+      model: { providerID: "test", modelID: "test" },
+    }
+    const raw = '<!-- RLM-CONTEXT name="Upper" -->\nfirst line\nsecond line\n<!-- /RLM-CONTEXT -->'
+    const part1 = {
+      id: "part-1",
+      sessionID: info.sessionID,
+      messageID: info.id,
+      type: "text" as const,
+      text: raw,
+    }
+
+    await hooks["experimental.chat.messages.transform"]!({}, { messages: [{ info, parts: [part1] }] })
+    expect(part1.text).toContain("[RLM external context")
+    const contextID = /id=([^ ]+)/.exec(part1.text)?.[1]
+    expect(contextID).toBeDefined()
+
+    const part2 = { ...part1, text: raw }
+    await hooks["experimental.chat.messages.transform"]!({}, { messages: [{ info, parts: [part2] }] })
+    expect(part2.text).toBe(part1.text)
+  })
 })
 
 function toolOutput(result: ToolResult) {

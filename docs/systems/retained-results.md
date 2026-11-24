@@ -17,9 +17,7 @@ they are separate from durable project [memory](./memory.md).
 3. Result tools use the invocation's trusted Session ID and check current `read` permission for `tool-results` or
    `tool-result:<id>`. Possessing an ID does not grant access to another Session's capture. Cross-session and child-session
    sharing are not implemented.
-4. Durable-output bounding and history pruning preserve the reference. `result_list` can rediscover this Session's
-   remaining captures after compaction. Reading, searching, and computing never rerun the source invocation; their own
-   outputs are excluded from automatic recapture.
+4. Durable-output bounding, history pruning, and compaction summarization preserve the reference. When `SessionCompaction.serializeMessage` elides a bounded preview for summarization, it appends `[Retained result: <id> (<tool>)]` if elision removed the middle capture notice. `result_list` can also rediscover this Session's remaining captures after compaction. Reading, searching, and computing never rerun the source invocation; their own outputs are excluded from automatic recapture.
 
 Captures contain the output available at settlement after [secret output protection](./secret-output-protection.md).
 Exact readback is exact for that protected capture, not for unmasked source files or bytes a producer omitted. The

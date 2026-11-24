@@ -1,6 +1,6 @@
 import { SecretRedaction } from "@turenlabs/core/secret-redaction"
 import { describe, expect } from "bun:test"
-import { DateTime, Effect, Schema, Stream } from "effect"
+import { DateTime, Effect, Layer, Schema, Stream } from "effect"
 import { asc, eq, sql } from "drizzle-orm"
 import type { Config } from "@turenlabs/core/config"
 import { Database } from "@turenlabs/core/database/database"
@@ -8,6 +8,7 @@ import { LayerNode } from "@turenlabs/core/effect/layer-node"
 import { AppNodeBuilder } from "@turenlabs/core/effect/app-node-builder"
 import { EventV2 } from "@turenlabs/core/event"
 import { EventTable } from "@turenlabs/core/event/sql"
+import { Location } from "@turenlabs/core/location"
 import { ModelV2 } from "@turenlabs/core/model"
 import { Project } from "@turenlabs/core/project"
 import { ProjectTable } from "@turenlabs/core/project/sql"
@@ -15,6 +16,7 @@ import { ProviderV2 } from "@turenlabs/core/provider"
 import { AbsolutePath, RelativePath } from "@turenlabs/core/schema"
 import { SessionV2 } from "@turenlabs/core/session"
 import { SessionCompaction } from "@turenlabs/core/session/compaction"
+import { SessionContextManagement } from "@turenlabs/core/session/context-management"
 import { SessionEvent } from "@turenlabs/core/session/event"
 import { SessionMessage } from "@turenlabs/core/session/message"
 import { Prompt } from "@turenlabs/core/session/prompt"
@@ -24,6 +26,7 @@ import { SessionExecution } from "@turenlabs/core/session/execution"
 import { SessionInput } from "@turenlabs/core/session/input"
 import { SessionHistory } from "@turenlabs/core/session/history"
 import { ProviderUsageTable, SessionInputTable, SessionMessageTable, SessionTable } from "@turenlabs/core/session/sql"
+import { location } from "./fixture/location"
 import { testEffect } from "./lib/effect"
 import { Snapshot } from "@turenlabs/core/snapshot"
 
@@ -1224,6 +1227,28 @@ describe("SessionProjector usage roll-up", () => {
     tokens: { input: 1_000, output: 40, reasoning: 0, cache: { read: 50_000, write: 0 } },
     billed: { input: 3_000, output: 120, reasoning: 30, cache: { read: 150_000, write: 2_000 } },
   })
+
+  const contextStatus = testEffect(
+    AppNodeBuilder.build(LayerNode.group([Database.node, SessionContextManagement.node, EventV2.node, SessionProjector.node]), [
+      [
+        Location.node,
+        Layer.succeed(
+          Location.Service,
+          Location.Service.of(location({ directory: AbsolutePath.make(import.meta.dir) })),
+        ),
+      ],
+    ]),
+  )
+
+  contextStatus.effect("reports saved assistant occupancy separately from billed usage", () =>
+    Effect.gen(function* () {
+      yield* seed([assistantRow(first, 0)])
+      const events = yield* EventV2.Service
+      yield* events.publish(SessionEvent.Step.Ended, settled(first, 1))
+      const management = yield* SessionContextManagement.Service
+      expect((yield* management.status(sessionID)).contextTokens).toBe(51_000)
+    }),
+  )
 
   it.effect("records one provider_usage row per settled turn, and re-projection does not add a second", () =>
     Effect.gen(function* () {

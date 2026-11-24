@@ -160,6 +160,7 @@ const OpenAIResponsesCoreFields = {
   instructions: Schema.optional(Schema.String),
   tools: optionalArray(Schema.Union([OpenAIResponsesTool, OpenAIResponsesToolSearch])),
   tool_choice: Schema.optional(OpenAIResponsesToolChoice),
+  parallel_tool_calls: Schema.optional(Schema.Boolean),
   store: Schema.optional(Schema.Boolean),
   service_tier: Schema.optional(OpenAIOptions.OpenAIServiceTier),
   prompt_cache_key: Schema.optional(Schema.String),
@@ -630,6 +631,7 @@ const fromRequest = Effect.fn("OpenAIResponses.fromRequest")(function* (request:
               : lowerTool(tool, schema)
           }),
     tool_choice: request.toolChoice ? yield* lowerToolChoice(request.toolChoice) : undefined,
+    parallel_tool_calls: request.tools.length === 0 ? undefined : OpenAIOptions.parallelToolCalls(request),
     stream: true as const,
     max_output_tokens: request.model.compatibility?.maxOutputTokens === false ? undefined : generation?.maxTokens,
     temperature: generation?.temperature,

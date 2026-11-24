@@ -101,6 +101,19 @@ describe("describe", () => {
   test("counts cache writes as context, as providers that report them separately do", () => {
     const status = SessionContextManagement.describe({ ...base, recent: [row(5, 1_000, 100_000, 99_000)] })
     expect(status.contextTokens).toBe(200_000)
+    // 100k cache read out of 200k total input (1k fresh + 100k read + 99k write) = 50%.
+    expect(status.cacheHitPercent).toBe(50)
+  })
+
+  test("prefers single-request assistant occupancy over multi-iteration billed usage", () => {
+    const status = SessionContextManagement.describe({
+      ...base,
+      occupancy: 80_000,
+      recent: [row(5, 40_000, 200_000, 80_000)],
+    })
+    expect(status.contextTokens).toBe(80_000)
+    expect(status.usedPercent).toBe(8)
+    expect(status.cacheHitPercent).toBe(63)
   })
 
   test("classifies the cache by idle time against a five minute lifetime", () => {

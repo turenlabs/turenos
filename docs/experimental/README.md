@@ -13,3 +13,5 @@ Each page starts with a status line. When a prototype ships, its behavior moves 
 - [Embedding model benchmark](./embedding-models.md): small embedding models against the BM25 baseline for memory,
   code, and repository retrieval.
 - [Token efficiency](./token-efficiency/README.md): measured context-token cost, benchmark method, and remaining overhead.
+- [Coding session benchmark](./coding-session-benchmark.md): run the two-turn file-editing benchmark for TurenOS and distance-cli.
+- [OpenAI harness comparison](./openai-harness-comparison.md): correctness, latency, and token usage across TurenOS, distance-cli, and Codex.

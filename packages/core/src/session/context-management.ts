@@ -137,9 +137,16 @@ const layer = Layer.effect(
         .orderBy(desc(SessionMessageTable.time_created))
         .all()
         .pipe(Effect.orDie)
+      const latestMessage = recent[0] ? yield* store.message(recent[0].assistant_message_id) : undefined
+      const tokens =
+        latestMessage?.sessionID === sessionID && latestMessage.message.type === "assistant"
+          ? latestMessage.message.tokens
+          : undefined
+      const latestOccupancy = tokens ? tokens.input + tokens.cache.read + tokens.cache.write : undefined
       const now = Date.now()
       return describe({
         window,
+        occupancy: latestOccupancy !== undefined && latestOccupancy > 0 ? latestOccupancy : undefined,
         recent,
         turns: totals?.turns ?? 0,
         cost: Number(totals?.cost ?? 0),
@@ -161,6 +168,7 @@ export const node = makeLocationNode({
 /** Pure so it can be tested without a database. `recent` is newest first; `checkpoints` are creation times. */
 export const describe = (input: {
   readonly window: number | undefined
+  readonly occupancy?: number | undefined
   readonly recent: ReadonlyArray<{
     readonly time: number
     readonly tokens_input: number
@@ -178,13 +186,16 @@ export const describe = (input: {
   const contextTokens =
     latest === undefined || compactedSince
       ? undefined
-      : latest.tokens_input + latest.tokens_cache_read + latest.tokens_cache_write
+      : (input.occupancy ?? latest.tokens_input + latest.tokens_cache_read + latest.tokens_cache_write)
   const usedPercent =
     contextTokens === undefined || input.window === undefined || input.window <= 0
       ? undefined
       : Math.round((contextTokens / input.window) * 100)
   const read = input.recent.reduce((total, row) => total + row.tokens_cache_read, 0)
-  const all = input.recent.reduce((total, row) => total + row.tokens_input + row.tokens_cache_read, 0)
+  const all = input.recent.reduce(
+    (total, row) => total + row.tokens_input + row.tokens_cache_read + row.tokens_cache_write,
+    0,
+  )
   const seconds = latest === undefined ? undefined : Math.max(0, Math.round((input.now - latest.time) / 1000))
   return {
     contextTokens,

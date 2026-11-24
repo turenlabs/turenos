@@ -56,6 +56,7 @@ This recovery applies only before text or tool input starts. A second 401 or a f
 API-key authentication failures do not use this recovery.
 Refreshes for one credential run serially within the process, including across Locations.
 A waiting caller reads the stored credential again instead of reusing a rotated refresh token.
+The `@ai-sdk/openai` and ChatGPT Codex OAuth routes set `parallelToolCalls: true` as a route default (and the ChatGPT Codex route also sets `reasoningSummary: "auto"`) before applying catalog or Session overrides; `OpenAIResponses` lowers `parallel_tool_calls` only when the request carries tools.
 
 ```txt
 Catalog + credentials → SessionRunnerModel.resolve → Model route

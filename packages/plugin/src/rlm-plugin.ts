@@ -89,12 +89,13 @@ export function createRlmPlugin(options: RlmPluginOptions = {}): Plugin {
 
         const contextID = encodeURIComponent(`${sessionID}:${messageID}:${partID}:${blockIndex}`)
         const contextName = (name?.trim() || "context").replace(/\s+/g, " ").slice(0, 80)
+        const existing = contexts.get(contextID)
         rememberContext({
           id: contextID,
           sessionID,
           name: contextName,
           text: contextText,
-          lines: contextText.split("\n"),
+          lines: existing && existing.text === contextText ? existing.lines : contextText.split("\n"),
         })
         blockIndex += 1
         return `\n[RLM external context id=${contextID} name=${JSON.stringify(contextName)} chars=${contextText.length}]\n`
@@ -157,7 +158,7 @@ export function createRlmPlugin(options: RlmPluginOptions = {}): Plugin {
         for (const message of output.messages) {
           if (message.info.role !== "user") continue
           for (const part of message.parts) {
-            if (part.type !== "text" || !part.text.includes("rlm-context")) continue
+            if (part.type !== "text" || !/rlm-context/i.test(part.text)) continue
             part.text = externalizeText(part.text, message.info.sessionID, message.info.id, part.id)
           }
         }
