@@ -4,6 +4,20 @@ import type { Detail } from "../server"
 export type Mode = "git" | "branch" | "turn"
 export type FileDiff = { file: string; patch?: string; additions: number; deletions: number; status?: string }
 
+export function mergeTurnDiffs(touched: readonly string[], current: readonly FileDiff[]) {
+  // Direct scans cost less than building an index for a few touched files.
+  const byFile = touched.length > 8 ? new Map<string, FileDiff>() : undefined
+  if (byFile) {
+    for (const item of current) {
+      if (!byFile.has(item.file)) byFile.set(item.file, item)
+    }
+  }
+  return touched.map(
+    (file) =>
+      (byFile ? byFile.get(file) : current.find((item) => item.file === file)) ?? { file, additions: 0, deletions: 0 },
+  )
+}
+
 /** Files the agent changed since the newest prompt the user typed. */
 export function turnFiles(messages: Detail["messages"]) {
   const start = messages.findLastIndex(

@@ -253,6 +253,13 @@ describe("SwarmRoom", () => {
       expect(claim.kind).toBe("claim")
       expect(claim.actor.type).toBe("worker")
 
+      yield* rooms.claim({
+        roomID: room.id,
+        actor: leader,
+        lane: Contract.LaneKey.make("audit"),
+        baseRevision: claim.seq,
+      })
+
       const conflict = yield* Effect.flip(
         rooms.claim({ roomID: room.id, actor: leader, lane: Contract.LaneKey.make("research"), baseRevision: claim.seq }),
       )
@@ -289,6 +296,28 @@ describe("SwarmRoom", () => {
       expect(state.members).toContainEqual(
         expect.objectContaining({ type: "worker", sessionID: task.childSessionID }),
       )
+    }),
+  )
+
+  it.effect("reuses a claim for a lane key with JSON escapes", () =>
+    Effect.gen(function* () {
+      const root = yield* setup("escaped-lane")
+      const rooms = yield* SwarmRoom.Service
+      const room = yield* rooms.open(root)
+      const leader: SwarmRoom.ActorRef = { sessionID: root }
+      const lane = Contract.LaneKey.make("lane\u0000\ud800")
+      const plan = yield* rooms.post({
+        roomID: room.id,
+        actor: leader,
+        kind: "plan",
+        text: "plan a lane",
+        payload: { lanes: [{ key: lane, title: "Lane" }] },
+        baseRevision: room.head,
+      })
+      const input = { roomID: room.id, actor: leader, lane, baseRevision: plan.entry.seq }
+      const first = yield* rooms.claim(input)
+      const retry = yield* rooms.claim(input)
+      expect(retry.entry.id).toBe(first.entry.id)
     }),
   )
 

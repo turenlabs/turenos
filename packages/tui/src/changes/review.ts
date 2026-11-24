@@ -3,7 +3,7 @@ import type { Panel } from "../panel"
 import { errorText, type Connection, type Session } from "../server"
 import { label, type DashboardState } from "../state"
 import { fitHeading, fitRow, panelWidth } from "./heading"
-import { diffList, turnFiles, type FileDiff, type Mode } from "./diffs"
+import { diffList, mergeTurnDiffs, turnFiles, type FileDiff, type Mode } from "./diffs"
 
 const MODES: Record<Mode, string> = {
   git: "Uncommitted changes",
@@ -111,8 +111,7 @@ async function fetchDiff(r: Review) {
   // Assistant messages name the files each turn touched; the patch is what is uncommitted now.
   const touched = r.state.detail?.sessionID === session.id ? turnFiles(r.state.detail.messages) : []
   if (!touched.length) return []
-  const current = await vcs("git")
-  return touched.map((file) => current.find((item) => item.file === file) ?? { file, additions: 0, deletions: 0 })
+  return mergeTurnDiffs(touched, await vcs("git"))
 }
 
 export function cycle(r: Review) {

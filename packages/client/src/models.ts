@@ -42,7 +42,6 @@ export const normalizeModelSearch = (value: string) =>
     .toLowerCase()
     .replace(/[^\p{Letter}\p{Number}]+/gu, " ")
     .trim()
-    .replace(/\s+/g, " ")
 
 export const compactModelSearch = (value: string) => normalizeModelSearch(value).replaceAll(" ", "")
 
@@ -50,10 +49,11 @@ export const matchesModelSearch = (query: string, values: string[]) => {
   const search = normalizeModelSearch(query)
   if (!search) return true
 
-  const compactSearch = compactModelSearch(query)
-  return values.some(
-    (value) => normalizeModelSearch(value).includes(search) || compactModelSearch(value).includes(compactSearch),
-  )
+  const compactSearch = search.replaceAll(" ", "")
+  return values.some((value) => {
+    const normalized = normalizeModelSearch(value)
+    return normalized.includes(search) || normalized.replaceAll(" ", "").includes(compactSearch)
+  })
 }
 
 export const cleanModelName = (name: string) => ({

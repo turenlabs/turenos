@@ -2,7 +2,7 @@ export * as SwarmRoom from "./room"
 
 import { SwarmRoom as Contract } from "@turenlabs/schema/swarm-room"
 import { isWithReplicas } from "@turenlabs/effect-drizzle-sqlite"
-import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, max } from "drizzle-orm"
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, max, sql } from "drizzle-orm"
 import { Context, Effect, Layer, Option, Queue, Schema } from "effect"
 import { AgentV2 } from "../agent"
 import { Database } from "../database/database"
@@ -714,19 +714,14 @@ const layer = Layer.effect(
                   eq(SwarmRoomEntryTable.room_id, room.id),
                   inArray(SwarmRoomEntryTable.kind, ["claim", "release"]),
                   gt(SwarmRoomEntryTable.seq, introducedSeq),
+                  // Compare JSON text so binding cannot change an unpaired surrogate in the key.
+                  sql`(${SwarmRoomEntryTable.payload} -> '$.lane') = ${JSON.stringify(decoded.lane)}`,
                 ),
               )
               .orderBy(desc(SwarmRoomEntryTable.seq))
-              .all()
-              .pipe(
-                Effect.orDie,
-                Effect.map((rows) =>
-                  rows.find((row) => {
-                    const laneKey = (row.payload as { lane?: string } | null)?.lane
-                    return laneKey === decoded.lane
-                  }),
-                ),
-              )
+              .limit(1)
+              .get()
+              .pipe(Effect.orDie)
             if (kind === "claim" && latest?.kind === "claim") {
               if (latest.member_id === actor.memberID) {
                 // Idempotent retry: the claim already landed for this member.

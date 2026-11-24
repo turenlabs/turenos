@@ -1,5 +1,6 @@
 import { describe, expect } from "bun:test"
-import { Effect } from "effect"
+import { Effect, Layer } from "effect"
+import { sql } from "drizzle-orm"
 import { Database } from "@turenlabs/core/database/database"
 import { LayerNode } from "@turenlabs/core/effect/layer-node"
 import { AppNodeBuilder } from "@turenlabs/core/effect/app-node-builder"
@@ -483,20 +484,44 @@ describe("Memory", () => {
     }),
   )
 
-  it.effect("rebuilds the whole index from the drawers alone", () =>
+  it.effect("rebuilds the whole index across multiple batches", () =>
     Effect.gen(function* () {
       const { service, wing, room } = yield* scaffold("reindex")
-      yield* service.write({
-        wingID: wing.id,
-        roomID: room.id,
-        title: "rebuildable",
-        body: "sqlite wal checkpoint truncate on shutdown",
-        provenance,
-      })
-      const count = yield* service.reindex()
-      expect(count).toBeGreaterThanOrEqual(1)
-      const hits = yield* service.search({ query: "wal checkpoint", wings: [wing.id] })
-      expect(hits.length).toBe(1)
+      for (let index = 0; index < 205; index++) {
+        yield* service.write({
+          wingID: wing.id,
+          roomID: room.id,
+          title: "rebuildable",
+          body: `checkpoint${index}`,
+          provenance,
+        })
+      }
+      expect(yield* service.reindex()).toBe(205)
+      for (const index of [0, 99, 100, 199, 204]) {
+        const hits = yield* service.search({ query: `checkpoint${index}`, wings: [wing.id] })
+        expect(hits.map((hit) => hit.drawer.body)).toEqual([`checkpoint${index}`])
+      }
+    }),
+  )
+
+  it.effect("repairs missing index rows on startup even when the row counts match", () =>
+    Effect.gen(function* () {
+      const database = yield* Database.Service
+      const db = Database.primary(database.db)
+      const { service, wing, room } = yield* scaffold("index-repair")
+      const input = { wingID: wing.id, roomID: room.id, provenance }
+      const first = yield* service.write({ ...input, title: "first", body: "orchard" })
+      const second = yield* service.write({ ...input, title: "second", body: "nebulacounter" })
+      yield* db.run(sql`UPDATE memory_drawer_fts SET drawer_id = ${first.id} WHERE drawer_id = ${second.id}`).pipe(
+        Effect.orDie,
+      )
+
+      const reopened = AppNodeBuilder.build(Memory.node, [[Database.node, Layer.succeed(Database.Service, database)]])
+      const hits = yield* Memory.Service.use((memory) => memory.search({ query: "nebulacounter", wings: [wing.id] })).pipe(
+        Effect.provide(Layer.fresh(reopened)),
+      )
+
+      expect(hits.map((hit) => hit.drawer.id)).toEqual([second.id])
     }),
   )
 
