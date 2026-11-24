@@ -2,7 +2,7 @@ export * as SwarmRoom from "./room"
 
 import { SwarmRoom as Contract } from "@turenlabs/schema/swarm-room"
 import { isWithReplicas } from "@turenlabs/effect-drizzle-sqlite"
-import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, or, sql } from "drizzle-orm"
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, sql } from "drizzle-orm"
 import { Context, Effect, Layer, Option, Queue, Schema } from "effect"
 import { AgentV2 } from "../agent"
 import { Database } from "../database/database"
@@ -806,8 +806,12 @@ const layer = Layer.effect(
         .where(
           and(
             eq(SwarmRoomEntryTable.room_id, roomID),
-            // Any post with a string lane key can introduce a lane.
-            or(eq(SwarmRoomEntryTable.kind, "plan"), sql`json_type(${SwarmRoomEntryTable.payload}, '$.lane') = 'text'`),
+            // Replay in JavaScript when SQLite cannot parse a deeply nested payload.
+            sql`CASE
+              WHEN ${SwarmRoomEntryTable.kind} = 'plan' THEN 1
+              WHEN json_valid(${SwarmRoomEntryTable.payload}) THEN json_type(${SwarmRoomEntryTable.payload}, '$.lane') = 'text'
+              ELSE ${SwarmRoomEntryTable.payload} IS NOT NULL
+            END`,
           ),
         )
         .orderBy(asc(SwarmRoomEntryTable.seq))

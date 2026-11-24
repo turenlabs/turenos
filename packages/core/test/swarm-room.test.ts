@@ -594,6 +594,25 @@ describe("SwarmRoom", () => {
     }),
   )
 
+  it.effect("replays lane keys in payloads deeper than SQLite can parse", () =>
+    Effect.gen(function* () {
+      const root = yield* setup("deep-lane-payload")
+      const rooms = yield* SwarmRoom.Service
+      const room = yield* rooms.open(root)
+      const deep = Array.from({ length: 1_100 }).reduce<unknown>((value) => [value], null)
+      const lane = Contract.LaneKey.make("deep")
+      yield* rooms.post({
+        roomID: room.id,
+        actor: { sessionID: root },
+        kind: "finding",
+        text: "Found a lane",
+        payload: { lane, deep },
+      })
+
+      expect((yield* rooms.state(room.id)).lanes).toEqual([{ key: lane, title: lane, status: "open", updatedSeq: 0 }])
+    }),
+  )
+
   it.effect("lists a lane dropped and re-added by later plans once, in the latest plan order", () =>
     Effect.gen(function* () {
       const root = yield* setup("lane_readd_order")
