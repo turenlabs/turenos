@@ -9,8 +9,10 @@ import { join } from "node:path"
 import { ModelV2 } from "../src/model"
 import { DevinCLI } from "../src/provider/devin-cli"
 import { SessionMessage } from "../src/session/message"
+import { SessionCompaction } from "../src/session/compaction"
 import { FileAttachment } from "../src/session/prompt"
 import { DevinACP } from "../src/session/runner/devin-acp"
+import { DevinOptions } from "../src/session/runner/devin-options"
 import { ClaudeCodeMcp } from "../src/session/runner/claude-code-mcp-namespace"
 import { SessionRunnerModel } from "../src/session/runner/model"
 import { toLLMMessages } from "../src/session/runner/to-llm-message"
@@ -59,8 +61,8 @@ const fakeCLI = (body: string, version: string = DevinACP.SUPPORTED_BUILDS[0].ve
           `const request = JSON.parse(line)`,
           `appendFileSync(capture, JSON.stringify(request) + "\\n")`,
           `if (request.method === "initialize") { reply(request, { protocolVersion: 1, agentCapabilities: { mcpCapabilities: { http: true } } }); continue }`,
-          `if (request.method === "session/new") { ${delayedSession ? `const timer = setInterval(() => { if (!existsSync(${JSON.stringify(release)})) return; clearInterval(timer); reply(request, { sessionId: "test-session" }); appendFileSync(capture, JSON.stringify({ event: "session-ready" }) + "\\n") }, 5)` : `reply(request, { sessionId: "test-session" })`}; continue }`,
           body,
+          `if (request.method === "session/new") { ${delayedSession ? `const timer = setInterval(() => { if (!existsSync(${JSON.stringify(release)})) return; clearInterval(timer); reply(request, { sessionId: "test-session" }); appendFileSync(capture, JSON.stringify({ event: "session-ready" }) + "\\n") }, 5)` : `reply(request, { sessionId: "test-session" })`}; continue }`,
           `}`,
         ].join("\n"),
       )
@@ -73,6 +75,28 @@ const textReply = `if (request.method === "session/prompt") {
 send({ jsonrpc: "2.0", method: "session/update", params: { sessionId: "test-session", update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "hello" } } } })
 reply(request, { stopReason: "end_turn" })
 }`
+const configuredCLI = `
+const prior = Object.fromEntries(readFileSync(capture, "utf8").trim().split("\\n").map(JSON.parse)
+  .filter(item => item.method === "session/set_config_option")
+  .map(item => [item.params.configId, item.params.value]))
+const config = (id, current, values) => ({
+  id, category: id, name: id, type: "select", currentValue: prior[id] ?? current,
+  options: values.map(([value, name]) => ({ value, name })),
+})
+const configOptions = [
+  config("model", "swe-2-flash", [["swe-2-flash", "SWE-2 Flash"], ["swe-2", "SWE-2"]]),
+  config("mode", "accept-edits", [["accept-edits", "Code"], ["plan", "Plan"], ["bypass", "Bypass Permissions"]]),
+  config("thought_level", "medium", [["medium", "Medium"], ["high", "High"], ["max", "Max"]]),
+  config("speed", "standard", [["standard", "Standard"], ["fast", "Fast"]]),
+]
+if (request.method === "session/new") { reply(request, { sessionId: "test-session", configOptions }); continue }
+if (request.method === "session/set_config_option") { reply(request, { configOptions }); continue }
+if (request.method === "session/prompt") {
+  send({jsonrpc:"2.0", method:"session/update", params:{sessionId:"test-session", update:{sessionUpdate:"usage_update", size:262000, used:5945}}})
+  send({jsonrpc:"2.0", method:"session/update", params:{sessionId:"test-session", update:{sessionUpdate:"agent_message_chunk", content:{type:"text",text:"hello"}}}})
+  reply(request, { stopReason:"end_turn", usage:{inputTokens:5857, outputTokens:88, totalTokens:5945} })
+}
+`
 const collect = (
   executable: string,
   messages: Parameters<typeof LLM.request>[0]["messages"] = [{ role: "user", content: "hello" }],
@@ -180,6 +204,92 @@ describe.skipIf(process.platform === "win32")("Devin ACP transport", () => {
       expect(requests.find((item) => item.method === "session/prompt")).toMatchObject({
         params: { prompt: [{ type: "text", text: "USER:\nhello" }] },
       })
+    }),
+  )
+
+  it.effect("discovers ACP models and verified settings without a model prompt", () =>
+    Effect.gen(function* () {
+      const cli = yield* fakeCLI(configuredCLI)
+      expect(yield* DevinACP.discover(cli.executable)).toEqual([
+        { id: "swe-2-flash", name: "SWE-2 Flash" },
+        { id: "swe-2", name: "SWE-2" },
+      ])
+      const options = DevinACP.observedOptions(cli.executable, "swe-2")!
+      const variants = DevinOptions.variants(options)
+      expect(variants).toContainEqual({
+        id: "plan-high-fast",
+        body: { mode: "plan", thought_level: "high", speed: "fast" },
+      })
+      expect(variants.some((variant) => variant.body.mode === "bypass")).toBe(false)
+      expect(captures(cli.capture).some((item) => item.method === "session/prompt")).toBe(false)
+    }),
+  )
+
+  it.effect("applies selected ACP settings before prompting and learns the reported context window", () =>
+    Effect.gen(function* () {
+      const cli = yield* fakeCLI(configuredCLI)
+      const info = catalogModel(cli.executable)
+      const ref = ModelV2.Info.make({
+        ...info,
+        id: ModelV2.ID.make("swe-2"),
+        api: { ...info.api, id: ModelV2.ID.make("swe-2") },
+        request: {
+          ...info.request,
+          body: { ...info.request.body, mode: "plan", thought_level: "high", speed: "fast" },
+        },
+      })
+      const first = yield* SessionRunnerModel.fromCatalogModel(ref)
+      expect(first.route.defaults.limits?.context).toBe(32_768)
+      const replay = [
+        {
+          seq: 1,
+          message: SessionMessage.Assistant.make({
+            id: SessionMessage.ID.make("msg_saved_devin_usage"),
+            type: "assistant",
+            agent: "build",
+            model: { id: ref.id, providerID: ref.providerID },
+            content: [],
+            tokens: { input: 58_570, output: 88, reasoning: 0, cache: { read: 0, write: 0 } },
+            time: { created: DateTime.makeUnsafe(0) },
+          }),
+        },
+      ]
+      expect(SessionCompaction.reportedOccupancy(replay, first)).toBeUndefined()
+      const events = Array.from(
+        yield* LLM.stream(LLM.request({ model: first, prompt: "hello" })).pipe(
+          Stream.runCollect,
+          Effect.provide(layer),
+        ),
+      )
+      expect(events.find((event) => event.type === "step-finish")).toMatchObject({
+        usage: { nonCachedInputTokens: 5857, outputTokens: 88 },
+      })
+      expect(
+        captures(cli.capture)
+          .filter((item) => item.method === "session/set_config_option" || item.method === "session/prompt")
+          .map((item) => [item.method, item.params]),
+      ).toEqual([
+        ["session/set_config_option", { sessionId: "test-session", configId: "model", value: "swe-2" }],
+        ["session/set_config_option", { sessionId: "test-session", configId: "mode", value: "plan" }],
+        ["session/set_config_option", { sessionId: "test-session", configId: "thought_level", value: "high" }],
+        ["session/set_config_option", { sessionId: "test-session", configId: "speed", value: "fast" }],
+        ["session/prompt", { sessionId: "test-session", prompt: [{ type: "text", text: "USER:\nhello" }] }],
+      ])
+      const observed = yield* SessionRunnerModel.fromCatalogModel(ref)
+      expect(observed.route.defaults.limits?.context).toBe(262_000)
+      expect(SessionCompaction.reportedOccupancy(replay, observed)).toBe(58_658)
+      expect((yield* SessionRunnerModel.fromCatalogModel(info)).route.defaults.limits?.context).toBe(32_768)
+
+      const bypass = yield* SessionRunnerModel.fromCatalogModel(
+        ModelV2.Info.make({ ...ref, request: { ...ref.request, body: { ...ref.request.body, mode: "bypass" } } }),
+      )
+      const blocked = yield* LLM.stream(LLM.request({ model: bypass, prompt: "must not send" })).pipe(
+        Stream.runCollect,
+        Effect.provide(layer),
+        Effect.flip,
+      )
+      expect(blocked.reason.message).toContain("Devin no longer offers the requested mode")
+      expect(captures(cli.capture).filter((item) => item.method === "session/prompt")).toHaveLength(1)
     }),
   )
 

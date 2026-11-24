@@ -1,15 +1,19 @@
 export * as ProviderDevinCLI from "./devin-cli"
 
-import { Effect } from "effect"
+import { Cache, Effect } from "effect"
+import { existsSync } from "node:fs"
 import { Config } from "../../config"
 import { DevinCLI } from "../../provider/devin-cli"
+import { DevinACP } from "../../session/runner/devin-acp"
+import { DevinOptions } from "../../session/runner/devin-options"
 import { define } from "../define"
 
-/** Availability means installed, not authenticated. The runtime checks login on use. */
+/** An installed CLI always has its default route. A signed-in session can advertise more models. */
 export const DevinCLIPlugin = define({
   id: "devin-cli",
   effect: Effect.fn(function* (ctx) {
     const config = yield* Config.Service
+    const discovery = yield* Cache.make({ capacity: 4, timeToLive: "30 seconds", lookup: DevinACP.discover })
     yield* ctx.catalog.transform(
       Effect.fn(function* (catalog) {
         const entries = yield* config.entries()
@@ -33,19 +37,42 @@ export const DevinCLIPlugin = define({
             delete provider.request.body[DevinCLI.EXECUTABLE_KEY]
           }
         })
-        for (const item of DevinCLI.MODELS) {
+        const installed = probe.status === "installed" ? probe.executable : undefined
+        const credentials = DevinACP.credentialsPath()
+        const choices =
+          installed && process.platform !== "win32" && credentials && existsSync(credentials)
+            ? yield* Cache.get(discovery, installed)
+            : []
+        const fallback = DevinCLI.MODELS[0]!
+        const models = [
+          fallback,
+          ...choices
+            .filter((choice) => choice.id !== fallback.id)
+            .map((choice) => ({
+              ...fallback,
+              ...choice,
+              apiID: choice.id,
+            })),
+        ]
+        for (const item of models) {
           catalog.model.update(DevinCLI.ID, item.id, (model) => {
             model.name = item.name
             model.api = { type: "native", id: item.apiID, url: DevinCLI.API_URL, settings: {} }
             model.capabilities = { tools: true, input: ["text"], output: ["text"] }
-            model.variants = []
+            const options = installed ? DevinACP.observedOptions(installed, item.apiID) : undefined
+            model.variants = options
+              ? DevinOptions.variants(options).map((variant) => ({ ...variant, headers: {} }))
+              : []
             // The user's Devin plan controls billing. Do not invent API costs.
             model.cost = []
             model.status = "active"
             model.enabled = true
             // Do not prefer a CLI for automatic background model selection.
             model.time.released = 0
-            model.limit = { context: item.context, output: item.output }
+            const context = installed
+              ? DevinACP.observedContext({ executable: installed, modelID: item.apiID })
+              : undefined
+            model.limit = { context: context ?? item.context, output: item.output }
           })
         }
       }),
