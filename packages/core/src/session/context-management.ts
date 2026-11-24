@@ -1,12 +1,11 @@
 export * as SessionContextManagement from "./context-management"
 
 import { and, count, desc, eq, sum } from "drizzle-orm"
-import { Context, Effect, Layer, Option, Schema } from "effect"
+import { Context, Effect, Layer } from "effect"
 import { Catalog } from "../catalog"
 import { Database } from "../database/database"
 import { makeLocationNode } from "../effect/app-node"
 import { SessionCompaction } from "./compaction"
-import { SessionMessage } from "./message"
 import { ProviderUsageTable, SessionMessageTable } from "./sql"
 import { SessionSchema } from "./schema"
 import { SessionStore } from "./store"
@@ -30,7 +29,6 @@ export const CACHE_SECONDS = 300
 /** A cache about to lapse is reported before it does, so the agent can avoid a long wait. */
 const CACHE_EXPIRING_SECONDS = 240
 const RECENT_TURNS = 8
-const decodeAssistantMessage = Schema.decodeUnknownOption(Schema.fromJsonString(SessionMessage.Assistant))
 
 /**
  * Standing guidance, always in the system context. It is static text so it never changes the cached prefix after
@@ -139,28 +137,12 @@ const layer = Layer.effect(
         .orderBy(desc(SessionMessageTable.time_created))
         .all()
         .pipe(Effect.orDie)
-      const latestMessage =
-        recent[0] === undefined
-          ? undefined
-          : yield* db
-              .select({ data: SessionMessageTable.data })
-              .from(SessionMessageTable)
-              .where(
-                and(
-                  eq(SessionMessageTable.session_id, sessionID),
-                  eq(SessionMessageTable.id, recent[0].assistant_message_id),
-                ),
-              )
-              .get()
-              .pipe(Effect.orDie)
-      const latestAssistant =
-        latestMessage === undefined ? undefined : Option.getOrUndefined(decodeAssistantMessage(latestMessage.data))
-      const latestOccupancy =
-        latestAssistant?.tokens === undefined
-          ? undefined
-          : latestAssistant.tokens.input +
-            latestAssistant.tokens.cache.read +
-            latestAssistant.tokens.cache.write
+      const latestMessage = recent[0] ? yield* store.message(recent[0].assistant_message_id) : undefined
+      const tokens =
+        latestMessage?.sessionID === sessionID && latestMessage.message.type === "assistant"
+          ? latestMessage.message.tokens
+          : undefined
+      const latestOccupancy = tokens ? tokens.input + tokens.cache.read + tokens.cache.write : undefined
       const now = Date.now()
       return describe({
         window,

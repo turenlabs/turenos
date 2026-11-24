@@ -3090,6 +3090,14 @@ describe("the pre-flight gate budgets against the model's real window", () => {
     expect(selected.recent).toContain("FIX-THE-CART-ROUNDING-BUG")
   })
 
+  test("keeps a short first turn intact when request overhead consumes the tail budget", () => {
+    const entries = [
+      entry(user("short_turn_u", "Read the current configuration")),
+      entry(assistant("short_turn_a", [tool({ id: "read_config", name: "read", output: "Configuration" })])),
+    ]
+    expect(SessionCompaction.select(entries, { tokens: 0, turns: 2, preserveCurrentTurn: true })).toBeUndefined()
+  })
+
   test("splits a single-turn session whose steps exceed keep.tokens even when under clampBudget", () => {
     const step1 = entry(
       assistant("single_turn_a1", [{ type: "text", id: "txt_single_1", text: "a".repeat(60_000) }]),

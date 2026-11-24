@@ -1128,11 +1128,14 @@ export const select = (
   // in-flight turn could ever fit — summarizing away the very instruction the clamp
   // exists to protect. On real models `options.tokens` is already >= the default, so
   // the floor never binds and the measured behaviour is unchanged.
-  const clampBudget = Math.max(options.tokens, DEFAULT_KEEP_TOKENS) * PRESERVE_CURRENT_TURN_BUDGET_MULTIPLE
+  const keepBudget = Math.max(options.tokens, DEFAULT_KEEP_TOKENS)
+  const clampBudget = keepBudget * PRESERVE_CURRENT_TURN_BUDGET_MULTIPLE
+  // A small request budget can come from static prompts and tool definitions. A
+  // short first turn has too little history to reclaim that overhead.
   const preservable =
     currentTurn > 0
       ? currentTurnTokens <= clampBudget
-      : currentTurn === 0 && (selectedSplit <= 0 || !items.some((item) => !item.start))
+      : currentTurn === 0 && (currentTurnTokens <= keepBudget || !items.some((item) => !item.start))
   const split = !preservable ? selectedSplit : selectedSplit <= 0 ? currentTurn : Math.min(selectedSplit, currentTurn)
   const join = (values: readonly Item[]) => values.map((item) => item.text).join("\n\n")
   // A tail that would swallow the whole history leaves nothing to summarize. If `preserveCurrentTurn`
@@ -1300,13 +1303,9 @@ const effectiveOutput = (request: LLMRequest) =>
   request.model.route.defaults.limits?.output ??
   0
 
-/** Project tool definitions to the fields actually sent on the wire (`outputSchema` is local-only). */
-const wireToolDefinitions = (tools: LLMRequest["tools"]) =>
-  tools.map((tool) => ({
-    name: tool.name,
-    description: tool.description,
-    inputSchema: tool.inputSchema,
-  }))
+/** Exclude local output validation while preserving options used by provider codecs. */
+export const wireToolDefinitions = (tools: LLMRequest["tools"]) =>
+  tools.map(({ outputSchema: _outputSchema, ...definition }) => definition)
 
 /** Char-based request estimate, with media charged at provider prices rather than base64 length. */
 export const estimateRequest = (request: LLMRequest) => {
