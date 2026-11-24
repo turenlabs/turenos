@@ -57,9 +57,11 @@ const openAI = (schema: JsonSchema): JsonSchema => {
       : {
           ...Object.fromEntries(Object.entries(schema).filter(([key]) => key !== "anyOf")),
           type: "object",
-          properties: variants.reduce(
-            (properties, variant) => ({ ...(isRecord(variant.properties) ? variant.properties : {}), ...properties }),
-            {},
+          // Visit later variants first so earlier variants still win duplicate fields.
+          properties: Object.fromEntries(
+            variants
+              .reverse()
+              .flatMap((variant) => (isRecord(variant.properties) ? Object.entries(variant.properties) : [])),
           ),
           additionalProperties: false,
         }

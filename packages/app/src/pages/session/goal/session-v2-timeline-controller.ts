@@ -57,6 +57,12 @@ export type LiveDelta = {
   delta: string
 }
 
+export function appendSessionV2Delta(buckets: Map<string, LiveDelta[]>, key: string, delta: LiveDelta) {
+  const bucket = buckets.get(key)
+  if (bucket) bucket.push(delta)
+  else buckets.set(key, [delta])
+}
+
 export type SnapshotMode = "context" | "full"
 
 export type SnapshotOptions = {
@@ -575,7 +581,7 @@ export function createSessionV2TimelineController(input: {
       pending
         .reduce((groups, delta) => {
           const key = `${delta.messageID}\0${delta.partID}`
-          groups.set(key, [...(groups.get(key) ?? []), delta])
+          appendSessionV2Delta(groups, key, delta)
           return groups
         }, new Map<string, LiveDelta[]>())
         .forEach((values, key) => {
@@ -1083,7 +1089,7 @@ export function createSessionV2TimelineController(input: {
       field: "text" as const,
       delta: value.delta,
     }
-    deltas.set(value.sessionID, [...(deltas.get(value.sessionID) ?? []), delta])
+    appendSessionV2Delta(deltas, value.sessionID, delta)
     if (applyDelta(value.sessionID, delta)) return
     scheduleHydrate(value.sessionID)
   }
