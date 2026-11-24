@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { loadSessionV2MessageWindow, SESSION_V2_MESSAGE_PAGE_LIMIT } from "../goal/session-v2-message-window"
 import type { SessionMessage } from "@turenlabs/sdk/v2/client"
-import { presentSessionV2Messages, mergeSessionV2Presentation } from "../goal/session-v2-presentation"
+import { mergeSessionV2Messages, presentSessionV2Messages } from "../goal/session-v2-presentation"
 import { generateSessionMessages, smallProfile } from "./session-load-fixture"
 
 /**
@@ -210,17 +210,16 @@ describe("compacted human scrollback", () => {
     const reconnect = present(
       (await loadSessionV2MessageWindow({ load, minimum: window.messages.length, until: messages[0]!.id })).messages,
     )
-    const merged = mergeSessionV2Presentation({
+    const merged = mergeSessionV2Messages({
       messages: initial.messages,
-      parts: Object.fromEntries(initial.parts.map((entry) => [entry.id, entry.parts])),
+      incoming: reconnect.messages,
       previousOwnedMessageIDs: new Set(initial.messages.map((message) => message.id)),
-      presentation: reconnect,
       removeMissing: false,
     })
     expect(merged.messages.map((message) => message.id)).toEqual(messages.map((message) => message.id))
     expect(new Set(merged.messages.map((message) => message.id)).size).toBe(messages.length)
     expect(
-      merged.parts
+      reconnect.parts
         .flatMap((entry) => entry.parts)
         .filter((part) => part.type === "text" && part.metadata?.compactionSummary === true),
     ).toHaveLength(3)

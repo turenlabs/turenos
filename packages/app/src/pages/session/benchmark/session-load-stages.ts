@@ -1,7 +1,7 @@
 import type { Message, Part, SessionMessage } from "@turenlabs/sdk/v2/client"
 import { createRoot, createSignal, batch } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
-import { mergeSessionV2Presentation, presentSessionV2Messages } from "../goal/session-v2-presentation"
+import { mergeSessionV2Messages, mergeSessionV2Parts, presentSessionV2Messages } from "../goal/session-v2-presentation"
 import { createTimelineProjection } from "../timeline/projection"
 import { leanSessionMessage } from "./session-load-fixture"
 
@@ -13,7 +13,7 @@ import { leanSessionMessage } from "./session-load-fixture"
  *   paging   `collectSessionV2Messages` — the cursor walk and its array accumulation
  *   parse    `JSON.parse` per page, as `client.gen.ts` does after `response.text()`
  *   present  `presentSessionV2Messages` — SessionMessage[] to Message[] + Part[][]
- *   merge    `mergeSessionV2Presentation` — the incoming projection against what the store holds
+ *   merge    `mergeSessionV2Messages` — the incoming messages against what the store holds
  *   store    the batched `set("message", …)` / per-message `set("part", …)` writes
  *   rows     `createTimelineProjection().rows()` — what the virtualizer counts
  *
@@ -155,11 +155,10 @@ export async function measureSessionLoad(input: {
   }>({ message: {}, part: {} })
 
   const mergeStart = now()
-  const projection = mergeSessionV2Presentation({
+  const projection = mergeSessionV2Messages({
     messages: store.message[sessionID] ?? [],
-    parts: store.part,
+    incoming: presentation.messages,
     previousOwnedMessageIDs: new Set<string>(),
-    presentation,
     preservedMessageIDs: new Set<string>(),
     removeMissing: true,
   })
@@ -169,7 +168,7 @@ export async function measureSessionLoad(input: {
   batch(() => {
     setStore("message", sessionID, reconcile(projection.messages, { key: "id" }))
     presentation.parts.forEach((entry) => {
-      setStore("part", entry.id, reconcile(entry.parts, { key: "id" }))
+      setStore("part", entry.id, reconcile(mergeSessionV2Parts(store.part[entry.id], entry.parts), { key: "id" }))
     })
   })
   const storeEnd = now()

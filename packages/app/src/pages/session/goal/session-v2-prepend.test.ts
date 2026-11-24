@@ -1,6 +1,6 @@
 import { beforeAll, beforeEach, describe, expect, mock, test } from "bun:test"
 import { createRoot, createSignal } from "solid-js"
-import { createStore, reconcile } from "solid-js/store"
+import { createStore, reconcile, unwrap } from "solid-js/store"
 import type { Message, Part, SessionMessage } from "@turenlabs/sdk/v2/client"
 import { SESSION_V2_MESSAGE_PAGE_LIMIT } from "./session-v2-message-window"
 
@@ -174,6 +174,31 @@ const spawn = (input: { sessionID: () => string | undefined; sessionKey: () => s
   }))
 
 describe("session V2 history prepend", () => {
+  test("hydrating a snapshot does not read another session's cached parts", async () => {
+    transcripts.set("ses_a", transcript(1))
+    const parts = unwrap(data.part)
+    let unrelatedReads = 0
+    Object.defineProperty(parts, "msg_unrelated", {
+      configurable: true,
+      enumerable: true,
+      get() {
+        unrelatedReads += 1
+        return []
+      },
+    })
+    const { controller, dispose } = spawn({ sessionID: () => undefined, sessionKey: () => "key-a" })
+    try {
+      await controller.hydrate("ses_a")
+
+      expect(ids("ses_a")).toEqual(turnIDs(0, 0))
+      expect(data.part.msg_u0?.[0]).toMatchObject({ type: "text", text: "prompt 0" })
+      expect(unrelatedReads).toBe(0)
+    } finally {
+      dispose()
+      delete parts.msg_unrelated
+    }
+  })
+
   test("loadOlder issues exactly one cursor request with no order and splices the page in front", async () => {
     // 50 turns = 150 messages. The windowed hydrate covers messages[100..149] (the newest page),
     // which opens on `msg_a33_1` — mid-turn, so the presenter drops it and the two assistants of

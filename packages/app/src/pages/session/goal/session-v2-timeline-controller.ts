@@ -39,8 +39,8 @@ import { sessionInteractionTrace } from "@/utils/session-interaction-trace"
 import {
   isSessionV2ToolStub,
   mergeIncrementalMessages,
+  mergeSessionV2Messages,
   mergeSessionV2Parts,
-  mergeSessionV2Presentation,
   presentSessionV2Messages,
   presentTool,
   type SessionV2Presentation,
@@ -545,13 +545,12 @@ export function createSessionV2TimelineController(input: {
     // A full read is still only a bounded window. Tool settlement and pagination therefore merge
     // it into the last visible transcript; only a structural boundary (revert/cold
     // open) may remove rows that are absent from that window.
-    const projection = mergeSessionV2Presentation({
+    const projection = mergeSessionV2Messages({
       messages: sync().data.message[sessionID] ?? [],
-      parts: sync().data.part,
+      incoming: presentation.messages,
       previousOwnedMessageIDs: authoritative
         ? new Set((sync().data.message[sessionID] ?? []).map((message) => message.id))
         : (owned.get(sessionID) ?? new Set()),
-      presentation,
       preservedMessageIDs: new Set(sessionPromptPending.ids()),
       removeMissing: authoritative,
     })
