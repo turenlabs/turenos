@@ -45,9 +45,12 @@ export function roomSchedules<S extends { factoryRoomID?: string | null; teammat
   value: { room: { id: string }; teammates?: readonly { id: string }[] },
   schedules: readonly S[],
 ) {
+  if (!schedules.length) return []
+  const teammateIDs = new Set(value.teammates?.map((teammate) => teammate.id))
   return schedules.filter(
     (schedule) =>
-      schedule.factoryRoomID === value.room.id || value.teammates?.some((teammate) => teammate.id === schedule.teammateID),
+      schedule.factoryRoomID === value.room.id ||
+      (typeof schedule.teammateID === "string" && teammateIDs.has(schedule.teammateID)),
   )
 }
 

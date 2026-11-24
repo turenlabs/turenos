@@ -242,7 +242,14 @@ describe("factory output", () => {
 
   test("room schedules are those of the room or its teammates", () => {
     const value = { room: { id: "trm_a" }, teammates: [{ id: "tm_1" }] }
-    const loops = [{ id: "a", factoryRoomID: "trm_a" }, { id: "b", teammateID: "tm_1" }, { id: "c", teammateID: "tm_9" }]
-    expect(roomSchedules(value, loops).map((loop) => loop.id)).toEqual(["a", "b"])
+    const loops = [
+      { id: "a", factoryRoomID: "trm_a" },
+      { id: "b", teammateID: "tm_1" },
+      { id: "c", teammateID: "tm_9" },
+      { id: "d", factoryRoomID: "trm_a", teammateID: "tm_1" },
+      { id: "e", factoryRoomID: null, teammateID: null },
+    ]
+    expect(roomSchedules(value, loops).map((loop) => loop.id)).toEqual(["a", "b", "d"])
+    expect(roomSchedules({ room: value.room }, loops).map((loop) => loop.id)).toEqual(["a", "d"])
   })
 })
