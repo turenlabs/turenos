@@ -57,6 +57,8 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
 import { ToolListChangedNotificationSchema } from "@modelcontextprotocol/sdk/types.js"
 import { SessionRunnerModel } from "@turenlabs/core/session/runner/model"
+import { DevinACP } from "@turenlabs/core/session/runner/devin-acp"
+import { DevinCLI } from "@turenlabs/core/provider/devin-cli"
 import { Integration } from "@turenlabs/core/integration"
 import { SessionRunnerRetry } from "@turenlabs/core/session/runner/retry"
 import { SessionStatus } from "@turenlabs/core/session/status"
@@ -2484,6 +2486,50 @@ describe("SessionRunnerLLM", () => {
       expect(
         requests.map((request) => userTexts(request).filter((text) => text.startsWith("Context budget:")).length),
       ).toEqual([0, 1, 0, 1, 0, 1])
+    }),
+  )
+
+  it.effect("compacts Devin CLI history only after replayed conversation grows", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      const limits = DevinCLI.MODELS[0]!
+      currentModel = DevinACP.routeModel({
+        providerID: DevinCLI.ID,
+        modelID: limits.apiID,
+        executable: "devin",
+        defaults: { limits: { context: limits.context, output: limits.output } },
+      })
+      // The production Devin request's fixed overhead alone can exceed the fallback window.
+      systemBaseline = "Project instructions for the agent. ".repeat(4_000)
+      const prompts = ["sup", "who are you", "still there?", "Draft the notes"]
+      for (const [index, text] of prompts.entries()) {
+        response = fragmentFixture("text", `devin-${index}`, [
+          index === prompts.length - 1 ? "Implementation notes. ".repeat(3_000) : "Short reply",
+        ]).completeEvents
+        yield* session.prompt({ sessionID, prompt: Prompt.make({ text }), resume: false })
+        yield* session.resume(sessionID)
+      }
+
+      expect(requests).toHaveLength(prompts.length)
+      expect(userTexts(requests.at(-1)!)).toContain(prompts[0]!)
+      expect(requests.at(-1)!.system.some((part) => part.text.includes(systemBaseline))).toBe(true)
+      expect(requests.at(-1)!.tools.length).toBeGreaterThan(0)
+      expect((yield* session.messages({ sessionID })).some((message) => message.type === "compaction")).toBe(false)
+
+      responses = [
+        fragmentFixture("text", "devin-summary", [compactionSummary("Preserve the notes")]).completeEvents,
+        compactionLedger("The user asked for implementation notes"),
+        fragmentFixture("text", "devin-final", ["Continued"]).completeEvents,
+      ]
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Keep going" }), resume: false })
+      yield* session.resume(sessionID)
+
+      expect(requests).toHaveLength(prompts.length + 3)
+      expect(userTexts(requests.at(-1)!)).toContain("Keep going")
+      expect((yield* session.messages({ sessionID })).find((message) => message.type === "compaction")).toMatchObject({
+        summary: compactionSummary("Preserve the notes"),
+      })
     }),
   )
 

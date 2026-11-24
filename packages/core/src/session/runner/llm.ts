@@ -3,6 +3,7 @@ import {
   LLMClient,
   LLMError,
   LLMEvent,
+  LLMRequest,
   Message,
   SystemPart,
   isContextOverflowFailure,
@@ -70,6 +71,7 @@ import { GoalContext } from "./goal-context"
 import { SessionRunnerAttachment } from "./attachment"
 import { CacheAffinity } from "./cache-affinity"
 import { ClaudeCodeMcp } from "./claude-code-mcp-namespace"
+import { DevinACP } from "./devin-acp"
 import { toLLMMessages } from "./to-llm-message"
 import { MAX_STEPS_PROMPT } from "./max-steps"
 import { Snapshot } from "../../snapshot"
@@ -1159,6 +1161,10 @@ const layer = Layer.effect(
         tools: toolMaterialization?.definitions ?? [],
         toolChoice: toolsDisabled ? "none" : undefined,
       })
+      // Devin's fallback budgets the replayed messages. Its private CLI session loads system
+      // rules and MCP tool definitions separately, and compaction cannot shrink either.
+      const devin = model.route.id === DevinACP.ROUTE_ID
+      const compactionRequest = devin ? LLMRequest.update(request, { system: [], tools: [] }) : request
       // A checkpoint the agent asked for with `session_checkpoint`. It runs here, at a provider-turn boundary,
       // because the call that requested it is already in history and the checkpoint must not split it from
       // its result. The agent wrote the summary, so there is no summarization call to wait for. Taken before
@@ -1170,7 +1176,7 @@ const layer = Layer.effect(
           sessionID: session.id,
           entries: history,
           model,
-          request,
+          request: compactionRequest,
           handoff: requestedHandoff,
         })).ok
       )
@@ -1178,7 +1184,7 @@ const layer = Layer.effect(
       if (
         compactBeforeTurn &&
         prepared.frame?.turn !== turn &&
-        SessionCompaction.needsPruning({ entries: measured, model, modelRef, request })
+        SessionCompaction.needsPruning({ entries: measured, model, modelRef, request: compactionRequest })
       ) {
         // Rebuild from pinned bytes, not live files, and omit budget-only runtime rows.
         const sourceIDs = new Set(history.map((entry) => entry.message.id))
@@ -1245,7 +1251,7 @@ const layer = Layer.effect(
           entries: history,
           model,
           modelRef,
-          request,
+          request: compactionRequest,
           measured,
         }))
       )
@@ -1255,7 +1261,8 @@ const layer = Layer.effect(
       // shrink it to what the window still holds. A no-op for every healthy request.
       // Clamp against the pinned view plus appended runtime overhead. Measuring raw history
       // would re-count freed bytes and shrink the allowance for no reason.
-      let wireRequest = SessionCompaction.clampOutput({ entries: measured, model, modelRef, request })
+      // Devin ACP accepts no generation allowance to clamp.
+      let wireRequest = devin ? request : SessionCompaction.clampOutput({ entries: measured, model, modelRef, request })
       yield* SessionContextRequest.save(db, session.id, {
         baselineSeq: system.baselineSeq,
         identity,
@@ -1761,7 +1768,7 @@ const layer = Layer.effect(
             const wasRecorded = progress?.recorded ?? true
             if (progress) progress.recorded = false
             const recovery = yield* restore(
-              recoverOverflow({ sessionID: session.id, entries: history, model, request }).pipe(
+              recoverOverflow({ sessionID: session.id, entries: history, model, request: compactionRequest }).pipe(
                 Effect.onInterrupt(() =>
                   Effect.sync(() => {
                     const p = turnProgress.get(session.id)
