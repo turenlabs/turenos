@@ -1409,7 +1409,10 @@ function indexedCallsByName(index: CodeIndex) {
   const result = new Map<string, string[]>()
   for (const symbol of index.functions.keys()) {
     const name = symbol.split(".").at(-1)
-    if (name) result.set(name, [...(result.get(name) ?? []), symbol])
+    if (!name) continue
+    const bucket = result.get(name) ?? []
+    bucket.push(symbol)
+    result.set(name, bucket)
   }
   return result
 }
@@ -1728,8 +1731,11 @@ export async function buildIndex(root: string, options: BuildIndexOptions = {}):
     fn.unresolvedCalls.push(...[...(data?.unresolvedCalls ?? [])].sort())
     fn.calls = [...new Set(fn.calls)].sort()
     fn.unresolvedCalls = [...new Set(fn.unresolvedCalls)].sort()
-    if (fn.confidence === "pure-expression")
-      groups.set(fn.semanticRoot, [...(groups.get(fn.semanticRoot) ?? []), symbol])
+    if (fn.confidence === "pure-expression") {
+      const bucket = groups.get(fn.semanticRoot) ?? []
+      bucket.push(symbol)
+      groups.set(fn.semanticRoot, bucket)
+    }
   }
   for (const symbols of groups.values()) symbols.sort()
   index.equivalenceGroups = groups
