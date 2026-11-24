@@ -69,6 +69,13 @@ describe("model search", () => {
     expect(matchesModelSearch("gpt 5", ["GPT-5.5", "gpt-5.5", "OpenAI"])).toBe(true)
   })
 
+  test("keeps Unicode letters and full-width numbers when compacting separators", () => {
+    const label = "  Mod\u00e8le\t--\u0392__\uff11\uff12 "
+    expect(normalizeModelSearch(label)).toBe("mod\u00e8le \u03b2 \uff11\uff12")
+    expect(matchesModelSearch("mod\u00e8le\u03b2\uff11\uff12", [label])).toBe(true)
+    expect(matchesModelSearch("mod\u00e8le\u03b212", [label])).toBe(false)
+  })
+
   test("empty query matches everything and unrelated queries match nothing", () => {
     expect(matchesModelSearch("  ", ["x"])).toBe(true)
     expect(matchesModelSearch("claude", ["GPT-5.5", "gpt-5.5", "OpenAI"])).toBe(false)
