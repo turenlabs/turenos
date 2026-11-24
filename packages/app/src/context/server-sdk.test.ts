@@ -1,6 +1,78 @@
-import { describe, expect, test } from "bun:test"
-import { coalesceServerEvents, enqueueServerEvent, resumeStreamAfterPageShow } from "./server-sdk"
+import { describe, expect, spyOn, test } from "bun:test"
+import { createServer } from "node:http"
+import { createRoot } from "solid-js"
+import {
+  coalesceServerEvents,
+  createServerSdkContext,
+  enqueueServerEvent,
+  resumeStreamAfterPageShow,
+} from "./server-sdk"
+import { ServerScope } from "@/utils/server-scope"
 import type { Event } from "@turenlabs/sdk/v2/client"
+
+test("reconnects promptly after a stream drops and resumes from the last live event", async () => {
+  const reconnect = Promise.withResolvers<string>()
+  const replay = Promise.withResolvers<void>()
+  const frame = (payload: { type: string; id: string }) => `data: ${JSON.stringify({ payload })}\n\n`
+  let disconnect: (() => void) | undefined
+  let connections = 0
+  const server = createServer((request, response) => {
+    response.setHeader("Access-Control-Allow-Origin", "*")
+    if (request.method === "OPTIONS") {
+      response.setHeader("Access-Control-Allow-Headers", "Last-Event-ID")
+      response.end()
+      return
+    }
+    connections++
+    if (connections === 1) {
+      response.writeHead(503, "Sensitive fixture detail").end()
+      return
+    }
+    response.writeHead(200, { "Content-Type": "text/event-stream" })
+    if (connections > 2) {
+      reconnect.resolve(String(request.headers["last-event-id"] ?? ""))
+      response.end(frame({ type: "lsp.updated", id: "replayed" }))
+      return
+    }
+    const events = [
+      { type: "server.connected", id: "synthetic-connected" },
+      { type: "lsp.updated", id: "last-live" },
+      { type: "sync", id: "sync-only" },
+      { type: "server.heartbeat", id: "synthetic-heartbeat" },
+    ]
+    disconnect = () => response.destroy()
+    response.write(events.map(frame).join(""))
+  })
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
+  const address = server.address()
+  if (!address || typeof address === "string") throw new Error("Expected a TCP server")
+  const logged = spyOn(console, "error").mockImplementation(() => {})
+  const dispose = createRoot((dispose) => {
+    const sdk = createServerSdkContext(
+      { type: "http", http: { url: `http://127.0.0.1:${address.port}` } },
+      ServerScope.local,
+    )
+    sdk.event.on("global", (event) => {
+      if (event.id === "synthetic-heartbeat") disconnect?.()
+      if (event.id === "replayed") replay.resolve()
+    })
+    void sdk.event.start()
+    return dispose
+  })
+  try {
+    const resumed = Promise.all([reconnect.promise, replay.promise]).then(([cursor]) => cursor)
+    expect(await Promise.race([resumed, Bun.sleep(2_000).then(() => "timed out")])).toBe("last-live")
+    const streamLogs = logged.mock.calls
+      .map((args) => String(args[0]))
+      .filter((line) => line.startsWith("[global-sdk]"))
+    expect(streamLogs).toContain("[global-sdk] event stream error (webview, HTTP 503)")
+    expect(streamLogs.join("\n")).not.toContain("Sensitive fixture detail")
+  } finally {
+    dispose()
+    await new Promise<void>((resolve) => server.close(() => resolve()))
+    logged.mockRestore()
+  }
+})
 
 describe("resumeStreamAfterPageShow", () => {
   test("restarts a stream only after a back-forward cache restore", () => {

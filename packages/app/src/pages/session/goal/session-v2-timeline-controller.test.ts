@@ -10,7 +10,7 @@ import type {
   SessionNextToolSuccess,
   ToolPart,
 } from "@turenlabs/sdk/v2/client"
-import { presentTool } from "./session-v2-presentation"
+import { mergeSessionV2Parts, presentTool } from "./session-v2-presentation"
 import {
   applySessionV2ToolEvent,
   expandSessionV2ToolBody,
@@ -701,6 +701,10 @@ describe("V2 timeline live reconciliation", () => {
     expect(sessionEventNeedsTranscriptSnapshot("session.next.compaction.delta")).toBe(false)
     expect(sessionEventNeedsTranscriptSnapshot("session.next.text.ended")).toBe(true)
     expect(sessionEventNeedsTranscriptSnapshot("session.next.step.failed")).toBe(true)
+    expect(sessionEventNeedsTranscriptSnapshot("session.next.title.updated")).toBe(false)
+    expect(sessionEventNeedsTranscriptSnapshot("session.next.goal.cleared")).toBe(false)
+    expect(sessionEventNeedsTranscriptSnapshot("session.next.goal.updated")).toBe(false)
+    expect(sessionEventNeedsTranscriptSnapshot("session.next.goal.updated", true)).toBe(true)
   })
 
   test("does not advance a window through an empty or partial snapshot", () => {
@@ -1291,6 +1295,16 @@ describe("applySessionV2ToolEvent", () => {
       },
     })
     expect(h.counts).toEqual({ writes: 1, fallbacks: 0 })
+  })
+
+  test("a delayed snapshot cannot reopen a tool that settled on the durable stream", () => {
+    const snapshot = running()
+    const h = harness([snapshot])
+    h.apply(success())
+
+    expect(mergeSessionV2Parts(h.data.part.msg_a, [snapshot])).toMatchObject([
+      { state: { status: "completed", output: "total 4" } },
+    ])
   })
 
   test("a failure preserves input and carries structured/output only from a running state", () => {

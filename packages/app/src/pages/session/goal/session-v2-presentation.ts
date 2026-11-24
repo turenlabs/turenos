@@ -331,50 +331,48 @@ export function isSessionV2ToolStub(part: Part): boolean {
 }
 
 /**
- * Merges one message's incoming presented parts over the stored ones without letting a lean-page
- * tool stub overwrite a part that already holds the real body — the settled output a
- * `session.message` expand fetch or a live tool event already wrote. The stub only yields when the
- * stored part is itself a stub or still `pending` (no settled body to lose); a running or settled
- * part keeps its body when it carries the same or a settled status.
+ * Tool lifecycle events can reach the renderer while a snapshot is in flight. Keep the furthest
+ * lifecycle state, and keep a fully loaded body when the incoming copy is a stub of the same state.
  */
 export function mergeSessionV2Parts(current: readonly Part[] | undefined, incoming: Part[]): Part[] {
-  // Large, dense stub batches repay building the lookup index; unrelated incoming parts do not.
-  const considerIndex =
-    current !== undefined && current.length >= 32 && incoming.length > 1 && current.length * incoming.length > 4_096
-  const stubCount = considerIndex ? incoming.filter((part) => isSessionV2ToolStub(part)).length : 0
-  const currentIndices =
-    stubCount >= 16 && (current?.length ?? 0) * stubCount > 4_096
+  if (!current?.length || incoming.length === 0) return incoming
+  const needsComparison = (part: Part): part is ToolPart =>
+    part.type === "tool" && (toolStage(part) < 2 || isSessionV2ToolStub(part))
+  // Large batches repay building the index; unrelated incoming parts do not.
+  const comparisons = current.length * incoming.length > 4_096 ? incoming.filter(needsComparison).length : 0
+  const indices =
+    current.length * comparisons > 4_096
       ? { byID: new Map<string, number>(), byCallID: new Map<string, number>() }
       : undefined
-  if (currentIndices) current?.forEach((part, index) => {
-    if (!currentIndices.byID.has(part.id)) currentIndices.byID.set(part.id, index)
-    if (part.type === "tool" && !currentIndices.byCallID.has(part.callID))
-      currentIndices.byCallID.set(part.callID, index)
-  })
+  if (indices) {
+    current.forEach((part, index) => {
+      if (!indices.byID.has(part.id)) indices.byID.set(part.id, index)
+      if (part.type === "tool" && !indices.byCallID.has(part.callID)) indices.byCallID.set(part.callID, index)
+    })
+  }
 
   return incoming.map((part) => {
-    if (part.type !== "tool" || !isSessionV2ToolStub(part)) return part
-    let existing: Part | undefined
-    if (currentIndices) {
-      const idIndex = currentIndices.byID.get(part.id)
-      const callIDIndex = currentIndices.byCallID.get(part.callID)
-      const existingIndex =
-        idIndex === undefined
-          ? callIDIndex
-          : callIDIndex === undefined
-            ? idIndex
-            : Math.min(idIndex, callIDIndex)
-      existing = existingIndex === undefined ? undefined : current?.[existingIndex]
-    } else {
-      existing = current?.find(
-        (item) => item.id === part.id || (item.type === "tool" && item.callID === part.callID),
-      )
-    }
+    if (!needsComparison(part)) return part
+    const existing = indices
+      ? current[Math.min(indices.byID.get(part.id) ?? Infinity, indices.byCallID.get(part.callID) ?? Infinity)]
+      : current.find((item) => item.id === part.id || (item.type === "tool" && item.callID === part.callID))
     if (existing?.type !== "tool") return part
-    if (isSessionV2ToolStub(existing) || existing.state.status === "pending") return part
-    if (existing.state.status === part.state.status) return existing
-    return existing.state.status === "completed" || existing.state.status === "error" ? existing : part
+    if (toolStage(existing) > toolStage(part)) return existing
+    if (
+      toolStage(existing) === toolStage(part) &&
+      part.state.status !== "pending" &&
+      isSessionV2ToolStub(part) &&
+      !isSessionV2ToolStub(existing)
+    )
+      return existing
+    return part
   })
+}
+
+function toolStage(part: ToolPart) {
+  if (part.state.status === "pending") return 0
+  if (part.state.status === "running") return 1
+  return 2
 }
 
 export function mergeSessionV2Messages(input: {
@@ -386,20 +384,18 @@ export function mergeSessionV2Messages(input: {
 }) {
   const incoming = new Set(input.incoming.map((message) => message.id))
   const preserved = input.preservedMessageIDs ?? new Set<string>()
-  const messages =
+  const staleAssistants = new Set<string>()
+  const current =
     input.removeMissing === false
-      ? mergeIncrementalMessages(input.messages, input.incoming)
-      : mergeIncrementalMessages(
-          input.messages.filter(
-            (message) =>
-              (!input.previousOwnedMessageIDs.has(message.id) || preserved.has(message.id)) &&
-              !incoming.has(message.id),
-          ),
-          input.incoming,
+      ? input.messages
+      : input.messages.filter(
+          (message) =>
+            incoming.has(message.id) || !input.previousOwnedMessageIDs.has(message.id) || preserved.has(message.id),
         )
 
   return {
-    messages,
+    messages: mergeIncrementalMessages(current, input.incoming, staleAssistants),
+    staleAssistants,
     ownedMessageIDs:
       input.removeMissing === false ? new Set([...input.previousOwnedMessageIDs, ...incoming]) : incoming,
     removedMessageIDs:
@@ -410,25 +406,41 @@ export function mergeSessionV2Messages(input: {
 }
 
 /**
- * Splice `incoming` into `current` by `time.created`, deduplicating on `id` (the incoming copy
- * wins). Both arrays arrive in ascending `time.created` order — the store array is written in
- * presentation order, which is the fetch order the merge searches on — so this is one
- * two-pointer pass rather than a `findIndex`+`splice` per preserved message. On equal
- * timestamps a preserved row stays ahead of the incoming row, matching the old splice order.
+ * Splice the two time-ordered lists by `time.created`, deduplicating on `id`. Incoming rows win
+ * unless they would reopen a settled assistant step. For equal timestamps, existing rows that
+ * have no incoming copy stay ahead of the incoming row.
  */
-export function mergeIncrementalMessages(current: Message[], incoming: Message[]) {
-  const incomingIDs = new Set(incoming.map((message) => message.id))
+export function mergeIncrementalMessages(current: Message[], incoming: Message[], staleAssistants?: Set<string>) {
+  if (current.length === 0) return incoming
+  const incomingIDs = new Map(incoming.map((message, index) => [message.id, index]))
+  let resolved = incoming
+  const remaining = current.filter((message) => {
+    const match = incomingIDs.get(message.id)
+    if (match === undefined) return true
+    const next = incoming[match]
+    if (
+      message.role === "assistant" &&
+      message.time.completed !== undefined &&
+      next?.role === "assistant" &&
+      next.time.completed === undefined
+    ) {
+      if (resolved === incoming) resolved = incoming.slice()
+      // An older page may know the real parent even when its copy of this step is stale.
+      resolved[match] = { ...message, parentID: next.parentID }
+      staleAssistants?.add(message.id)
+    }
+    return false
+  })
   const merged: Message[] = []
   let index = 0
-  for (const message of current) {
-    if (incomingIDs.has(message.id)) continue
+  for (const message of remaining) {
     while (index < incoming.length && incoming[index]!.time.created < message.time.created) {
-      merged.push(incoming[index]!)
+      merged.push(resolved[index]!)
       index += 1
     }
     merged.push(message)
   }
-  merged.push(...incoming.slice(index))
+  merged.push(...resolved.slice(index))
   return merged
 }
 

@@ -10,6 +10,7 @@ import { getOwner } from "solid-js/web"
 import { QueryClient } from "@tanstack/solid-query"
 import type { ServerScope } from "@/utils/server-scope"
 import { enrichProject } from "./project-enrich"
+import { usePlatform } from "./platform"
 
 export const { use: useGlobal, provider: GlobalProvider } = createSimpleContext({
   name: "Global",
@@ -114,7 +115,8 @@ function createServerCtx(
       },
     },
   })
-  const sdk = createServerSdkContext(conn, scope)
+  const platform = usePlatform()
+  const sdk = createServerSdkContext(conn, scope, platform.fetch)
   const sync = createServerSyncContext(sdk)
 
   function enrich(project: { worktree: string; expanded: boolean }) {

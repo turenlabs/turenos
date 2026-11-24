@@ -222,14 +222,18 @@ export function reconcileSessionV2DeltaBases(input: {
   })
 }
 
-/** High-frequency stream fragments are applied from the live delta channel, not reloaded as context. */
-export function sessionEventNeedsTranscriptSnapshot(type: string) {
+/** Live fragments and metadata-only updates do not change the durable transcript window. */
+export function sessionEventNeedsTranscriptSnapshot(type: string, goalAdmittedPrompt = false) {
   switch (type) {
     case "session.next.text.delta":
     case "session.next.reasoning.delta":
     case "session.next.tool.input.delta":
     case "session.next.compaction.delta":
+    case "session.next.title.updated":
+    case "session.next.goal.cleared":
       return false
+    case "session.next.goal.updated":
+      return goalAdmittedPrompt
     default:
       return true
   }
@@ -523,6 +527,7 @@ export function createSessionV2TimelineController(input: {
     // assistant's parent presents it, and it leaves the list here.
     rememberOrphans(sessionID, messages, presentation)
     const outbox = sessionPromptOutbox.presentation(sessionID, sdk().scope)
+    const currentMessages = sync().data.message[sessionID] ?? []
     const presentedIDs = new Set(presentation.messages.map((message) => message.id))
     outbox.messages.forEach((message) => {
       if (presentedIDs.has(message.id)) return
@@ -545,6 +550,9 @@ export function createSessionV2TimelineController(input: {
         .filter((message) => message.role === "assistant" && message.time.completed !== undefined)
         .map((message) => message.id),
     )
+    currentMessages.forEach((message) => {
+      if (message.role === "assistant" && message.time.completed !== undefined) completed.add(message.id)
+    })
     const pending = sessionV2DeltasForProjection({
       deltas: deltas.get(sessionID) ?? [],
       through,
@@ -572,10 +580,10 @@ export function createSessionV2TimelineController(input: {
     // it into the last visible transcript; only a structural boundary (revert/cold
     // open) may remove rows that are absent from that window.
     const projection = mergeSessionV2Messages({
-      messages: sync().data.message[sessionID] ?? [],
+      messages: currentMessages,
       incoming: presentation.messages,
       previousOwnedMessageIDs: authoritative
-        ? new Set((sync().data.message[sessionID] ?? []).map((message) => message.id))
+        ? new Set(currentMessages.map((message) => message.id))
         : (owned.get(sessionID) ?? new Set()),
       preservedMessageIDs: new Set(sessionPromptPending.ids()),
       removeMissing: authoritative,
@@ -593,6 +601,7 @@ export function createSessionV2TimelineController(input: {
         )
       sync().set("message", sessionID, reconcile(projection.messages, { key: "id" }))
       presentation.parts.forEach((entry) => {
+        if (projection.staleAssistants.has(entry.id) && sync().data.part[entry.id] !== undefined) return
         // A lean-page stub never overwrites a part whose real body was already fetched or settled.
         sync().set(
           "part",
@@ -710,7 +719,7 @@ export function createSessionV2TimelineController(input: {
     })
     if (!currentOwner()) return { messages: result.messages, stable: false as const }
     if (authoritative && result.messages.length === 0) return { messages: result.messages, stable: false as const }
-    if (!authoritative && !sessionV2MessageWindowHasContinuity({ ...result, current }))
+    if (!authoritative && !sessionV2MessageWindowHasContinuity({ ...result, current: windows.get(sessionID) }))
       return { messages: result.messages, stable: false as const }
     windows.set(sessionID, {
       oldest: result.messages[0]?.id,
@@ -760,7 +769,7 @@ export function createSessionV2TimelineController(input: {
       // A snapshot that reset the window while the page was in flight owns the bookkeeping;
       // splicing the page in anyway could resurrect rows an authoritative read just removed.
       const latest = windows.get(sessionID)
-      if (!latest) return
+      if (!latest || latest.older !== current.older || latest.oldest !== current.oldest) return
       const fetched = [...page.messages, ...(orphans.get(sessionID) ?? [])]
       const presentation = presentSessionV2Messages({
         sessionID,
@@ -770,7 +779,8 @@ export function createSessionV2TimelineController(input: {
         messages: fetched,
       })
       rememberOrphans(sessionID, fetched, presentation)
-      const merged = mergeIncrementalMessages(sync().data.message[sessionID] ?? [], presentation.messages)
+      const staleAssistants = new Set<string>()
+      const merged = mergeIncrementalMessages(sync().data.message[sessionID] ?? [], presentation.messages, staleAssistants)
       batch(() => {
         presentation.messages
           .filter((message) => message.role === "user")
@@ -783,6 +793,7 @@ export function createSessionV2TimelineController(input: {
           )
         sync().set("message", sessionID, reconcile(merged, { key: "id" }))
         presentation.parts.forEach((entry) => {
+          if (staleAssistants.has(entry.id) && sync().data.part[entry.id] !== undefined) return
           sync().set(
             "part",
             entry.id,
@@ -1299,7 +1310,13 @@ export function createSessionV2TimelineController(input: {
             applyToolEvent(activeSessionID, event, () => scheduleHydrate(activeSessionID))
             continue
           }
-          if (sessionEventNeedsTranscriptSnapshot(event.type)) scheduleHydrate(activeSessionID)
+          if (
+            sessionEventNeedsTranscriptSnapshot(
+              event.type,
+              event.type === "session.next.goal.updated" && event.data.admission !== undefined,
+            )
+          )
+            scheduleHydrate(activeSessionID)
         }
         reconnect()
       } catch {

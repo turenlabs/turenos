@@ -85,6 +85,7 @@ export async function loadSessionV2MessageWindow<T extends SessionMessage>(input
   let older: string | undefined
   let complete = false
   let reachedUntil = input.until === undefined
+  let hasTurnBoundary = false
   let pages = 0
 
   // A saved anchor can move past the cold-open page cap as new messages arrive.
@@ -93,6 +94,7 @@ export async function loadSessionV2MessageWindow<T extends SessionMessage>(input
     const page = await input.load(cursor)
     pages += 1
     collected.push(...page.data)
+    hasTurnBoundary ||= page.data.some(startsSessionV2Turn)
     if (input.until !== undefined && page.data.some((message) => message.id === input.until)) reachedUntil = true
     if (page.data.length === 0 || !page.cursor.next) {
       complete = true
@@ -112,7 +114,7 @@ export async function loadSessionV2MessageWindow<T extends SessionMessage>(input
     // invisible for now and correctly parented once the older page loads. Trimming them instead
     // would strand them: `older` is an opaque server cursor pointing past the whole page, so
     // anything dropped from the page's old end could never be requested again.
-    if (collected.length >= minimum && reachedUntil && collected.some(startsSessionV2Turn)) break
+    if (collected.length >= minimum && reachedUntil && hasTurnBoundary) break
   }
 
   return { messages: collected.reverse(), older, complete }
@@ -136,6 +138,7 @@ export async function loadSessionV2Window(input: {
   cursor?: string
   until?: string
 }) {
+  const cold = input.cursor === undefined && input.minimum === undefined && input.until === undefined
   return loadSessionV2MessageWindow({
     load: async (cursor) => {
       const response = await input.request(
@@ -154,6 +157,9 @@ export async function loadSessionV2Window(input: {
     minimum: input.minimum,
     cursor: input.cursor,
     until: input.until,
+    // A long turn may consume the normal page budget before its prompt appears. Give a cold
+    // open a bounded extra lookback. Ordinary opens still stop on the first qualifying page.
+    pageLimit: cold ? SESSION_V2_WINDOW_PAGE_LIMIT * 2 : undefined,
   })
 }
 

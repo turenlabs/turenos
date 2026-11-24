@@ -415,8 +415,11 @@ function startupTrace(stage: string, startedAt: number) {
 }
 
 function serverLayer(opts: { port: number; hostname: string; socketPath?: string }) {
-  if (opts.socketPath) return BunHttpServer.layer({ unix: opts.socketPath, gracefulShutdownTimeout: "1 second" })
-  return BunHttpServer.layer({ port: opts.port, hostname: opts.hostname, gracefulShutdownTimeout: "1 second" })
+  // Event streams send heartbeats every 10–15 seconds. Leave room for late
+  // writes while keeping a finite timeout for silent connections.
+  const timeouts = { idleTimeout: 60, gracefulShutdownTimeout: "1 second" } as const
+  if (opts.socketPath) return BunHttpServer.layer({ unix: opts.socketPath, ...timeouts })
+  return BunHttpServer.layer({ port: opts.port, hostname: opts.hostname, ...timeouts })
 }
 
 export * as Server from "./server"
