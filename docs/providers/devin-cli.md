@@ -92,7 +92,7 @@ Linux, WSL, and packaged Desktop execution still need qualification. See the [De
 - Native Windows execution fails explicitly. Use a WSL backend.
 - ACP initialization and session creation each have a 30-second deadline. A model prompt has a 15-minute deadline.
 - Prompt and system text each have a 4 MiB limit. ACP output has an 8 MiB frame limit and 32 MiB total limit.
-- The catalog uses conservative context/output fallbacks of 32,768/8,192 tokens. These are not verified Devin model limits.
+- The catalog uses estimated context and output limits of 32,768 and 8,192 tokens. TurenOS bases automatic compaction on the messages it replays in the ACP prompt. Devin loads system rules and MCP tool definitions separately.
 - Token usage and API costs remain unavailable. Devin's account plan controls billing; local execution does not mean offline inference.
 - This provider targets Core Session V2. It does not add a Devin route to the legacy Forge session processor.
 - Cloud sessions, `/handoff`, saved Devin-session loading, and live model switching are outside this preview.

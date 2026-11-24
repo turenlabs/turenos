@@ -16,7 +16,7 @@ import { ModelV2 } from "../../model"
 import { DevinCLI } from "../../provider/devin-cli"
 import { ClaudeCodeMcp } from "./claude-code-mcp-namespace"
 
-const ROUTE_ID = "devin-acp"
+export const ROUTE_ID = "devin-acp"
 export const SUPPORTED_BUILDS = [
   { version: "devin 3000.14.30821 (a09cd7f323ee)", acpArgs: ["--process-model", "in-process"] },
   { version: "devin 3000.12.57 (96542e930752)", acpArgs: [] },
