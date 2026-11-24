@@ -106,7 +106,10 @@ const layer = Layer.effect(
       sessionID: SessionID
       messageID: MessageID
     }) {
-      const all = yield* sessions.messages({ sessionID: input.sessionID }).pipe(Effect.orDie)
+      const messages = (yield* MessageV2.stream(input.sessionID, { turnID: input.messageID }).pipe(
+        Effect.provideService(Database.Service, database),
+        Effect.orDie,
+      )).reverse()
       yield* sessions.setSummary({
         sessionID: input.sessionID,
         summary: {
@@ -117,11 +120,6 @@ const layer = Layer.effect(
       })
       yield* events.publish(Session.Event.Diff, { sessionID: input.sessionID, diff: [] })
       if ((yield* config.get()).snapshot === false) return
-      if (!all.length) return
-
-      const messages = all.filter(
-        (m) => m.info.id === input.messageID || (m.info.role === "assistant" && m.info.parentID === input.messageID),
-      )
       const target = messages.find((m) => m.info.id === input.messageID)
       if (!target || target.info.role !== "user") return
       const msgDiffs = yield* computeDiff({ messages })

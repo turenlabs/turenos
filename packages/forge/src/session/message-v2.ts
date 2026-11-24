@@ -28,6 +28,7 @@ import { eq } from "drizzle-orm"
 import { inArray } from "drizzle-orm"
 import { lt } from "drizzle-orm"
 import { or } from "drizzle-orm"
+import { sql } from "drizzle-orm"
 import {
   MessageTable,
   PartTable,
@@ -449,13 +450,24 @@ export const page = Effect.fn("MessageV2.page")(function* (input: {
   sessionID: SessionID
   limit: number
   before?: string
+  turnID?: MessageID
 }) {
   const { db } = yield* Database.Service
   yield* assertLegacyReadable(db, input.sessionID)
   const before = input.before ? cursor.decode(input.before) : undefined
-  const where = before
-    ? and(eq(MessageTable.session_id, input.sessionID), older(before))
-    : eq(MessageTable.session_id, input.sessionID)
+  const where = and(
+    eq(MessageTable.session_id, input.sessionID),
+    before ? older(before) : undefined,
+    input.turnID === undefined
+      ? undefined
+      : or(
+          eq(MessageTable.id, input.turnID),
+          sql`CASE WHEN json_valid(${MessageTable.data}) THEN
+            json_extract(${MessageTable.data}, '$.role') = 'assistant'
+            AND (${MessageTable.data} -> '$.parentID') = ${JSON.stringify(input.turnID)}
+          ELSE 1 END`,
+        ),
+  )
   const rows = yield* db
     .select()
     .from(MessageTable)
@@ -480,7 +492,16 @@ export const page = Effect.fn("MessageV2.page")(function* (input: {
 
   const more = rows.length > input.limit
   const slice = more ? rows.slice(0, input.limit) : rows
-  const items = yield* hydrate(db, slice)
+  // SQLite rejects some deeply nested messages. Check those candidates before loading parts.
+  const items = yield* hydrate(
+    db,
+    input.turnID === undefined
+      ? slice
+      : slice.filter((row) => {
+          const message = info(row)
+          return message.id === input.turnID || (message.role === "assistant" && message.parentID === input.turnID)
+        }),
+  )
   items.reverse()
   const tail = slice.at(-1)
   return {
@@ -490,14 +511,13 @@ export const page = Effect.fn("MessageV2.page")(function* (input: {
   }
 })
 
-export function stream(sessionID: SessionID) {
+export function stream(sessionID: SessionID, options?: { turnID: MessageID }) {
   const size = 50
   return Effect.gen(function* () {
     const result = [] as WithParts[]
     let before: string | undefined
     while (true) {
-      const next = yield* page({ sessionID, limit: size, before })
-      if (next.items.length === 0) break
+      const next = yield* page({ sessionID, limit: size, before, turnID: options?.turnID })
       for (let i = next.items.length - 1; i >= 0; i--) {
         const item = next.items[i]
         if (item) result.push(item)
