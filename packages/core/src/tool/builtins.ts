@@ -112,7 +112,6 @@ export const node = makeLocationNode({
     YaraTool.node,
     EmailSecurityTools.node,
     EmailAuthenticateTools.node,
-    EmailAuthenticateTools.node,
     BinaryAnalysisTools.node,
     StaticAnalysisTools.node,
     ProtocolInspectTools.node,

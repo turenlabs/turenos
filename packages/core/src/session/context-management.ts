@@ -1,11 +1,12 @@
 export * as SessionContextManagement from "./context-management"
 
 import { and, count, desc, eq, sum } from "drizzle-orm"
-import { Context, Effect, Layer } from "effect"
+import { Context, Effect, Layer, Option, Schema } from "effect"
 import { Catalog } from "../catalog"
 import { Database } from "../database/database"
 import { makeLocationNode } from "../effect/app-node"
 import { SessionCompaction } from "./compaction"
+import { SessionMessage } from "./message"
 import { ProviderUsageTable, SessionMessageTable } from "./sql"
 import { SessionSchema } from "./schema"
 import { SessionStore } from "./store"
@@ -29,6 +30,7 @@ export const CACHE_SECONDS = 300
 /** A cache about to lapse is reported before it does, so the agent can avoid a long wait. */
 const CACHE_EXPIRING_SECONDS = 240
 const RECENT_TURNS = 8
+const decodeAssistantMessage = Schema.decodeUnknownOption(Schema.fromJsonString(SessionMessage.Assistant))
 
 /**
  * Standing guidance, always in the system context. It is static text so it never changes the cached prefix after
@@ -137,9 +139,32 @@ const layer = Layer.effect(
         .orderBy(desc(SessionMessageTable.time_created))
         .all()
         .pipe(Effect.orDie)
+      const latestMessage =
+        recent[0] === undefined
+          ? undefined
+          : yield* db
+              .select({ data: SessionMessageTable.data })
+              .from(SessionMessageTable)
+              .where(
+                and(
+                  eq(SessionMessageTable.session_id, sessionID),
+                  eq(SessionMessageTable.id, recent[0].assistant_message_id),
+                ),
+              )
+              .get()
+              .pipe(Effect.orDie)
+      const latestAssistant =
+        latestMessage === undefined ? undefined : Option.getOrUndefined(decodeAssistantMessage(latestMessage.data))
+      const latestOccupancy =
+        latestAssistant?.tokens === undefined
+          ? undefined
+          : latestAssistant.tokens.input +
+            latestAssistant.tokens.cache.read +
+            latestAssistant.tokens.cache.write
       const now = Date.now()
       return describe({
         window,
+        occupancy: latestOccupancy !== undefined && latestOccupancy > 0 ? latestOccupancy : undefined,
         recent,
         turns: totals?.turns ?? 0,
         cost: Number(totals?.cost ?? 0),
@@ -161,6 +186,7 @@ export const node = makeLocationNode({
 /** Pure so it can be tested without a database. `recent` is newest first; `checkpoints` are creation times. */
 export const describe = (input: {
   readonly window: number | undefined
+  readonly occupancy?: number | undefined
   readonly recent: ReadonlyArray<{
     readonly time: number
     readonly tokens_input: number
@@ -178,13 +204,16 @@ export const describe = (input: {
   const contextTokens =
     latest === undefined || compactedSince
       ? undefined
-      : latest.tokens_input + latest.tokens_cache_read + latest.tokens_cache_write
+      : (input.occupancy ?? latest.tokens_input + latest.tokens_cache_read + latest.tokens_cache_write)
   const usedPercent =
     contextTokens === undefined || input.window === undefined || input.window <= 0
       ? undefined
       : Math.round((contextTokens / input.window) * 100)
   const read = input.recent.reduce((total, row) => total + row.tokens_cache_read, 0)
-  const all = input.recent.reduce((total, row) => total + row.tokens_input + row.tokens_cache_read, 0)
+  const all = input.recent.reduce(
+    (total, row) => total + row.tokens_input + row.tokens_cache_read + row.tokens_cache_write,
+    0,
+  )
   const seconds = latest === undefined ? undefined : Math.max(0, Math.round((input.now - latest.time) / 1000))
   return {
     contextTokens,

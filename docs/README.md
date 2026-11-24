@@ -153,6 +153,8 @@ Prototypes and benchmarks that explore or measure rather than document shipped b
   memory, code, and repository retrieval.
 - [Token efficiency](./experimental/token-efficiency/README.md): measured context-token cost, benchmark method, and remaining
   overhead.
+- [Coding session benchmark](./experimental/coding-session-benchmark.md): run the two-turn file-editing benchmark for TurenOS and distance-cli.
+- [OpenAI harness comparison](./experimental/openai-harness-comparison.md): correctness, latency, and token usage across TurenOS, distance-cli, and Codex.
 
 ## Contracts and specs
 

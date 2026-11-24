@@ -111,6 +111,24 @@ describe("OpenAI Responses route", () => {
     }),
   )
 
+  it.effect("lowers parallel tool calls only when the request carries tools", () =>
+    Effect.gen(function* () {
+      const providerOptions = { openai: { parallelToolCalls: true } }
+      const withTools = yield* LLMClient.prepare(
+        LLM.updateRequest(request, {
+          providerOptions,
+          tools: [{ name: "lookup", description: "Lookup data", inputSchema: { type: "object" } }],
+        }),
+      )
+      const withoutTools = yield* LLMClient.prepare(LLM.updateRequest(request, { providerOptions }))
+
+      expect(withTools.body).toMatchObject({ parallel_tool_calls: true })
+      expect(JSON.stringify(withTools.body)).not.toContain("parallelToolCalls")
+      // The in-memory body carries the key as `undefined`; JSON serialization drops it.
+      expect(JSON.stringify(withoutTools.body)).not.toContain("parallel_tool_calls")
+    }),
+  )
+
   it.effect("flattens top-level object unions in function schemas", () =>
     Effect.gen(function* () {
       const prepared = yield* LLMClient.prepare<OpenAIResponses.OpenAIResponsesBody>(

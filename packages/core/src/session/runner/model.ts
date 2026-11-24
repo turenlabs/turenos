@@ -851,7 +851,12 @@ const adapters = {
   "@ai-sdk/openai": {
     resolve: (model, credential) =>
       Effect.succeed(
-        withDefaults(model, OpenAIResponses.route)
+        withDefaults(
+          model,
+          OpenAIResponses.route.with({
+            providerOptions: { openai: { parallelToolCalls: true } },
+          }),
+        )
           .with({ auth: bearer(model, credential) })
           .model({ id: model.api.id, compatibility: openAICompatibility(model) }),
       ),
@@ -1041,7 +1046,21 @@ const chatGPTOAuth = (
   const accountID =
     credential.metadata && typeof credential.metadata.accountID === "string" ? credential.metadata.accountID : undefined
   return Effect.succeed(
-    withDefaults(model, OpenAIResponses.route)
+    withDefaults(
+      model,
+      // ChatGPT Codex runs against the direct protocol route rather than the
+      // API-key `OpenAI.configure(...)` helper, so set the reasoning-summary
+      // and parallel tool-call defaults the Codex harness expects before the
+      // catalog or session overlays any explicit choice.
+      OpenAIResponses.route.with({
+        providerOptions: {
+          openai: {
+            reasoningSummary: "auto",
+            parallelToolCalls: true,
+          },
+        },
+      }),
+    )
       .with({
         endpoint: { baseURL: OpenAICodex.API_ENDPOINT, path: "" },
         auth: Auth.headers(OpenAICodex.authorizationHeaders(credential.access, accountID)).andThen(

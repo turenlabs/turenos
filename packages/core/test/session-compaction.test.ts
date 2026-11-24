@@ -3073,6 +3073,147 @@ describe("the pre-flight gate budgets against the model's real window", () => {
     expect(selected.recent.length).toBeLessThan(50_000)
   })
 
+  test("preserves the bounded user instruction in recent when an oversized turn splits past its user message", () => {
+    const step1 = entry(
+      assistant("split_past_a1", [{ type: "text", id: "txt_split_1", text: "a".repeat(200_000) }]),
+    )
+    const step2 = entry(
+      assistant("split_past_a2", [{ type: "text", id: "txt_split_2", text: "b".repeat(10_000) }]),
+    )
+    const selected = SessionCompaction.select(
+      [entry(user("split_past_u", "FIX-THE-CART-ROUNDING-BUG")), step1, step2],
+      { tokens: 8_000, turns: 2, preserveCurrentTurn: true },
+    )
+
+    if (!selected) throw new Error("expected a selection")
+    expect(selected.throughSeq).toBe(step1.seq)
+    expect(selected.recent).toContain("FIX-THE-CART-ROUNDING-BUG")
+  })
+
+  test("splits a single-turn session whose steps exceed keep.tokens even when under clampBudget", () => {
+    const step1 = entry(
+      assistant("single_turn_a1", [{ type: "text", id: "txt_single_1", text: "a".repeat(60_000) }]),
+    )
+    const step2 = entry(
+      assistant("single_turn_a2", [{ type: "text", id: "txt_single_2", text: "b".repeat(20_000) }]),
+    )
+    const selected = SessionCompaction.select(
+      [entry(user("single_turn_u", "AUDIT-CONTEXT-MANAGEMENT")), step1, step2],
+      { tokens: 16_000, turns: 2, preserveCurrentTurn: true },
+    )
+
+    if (!selected) throw new Error("expected a selection")
+    expect(selected.throughSeq).toBe(step1.seq)
+    expect(selected.recent).toContain("AUDIT-CONTEXT-MANAGEMENT")
+  })
+
+  test("preserves retainedResult references when tool output previews are elided for summarization", () => {
+    const id = "res_0000000000001_0123456789abcdef0123456789abcdef"
+    const middleNotice = `\n... 400 lines / 20000 bytes omitted; output excerpted. Captured result ${id} (60000 bytes). Inspect with result_read ...`
+    const preview = `${"H".repeat(20_000)}${middleNotice}${"T".repeat(20_000)}`
+    const message = SessionMessage.Assistant.make({
+      id: messageID("retained_a1"),
+      type: "assistant",
+      agent: "build",
+      model: modelRef,
+      content: [
+        {
+          ...tool({ id: "call_retained", name: "bash", output: preview }),
+          state: {
+            status: "completed",
+            input: { command: "cat huge.log" },
+            content: [{ type: "text", text: preview }],
+            structured: {
+              retainedResult: {
+                id,
+                tool: "bash",
+                toolCallID: "call_retained",
+                createdAt: 1,
+                expiresAt: 999_999_999,
+                textBytes: 60_000,
+                structuredBytes: 0,
+                sha256: "0".repeat(64),
+                hasStructured: false,
+                captureTruncated: false,
+              },
+            },
+          },
+        },
+      ],
+      time: { created: DateTime.makeUnsafe(1) },
+    })
+
+    const serialized = SessionCompaction.serializeMessage(message)
+    expect(serialized).toContain(`[Retained result: ${id} (bash)]`)
+  })
+
+  test("estimateRequest ignores local-only tool outputSchema fields", () => {
+    const baseTool = {
+      name: "read",
+      description: "Read a file",
+      inputSchema: { type: "object", properties: { path: { type: "string" } } },
+    }
+    const withoutOutputSchema = LLM.request({
+      model: model({ context: 200_000 }),
+      messages: [Message.user("hi")],
+      tools: [baseTool],
+    })
+    const withOutputSchema = LLM.request({
+      model: model({ context: 200_000 }),
+      messages: [Message.user("hi")],
+      tools: [
+        {
+          ...baseTool,
+          outputSchema: {
+            type: "object",
+            properties: { huge: { type: "string", description: "x".repeat(40_000) } },
+          },
+        },
+      ],
+    })
+
+    expect(SessionCompaction.estimateRequest(withOutputSchema)).toBe(
+      SessionCompaction.estimateRequest(withoutOutputSchema),
+    )
+  })
+
+  test("compactWithHandoff masks secret handles before publishing the checkpoint", async () => {
+    const token = `ghp_${"Kx7".repeat(12)}`
+    const harness = engine({ events: [] })
+    const compacted = await Effect.runPromise(
+      harness.compaction.compactWithHandoff({
+        sessionID,
+        entries: [...history(), entry(user("handoff_pending", "continue"))],
+        model: model({ context: 200_000 }),
+        handoff: `${VALID_SUMMARY}\n- token: ${token}`,
+      }),
+    )
+
+    expect(compacted).toEqual({ ok: true })
+    const ended = harness.published.find((item) => item.type === "session.next.compaction.ended")
+    expect(String(ended?.data["text"])).not.toContain(token.slice(0, 12))
+  })
+
+  test("compactWithHandoff succeeds on a single-turn session under keep.tokens once assistant work exists", async () => {
+    const harness = engine({ events: [] })
+    const compacted = await Effect.runPromise(
+      harness.compaction.compactWithHandoff({
+        sessionID,
+        entries: [
+          entry(user("short_handoff_u", "implement the feature")),
+          entry(assistant("short_handoff_a", [{ type: "text", id: "txt_short_handoff", text: "completed step 1" }])),
+        ],
+        model: model({ context: 200_000 }),
+        handoff: VALID_SUMMARY,
+      }),
+    )
+
+    expect(compacted).toEqual({ ok: true })
+    const ended = harness.published.find((item) => item.type === "session.next.compaction.ended")
+    expect(ended?.data["text"]).toBe(VALID_SUMMARY)
+    expect(ended?.data["recent"]).toContain("implement the feature")
+  })
+
   test("clampOutput shrinks the wire allowance only inside the reserve band", async () => {
     const limits = { context: 200_000, output: 64_000 }
     const healthy = LLM.request({ model: model(limits), messages: [Message.user("tiny")], tools: [] })

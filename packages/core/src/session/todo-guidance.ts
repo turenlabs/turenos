@@ -7,10 +7,10 @@ export type Prompt = "initial" | "reconcile"
 
 export const SYSTEM = [
   "Todo workflow:",
-  "- When the `todowrite` tool is available, use it for non-trivial work that has multiple concrete steps.",
-  "- Create the list before substantive work, keep exactly one active item `in_progress`, and update it after meaningful progress and before the final response.",
+  "- When the `todowrite` tool is available, use it only for multi-step work spanning several files, phases, or verifications.",
+  "- Create the list at the start of multi-step work, keep at most one active item `in_progress`, and batch `todowrite` in the same turn alongside your next substantive tool call instead of spending a standalone turn on bookkeeping.",
   "- Mark work `completed` only after the required verification. Keep unfinished work `pending` or `in_progress`; do not use `update_goal` as a substitute for todo bookkeeping.",
-  "- Skip todo bookkeeping for trivial requests or when the tool is unavailable.",
+  "- Skip `todowrite` for trivial requests, direct single-file edits, localized fixes, or when the tool is unavailable.",
 ].join("\n")
 
 export const hasOpenItems = (todos: ReadonlyArray<Todo>) =>
@@ -19,14 +19,14 @@ export const hasOpenItems = (todos: ReadonlyArray<Todo>) =>
 export const prompt = (kind: Prompt, todos: ReadonlyArray<Todo>) => {
   const instruction =
     kind === "reconcile"
-      ? "The previous provider turn made substantive progress without a successful `todowrite` update. Reconcile the list now before continuing."
-      : "Before substantive work, decide whether this request is multi-step. If it is, create or update the list now before continuing."
+      ? "The previous provider turn made substantive progress without a successful `todowrite` update. Reconcile the list alongside your next tool call or before finishing."
+      : "If this request spans multiple phases or files, create or update the list alongside your first substantive tool call."
   return [
     "<todo_checkpoint>",
     "This is internal bookkeeping, not a user request. Never answer or mention it; continue handling the most recent user instruction.",
     instruction,
     currentList(todos),
-    "If the request is trivial or `todowrite` is unavailable, continue without it. Do not narrate this checkpoint.",
+    "If the request is trivial, a direct single-file edit, or `todowrite` is unavailable, continue without it. When calling `todowrite`, batch it in the same turn with your next tool call whenever possible. Do not narrate this checkpoint.",
     "</todo_checkpoint>",
   ].join("\n")
 }

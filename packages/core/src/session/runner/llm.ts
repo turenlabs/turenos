@@ -997,7 +997,11 @@ const layer = Layer.effect(
             compatibility: model.compatibility,
             agent: agent.id,
             system: base,
-            tools: toolMaterialization?.definitions ?? [],
+            tools: (toolMaterialization?.definitions ?? []).map((tool) => ({
+              name: tool.name,
+              description: tool.description,
+              inputSchema: tool.inputSchema,
+            })),
           }),
         )
         .digest("hex")

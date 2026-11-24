@@ -248,4 +248,9 @@ describe("follow_stream", () => {
       expect(stream.directions[0]?.gaps).toEqual([{ sequenceStart: 102, length: 4 }])
     }),
   )
+
+  test("registers follow_stream as a deferred tool", async () => {
+    const source = await Bun.file(new URL("../src/tool/follow-stream.ts", import.meta.url)).text()
+    expect(source).toContain("deferred: true")
+  })
 })

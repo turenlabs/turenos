@@ -280,6 +280,7 @@ const layer = Layer.effectDiscard(
         follow_stream: Tool.make({
           description:
             "Reconstruct observed TCP bytes for one explicit bidirectional IP/port tuple from an offline PCAP/PCAPNG. No network or execution. Defaults: 256 packets, 4096 bytes per packet, 65536 stream bytes split by direction. Gaps are never joined; conflicts, unsupported packets and truncation are reported. Output is bounded below 1 MiB and never claims completeness.",
+          deferred: true,
           input: Input,
           output: Schema.Struct({ path: Schema.String, report: Schema.String }),
           toModelOutput: ({ output }) => [{ type: "text", text: output.report }],

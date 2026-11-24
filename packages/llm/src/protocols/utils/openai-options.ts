@@ -56,6 +56,11 @@ export const store = (request: LLMRequest): boolean | undefined => {
   return typeof value === "boolean" ? value : undefined
 }
 
+export const parallelToolCalls = (request: LLMRequest): boolean | undefined => {
+  const value = options(request)?.parallelToolCalls
+  return typeof value === "boolean" ? value : undefined
+}
+
 export const reasoningEffort = (request: LLMRequest): ReasoningEffort | undefined => {
   const value = options(request)?.reasoningEffort
   return isAnyReasoningEffort(value) ? value : undefined

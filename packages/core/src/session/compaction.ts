@@ -610,10 +610,11 @@ export const serializeMessage = (message: SessionMessage.Message, protect: (valu
             part.provider?.executed === true && part.state.result !== undefined
               ? JSON.stringify(part.state.result)
               : serializeToolOutput(part.state)
-          return [
-            `[Assistant tool call]: ${part.name}(${input})`,
-            `[Tool result]: ${elide(protect(output), toolOutputBudget(part.name), TOOL_ELISION)}`,
-          ]
+          const elided = elide(protect(output), toolOutputBudget(part.name), TOOL_ELISION)
+          const retained = ToolResultStore.referenceOf(part.state.structured)
+          const reference =
+            retained && !elided.includes(retained.id) ? `\n[Retained result: ${retained.id} (${retained.tool})]` : ""
+          return [`[Assistant tool call]: ${part.name}(${input})`, `[Tool result]: ${elided}${reference}`]
         }
         if (part.state.status === "error") {
           const evidence =
@@ -1126,7 +1127,10 @@ export const select = (
   // exists to protect. On real models `options.tokens` is already >= the default, so
   // the floor never binds and the measured behaviour is unchanged.
   const clampBudget = Math.max(options.tokens, DEFAULT_KEEP_TOKENS) * PRESERVE_CURRENT_TURN_BUDGET_MULTIPLE
-  const preservable = currentTurn !== -1 && currentTurnTokens <= clampBudget
+  const preservable =
+    currentTurn > 0
+      ? currentTurnTokens <= clampBudget
+      : currentTurn === 0 && (selectedSplit <= 0 || !items.some((item) => !item.start))
   const split = !preservable ? selectedSplit : selectedSplit <= 0 ? currentTurn : Math.min(selectedSplit, currentTurn)
   const join = (values: readonly Item[]) => values.map((item) => item.text).join("\n\n")
   // A tail that would swallow the whole history leaves nothing to summarize. If `preserveCurrentTurn`
@@ -1155,7 +1159,7 @@ export const select = (
     // while the summary is streaming. `recent` remains for manual and legacy checkpoints.
     recent:
       options.preserveCurrentTurn === true
-        ? ""
+        ? (bounded ?? "")
         : bounded === undefined
           ? join(tail)
           : [bounded, join(tail)].join("\n\n"),
@@ -1294,11 +1298,19 @@ const effectiveOutput = (request: LLMRequest) =>
   request.model.route.defaults.limits?.output ??
   0
 
+/** Project tool definitions to the fields actually sent on the wire (`outputSchema` is local-only). */
+const wireToolDefinitions = (tools: LLMRequest["tools"]) =>
+  tools.map((tool) => ({
+    name: tool.name,
+    description: tool.description,
+    inputSchema: tool.inputSchema,
+  }))
+
 /** Char-based request estimate, with media charged at provider prices rather than base64 length. */
 export const estimateRequest = (request: LLMRequest) => {
   let media = 0
   const json = JSON.stringify(
-    { system: request.system, messages: request.messages, tools: request.tools },
+    { system: request.system, messages: request.messages, tools: wireToolDefinitions(request.tools) },
     (_key, value: unknown) => {
       if (typeof value === "string" && value.startsWith("data:") && value.length > MEDIA_URI_MIN_CHARS) {
         media += 1
@@ -1644,25 +1656,38 @@ export const make = (dependencies: Dependencies) => {
             { context, input: input.model.route.defaults.limits?.input },
             Math.max(effectiveOutput(input.request), Math.min(config.buffer, Math.floor(context / 2))),
           ) -
-            estimate({ system: input.request.system, tools: input.request.tools }) -
+            estimate({ system: input.request.system, tools: wireToolDefinitions(input.request.tools) }) -
             SUMMARY_OUTPUT_TOKENS -
             REQUEST_MARGIN_TOKENS,
         )
       : config.tokens
-    const selected = select(
-      input.entries,
-      {
-        // A keep budget at or above the context would leave nothing to summarize.
-        tokens: Math.min(config.tokens, Math.floor(context / 2), retainedBudget),
-        turns: config.turns,
-        preserveCurrentTurn: mode === "auto",
-      },
-      protect,
-    )
+    const selected =
+      select(
+        input.entries,
+        {
+          // A keep budget at or above the context would leave nothing to summarize.
+          tokens: Math.min(config.tokens, Math.floor(context / 2), retainedBudget),
+          turns: config.turns,
+          preserveCurrentTurn: mode === "auto",
+        },
+        protect,
+      ) ??
+      (input.handoff !== undefined &&
+      input.entries.some((entry) => entry.message.type !== "compaction" && entry.message.type !== "user")
+        ? select(
+            input.entries,
+            {
+              tokens: 0,
+              turns: 0,
+              preserveCurrentTurn: false,
+            },
+            protect,
+          )
+        : undefined)
     const previousSummary = input.entries.find((entry) => entry.message.type === "compaction")?.message
     if (!selected || selected.head.length === 0) return yield* decline(input, "emptyConversation", mode)
     if (input.handoff !== undefined) {
-      const handoff = input.handoff
+      const handoff = protect(input.handoff)
       const messageID = SessionMessage.ID.create()
       const carried = previousSummary?.type === "compaction" ? (previousSummary.ledger ?? []) : []
       // Both events commit together: with no model call there is no interruptible window, and a lone
@@ -2091,7 +2116,7 @@ export const make = (dependencies: Dependencies) => {
   const usable = (input: BudgetInput, prepared: Prepared, context: number) =>
     latestCheckpoint(input.entries)?.id === prepared.base &&
     input.entries.some((entry) => entry.seq === prepared.throughSeq && entry.message.id === prepared.throughID) &&
-    estimate({ system: input.request.system, tools: input.request.tools }) +
+    estimate({ system: input.request.system, tools: wireToolDefinitions(input.request.tools) }) +
       estimate(
         input.entries
           .filter((entry) => entry.seq > prepared.throughSeq && entry.message.type !== "compaction")
