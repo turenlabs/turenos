@@ -66,6 +66,7 @@ import { useLocation } from "@solidjs/router"
 import { attached, inline, kind, typeLabel } from "./message-file"
 import { readPartText } from "./message-part-text"
 import { createPacedValue } from "./text-stream"
+import { latestTaskSessionID } from "./task-session"
 import { taskThinkingState } from "./task-thinking-state"
 import { toolResultCleared } from "./tool-cleared"
 import { partDefaultOpen } from "./part-default-open"
@@ -592,11 +593,7 @@ function taskSession(
   if (!parentID) return
   const description = typeof input.description === "string" ? input.description : ""
   const agent = taskAgent(input.subagent_type, agents).name
-  return (sessions ?? [])
-    .filter((session) => session.parentID === parentID && !session.time?.archived)
-    .filter((session) => (description ? session.title.startsWith(description) : true))
-    .filter((session) => (agent ? session.title.includes(`@${agent}`) : true))
-    .sort((a, b) => (b.time.created ?? 0) - (a.time.created ?? 0))[0]?.id
+  return latestTaskSessionID(sessions, parentID, description, agent)
 }
 
 const HIDDEN_TOOLS = new Set(["todowrite"])

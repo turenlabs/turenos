@@ -92,10 +92,7 @@ const finite = (value: unknown) => (typeof value === "number" && Number.isFinite
  * be reverted again. Mirrors `usage` above, which reads V1 part rows the same
  * way and for the same reason.
  */
-function storedStepUsage(data: Record<string, unknown>): {
-  readonly assistantMessageID: string
-  readonly usage: Usage
-} {
+function storedStepUsage(data: Record<string, unknown>): Usage {
   const tokens = (value: unknown) => {
     const record = (typeof value === "object" && value !== null ? value : {}) as Record<string, unknown>
     const cache = (typeof record.cache === "object" && record.cache !== null ? record.cache : {}) as Record<
@@ -110,10 +107,10 @@ function storedStepUsage(data: Record<string, unknown>): {
     }
   }
   return {
-    assistantMessageID: typeof data.assistantMessageID === "string" ? data.assistantMessageID : "",
     // Same `billed ?? tokens` rule as the roll-up that added it, so what comes
     // off is exactly what went on.
-    usage: { cost: finite(data.cost), tokens: tokens(data.billed ?? data.tokens) },
+    cost: finite(data.cost),
+    tokens: tokens(data.billed ?? data.tokens),
   }
 }
 
@@ -304,7 +301,7 @@ const commitRevert = Effect.fnUntraced(function* (
     : []
   yield* SessionRevert.projectCommit(db, input).pipe(Effect.orDie)
   if (removed.length === 0) return
-  const ids = new Set<string>(removed.map((row) => row.id))
+  const ids = removed.map((row) => row.id)
   // Keyed by message id rather than replayed off the event log, but symmetric
   // with the subtraction below all the same: a row only exists for a turn this
   // session projected, so a reverted turn stops counting as provider activity.
@@ -313,10 +310,7 @@ const commitRevert = Effect.fnUntraced(function* (
     .where(
       and(
         eq(ProviderUsageTable.session_id, input.sessionID),
-        inArray(
-          ProviderUsageTable.assistant_message_id,
-          removed.map((row) => row.id),
-        ),
+        inArray(ProviderUsageTable.assistant_message_id, ids),
       ),
     )
     .run()
@@ -324,13 +318,20 @@ const commitRevert = Effect.fnUntraced(function* (
   const rows = yield* db
     .select({ data: EventTable.data })
     .from(EventTable)
-    .where(and(eq(EventTable.aggregate_id, input.sessionID), eq(EventTable.type, StepEndedType)))
+    .where(
+      and(
+        eq(EventTable.aggregate_id, input.sessionID),
+        eq(EventTable.type, StepEndedType),
+        inArray(
+          sql`(${EventTable.data} -> '$.assistantMessageID')`,
+          ids.map((id) => JSON.stringify(id)),
+        ),
+      ),
+    )
     .all()
     .pipe(Effect.orDie)
   for (const row of rows) {
-    const stored = storedStepUsage(row.data)
-    if (!ids.has(stored.assistantMessageID)) continue
-    yield* applyUsage(db, input.sessionID, stored.usage, -1)
+    yield* applyUsage(db, input.sessionID, storedStepUsage(row.data), -1)
   }
 })
 
@@ -522,16 +523,23 @@ function run(db: DatabaseService, event: SessionEvent.Event) {
       },
       getCurrentShell(callID) {
         return Effect.gen(function* () {
-          const rows = yield* db
+          const row = yield* db
             .select()
             .from(SessionMessageTable)
-            .where(and(eq(SessionMessageTable.session_id, event.data.sessionID), eq(SessionMessageTable.type, "shell")))
+            .where(
+              and(
+                eq(SessionMessageTable.session_id, event.data.sessionID),
+                eq(SessionMessageTable.type, "shell"),
+                // Compare JSON text so binding preserves unpaired surrogates in the call ID.
+                sql`(${SessionMessageTable.data} -> '$.callID') = ${JSON.stringify(callID)}`,
+              ),
+            )
             .orderBy(desc(SessionMessageTable.seq))
-            .all()
+            .limit(1)
+            .get()
             .pipe(Effect.orDie)
-          return rows
-            .map(decodeRow)
-            .find((message): message is SessionMessage.Shell => message.type === "shell" && message.callID === callID)
+          const message = row && decodeRow(row)
+          return message?.type === "shell" ? message : undefined
         })
       },
       updateShell,

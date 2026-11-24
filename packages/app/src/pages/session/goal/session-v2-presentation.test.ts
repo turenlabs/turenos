@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test"
-import type { Message, Part, SessionInputAdmitted, SessionMessage } from "@turenlabs/sdk/v2/client"
+import type { Message, SessionInputAdmitted, SessionMessage } from "@turenlabs/sdk/v2/client"
 import { MessageComment } from "../timeline/message-comment"
 import {
   isSessionV2ToolStub,
   mergeIncrementalMessages,
+  mergeSessionV2Messages,
   mergeSessionV2Parts,
-  mergeSessionV2Presentation,
   presentSessionV2Messages,
   presentTool,
   type SessionV2Presentation,
@@ -690,31 +690,14 @@ describe("presentSessionV2Messages", () => {
       agent: "build",
       model: { providerID: "provider", modelID: "model" },
     }
-    const result = mergeSessionV2Presentation({
+    const result = mergeSessionV2Messages({
       messages: [optimistic],
-      parts: {
-        [user.id]: [
-          {
-            id: `${user.id}_optimistic`,
-            sessionID: "ses_goal",
-            messageID: user.id,
-            type: "text",
-            text: "Ship the goal",
-          },
-        ],
-      },
+      incoming: present([user]).messages,
       previousOwnedMessageIDs: new Set(),
-      presentation: present([user]),
     })
 
     expect(result.messages).toHaveLength(1)
     expect(result.messages[0]).toMatchObject({ id: user.id, role: "user", time: { created: 1 } })
-    expect(result.parts).toHaveLength(1)
-    expect(result.parts[0]?.id).toBe(user.id)
-    expect(result.parts[0]?.parts[0]).toMatchObject({
-      id: `${user.id}_text`,
-      text: "Ship the goal",
-    })
   })
 
   test("preserves an admitted optimistic prompt across a snapshot gap", () => {
@@ -726,23 +709,14 @@ describe("presentSessionV2Messages", () => {
       agent: "build",
       model: { providerID: "openai", modelID: "gpt-5.6-luna" },
     }
-    const optimisticPart = {
-      id: `${user.id}_optimistic`,
-      sessionID: "ses_goal",
-      messageID: user.id,
-      type: "text" as const,
-      text: "Ship the goal",
-    }
-    const result = mergeSessionV2Presentation({
+    const result = mergeSessionV2Messages({
       messages: [optimistic],
-      parts: { [user.id]: [optimisticPart] },
+      incoming: [],
       previousOwnedMessageIDs: new Set([user.id]),
-      presentation: { messages: [], parts: [] },
       preservedMessageIDs: new Set([user.id]),
     })
 
     expect(result.messages).toEqual([optimistic])
-    expect(result.parts).toEqual([{ id: user.id, parts: [optimisticPart] }])
     expect(result.removedMessageIDs).toEqual([])
   })
 
@@ -769,11 +743,10 @@ describe("presentSessionV2Messages", () => {
     // transcript. The merge must put the older context before this currently visible tail.
     const initial = present([secondUser, secondAssistant])
     const context = present([firstUser, firstAssistant, secondUser, secondAssistant])
-    const mergedContext = mergeSessionV2Presentation({
+    const mergedContext = mergeSessionV2Messages({
       messages: initial.messages,
-      parts: Object.fromEntries(initial.parts.map((entry) => [entry.id, entry.parts])),
+      incoming: context.messages,
       previousOwnedMessageIDs: new Set(initial.messages.map((message) => message.id)),
-      presentation: context,
       removeMissing: false,
     })
     expect(mergedContext.messages.map((message) => message.id)).toEqual([
@@ -783,11 +756,10 @@ describe("presentSessionV2Messages", () => {
       "msg_second_assistant",
     ])
     const partial = present([secondUser, secondAssistant])
-    const refreshed = mergeSessionV2Presentation({
+    const refreshed = mergeSessionV2Messages({
       messages: mergedContext.messages,
-      parts: Object.fromEntries(mergedContext.parts.map((entry) => [entry.id, entry.parts])),
+      incoming: partial.messages,
       previousOwnedMessageIDs: mergedContext.ownedMessageIDs,
-      presentation: partial,
       removeMissing: false,
     })
 
@@ -805,11 +777,10 @@ describe("presentSessionV2Messages", () => {
       { ...user, id: "msg_older_2", time: { created: 10 } },
     ])
     const newer = present([{ ...user, id: "msg_newer", time: { created: 10 } }])
-    const result = mergeSessionV2Presentation({
+    const result = mergeSessionV2Messages({
       messages: older.messages,
-      parts: {},
+      incoming: newer.messages,
       previousOwnedMessageIDs: new Set(),
-      presentation: newer,
       removeMissing: false,
     })
 
@@ -819,12 +790,11 @@ describe("presentSessionV2Messages", () => {
   test("keeps a newer optimistic row after an authoritative history window", () => {
     const history = present([{ ...user, id: "msg_history", time: { created: 10 } }])
     const optimistic = { ...history.messages[0]!, id: "msg_optimistic", time: { created: 20 } }
-    const result = mergeSessionV2Presentation({
+    const result = mergeSessionV2Messages({
       messages: [...history.messages, optimistic],
-      parts: {},
+      incoming: history.messages,
       previousOwnedMessageIDs: new Set(history.messages.map((message) => message.id)),
       preservedMessageIDs: new Set([optimistic.id]),
-      presentation: history,
     })
 
     expect(result.messages.map((message) => message.id)).toEqual(["msg_history", "msg_optimistic"])
@@ -839,26 +809,17 @@ describe("presentSessionV2Messages", () => {
       agent: "build",
       model: { providerID: "provider", modelID: "model" },
     } satisfies Message
-    const legacyPart = {
-      id: "prt_legacy",
-      sessionID: "ses_goal",
-      messageID: legacy.id,
-      type: "text" as const,
-      text: "Earlier context",
-    } satisfies Part
-    const result = mergeSessionV2Presentation({
+    const result = mergeSessionV2Messages({
       messages: [legacy, { ...legacy, id: "msg_old_v2" }],
-      parts: { [legacy.id]: [legacyPart], msg_old_v2: [{ ...legacyPart, id: "prt_old", messageID: "msg_old_v2" }] },
+      incoming: [],
       previousOwnedMessageIDs: new Set(["msg_old_v2"]),
-      presentation: { messages: [], parts: [] },
     })
 
     expect(result.messages).toEqual([legacy])
-    expect(result.parts).toEqual([{ id: legacy.id, parts: [legacyPart] }])
     expect(result.removedMessageIDs).toEqual(["msg_old_v2"])
   })
 
-  test("authoritative reconnect removes offscreen-reverted cached turns and their parts", () => {
+  test("authoritative reconnect marks offscreen-reverted cached turns for removal", () => {
     const before = present([
       user,
       { ...user, id: "msg_reverted", text: "Removed after tab closed", time: { created: 2 } },
@@ -872,16 +833,14 @@ describe("presentSessionV2Messages", () => {
       },
     ])
     const after = present([user])
-    const result = mergeSessionV2Presentation({
+    const result = mergeSessionV2Messages({
       messages: before.messages,
-      parts: Object.fromEntries(before.parts.map((entry) => [entry.id, entry.parts])),
+      incoming: after.messages,
       // Priming adopts the cached rows, including those owned by the previous controller.
       previousOwnedMessageIDs: new Set(before.messages.map((message) => message.id)),
-      presentation: after,
       removeMissing: true,
     })
     expect(result.messages.map((message) => message.id)).toEqual([user.id])
-    expect(result.parts.map((entry) => entry.id)).toEqual([user.id])
     expect(result.removedMessageIDs).toEqual(["msg_reverted", "msg_reverted_answer"])
   })
 
@@ -890,7 +849,7 @@ describe("presentSessionV2Messages", () => {
       { ...user, id: "msg_z_later_lexically" },
       { ...user, id: "msg_a_earlier_lexically", time: { created: 2 } },
     ])
-    const result = mergeSessionV2Presentation({
+    const result = mergeSessionV2Messages({
       messages: [
         {
           id: "msg_a_earlier_lexically",
@@ -909,13 +868,11 @@ describe("presentSessionV2Messages", () => {
           model: { providerID: "provider", modelID: "model" },
         },
       ],
-      parts: {},
+      incoming: laterIDFirst.messages,
       previousOwnedMessageIDs: new Set(["msg_a_earlier_lexically", "msg_z_later_lexically"]),
-      presentation: laterIDFirst,
     })
 
     expect(result.messages.map((message) => message.id)).toEqual(["msg_z_later_lexically", "msg_a_earlier_lexically"])
-    expect(result.parts.map((entry) => entry.id)).toEqual(["msg_z_later_lexically", "msg_a_earlier_lexically"])
   })
 })
 
@@ -1090,32 +1047,12 @@ describe("lean tool stubs", () => {
     const full = present([user, fullMessage()])
     const lean = present([user, leanMessage("")])
 
-    const merged = mergeSessionV2Presentation({
-      messages: full.messages,
-      parts: Object.fromEntries(full.parts.map((entry) => [entry.id, entry.parts])),
-      previousOwnedMessageIDs: new Set(full.messages.map((message) => message.id)),
-      presentation: lean,
-      removeMissing: false,
-    })
-
-    const part = merged.parts.find((entry) => entry.id === "msg_lean")?.parts[0]
+    const part = mergeSessionV2Parts(
+      full.parts.find((entry) => entry.id === "msg_lean")?.parts,
+      lean.parts.find((entry) => entry.id === "msg_lean")!.parts,
+    )[0]
     expect(part).toMatchObject({ state: { output: "the real body" } })
     expect(part === undefined || isSessionV2ToolStub(part)).toBe(false)
-  })
-
-  test("an authoritative snapshot keeps the stored body over an incoming stub", () => {
-    const full = present([user, fullMessage()])
-    const lean = present([user, leanMessage("")])
-
-    const merged = mergeSessionV2Presentation({
-      messages: full.messages,
-      parts: Object.fromEntries(full.parts.map((entry) => [entry.id, entry.parts])),
-      previousOwnedMessageIDs: new Set(full.messages.map((message) => message.id)),
-      presentation: lean,
-    })
-
-    const part = merged.parts.find((entry) => entry.id === "msg_lean")?.parts[0]
-    expect(part).toMatchObject({ state: { output: "the real body" } })
   })
 
   test("a full incoming part replaces a stored stub", () => {

@@ -287,17 +287,26 @@ describe("SessionProjector", () => {
         timestamp: created,
         text: "synthetic context",
       })
-      yield* events.publish(SessionEvent.Shell.Started, {
-        sessionID,
-        messageID: SessionMessage.ID.create(),
-        timestamp: created,
-        callID: "shell-1",
-        command: "pwd",
-      })
+      const previousShellID = SessionMessage.ID.create()
+      const targetShellID = SessionMessage.ID.create()
+      const otherShellID = SessionMessage.ID.create()
+      const callID = "shell-1\u0000\ud800"
+      for (const entry of [
+        { messageID: previousShellID, callID },
+        { messageID: targetShellID, callID },
+        { messageID: otherShellID, callID: "shell-2" },
+      ]) {
+        yield* events.publish(SessionEvent.Shell.Started, {
+          sessionID,
+          ...entry,
+          timestamp: created,
+          command: "pwd",
+        })
+      }
       yield* events.publish(SessionEvent.Shell.Ended, {
         sessionID,
         timestamp: DateTime.makeUnsafe(1),
-        callID: "shell-1",
+        callID,
         output: "/project",
         status: "completed",
       })
@@ -355,12 +364,16 @@ describe("SessionProjector", () => {
         "model-switched",
         "synthetic",
         "shell",
+        "shell",
+        "shell",
         "compaction",
       ])
-      expect(messages.find((message) => message.type === "shell")).toMatchObject({
+      expect(messages.find((message) => message.id === targetShellID)).toMatchObject({
         output: "/project",
         time: { completed: DateTime.makeUnsafe(1) },
       })
+      expect(messages.find((message) => message.id === previousShellID)).toMatchObject({ status: "running", output: "" })
+      expect(messages.find((message) => message.id === otherShellID)).toMatchObject({ status: "running", output: "" })
       expect(messages.find((message) => message.type === "compaction")).toMatchObject({
         summary: "summary",
         recent: "recent context",
@@ -1106,9 +1119,10 @@ describe("SessionProjector usage roll-up", () => {
 
   it.effect("takes a reverted turn back out of the roll-up", () =>
     Effect.gen(function* () {
+      const removedID = SessionMessage.ID.make('msg_assistant_"2"')
       const db = yield* seed([
         assistantRow(SessionMessage.ID.make("msg_assistant_1"), 0),
-        assistantRow(SessionMessage.ID.make("msg_assistant_2"), 1),
+        assistantRow(removedID, 1),
       ])
       const events = yield* EventV2.Service
       yield* events.publish(SessionEvent.Step.Ended, {
@@ -1123,7 +1137,7 @@ describe("SessionProjector usage roll-up", () => {
       yield* events.publish(SessionEvent.Step.Ended, {
         sessionID,
         timestamp: DateTime.makeUnsafe(2),
-        assistantMessageID: SessionMessage.ID.make("msg_assistant_2"),
+        assistantMessageID: removedID,
         finish: "stop",
         cost: 0.5,
         tokens: { input: 200, output: 10, reasoning: 5, cache: { read: 1_000, write: 100 } },

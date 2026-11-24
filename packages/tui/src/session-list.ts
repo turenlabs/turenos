@@ -21,40 +21,22 @@ export function sessionRows(
     if (!groups.has(key)) groups.set(key, { directory, workspace, sessions: [] })
     groups.get(key)!.sessions.push(session)
   }
-  const directories = [...new Set([...groups.values()].map((group) => group.directory))]
-  const parts = (directory: string) => directory.split(/[\\/]/).filter(Boolean)
-  const names = new Map(
-    directories.map((directory) => {
-      const segments = parts(directory)
-      let length = 1
-      while (
-        length < segments.length &&
-        directories.some(
-          (other) => other !== directory && parts(other).slice(-length).join("/") === segments.slice(-length).join("/"),
-        )
-      )
-        length++
-      const suffix = segments.slice(-length).join("/")
-      const ambiguous = directories.some(
-        (other) => other !== directory && parts(other).slice(-length).join("/") === suffix,
-      )
-      return [directory, ambiguous || !suffix ? directory : suffix]
-    }),
-  )
+  const labels = directoryLabels(groups.values())
+  const waitingIDs = new Set(needsInput)
   const compare = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
   return [...groups]
     .sort(([, a], [, b]) => compare(a.directory, b.directory) || compare(a.workspace ?? "", b.workspace ?? ""))
     .flatMap(([group, entry]) => {
-      const sharedDirectory = [...groups.values()].filter((other) => other.directory === entry.directory).length > 1
+      const directory = labels.get(entry.directory)!
       const groupLabel = label(
-        `${names.get(entry.directory)}${sharedDirectory ? ` [${entry.workspace ?? "default"}]` : ""}`,
+        `${directory.name}${directory.shared ? ` [${entry.workspace ?? "default"}]` : ""}`,
         250,
       )
       return entry.sessions
         .sort((a, b) => b.time.updated - a.time.updated || b.time.created - a.time.created || compare(a.id, b.id))
         .map((session) => {
           const running = !stale && Object.hasOwn(active, session.id)
-          const waiting = !stale && needsInput.includes(session.id)
+          const waiting = !stale && waitingIDs.has(session.id)
           return {
             id: session.id,
             name: `${waiting ? "? " : running ? "* " : ""}${sessionTitle(session.title || session.id)}`,
@@ -67,6 +49,32 @@ export function sessionRows(
           }
         })
     })
+}
+
+function directoryLabels(groups: Iterable<{ directory: string }>) {
+  const directories = new Map<string, { groups: number; suffixes: string[] }>()
+  const counts = new Map<string, number>()
+  for (const group of groups) {
+    const existing = directories.get(group.directory)
+    if (existing) {
+      existing.groups++
+      continue
+    }
+    const suffixes: string[] = []
+    for (const segment of group.directory.split(/[\\/]/).filter(Boolean).reverse()) {
+      const tail = suffixes.at(-1)
+      const suffix = tail ? `${segment}/${tail}` : segment
+      suffixes.push(suffix)
+      counts.set(suffix, (counts.get(suffix) ?? 0) + 1)
+    }
+    directories.set(group.directory, { groups: 1, suffixes })
+  }
+  return new Map(
+    [...directories].map(([directory, entry]) => [
+      directory,
+      { name: entry.suffixes.find((suffix) => counts.get(suffix) === 1) ?? directory, shared: entry.groups > 1 },
+    ]),
+  )
 }
 
 export class SessionListRenderable extends ScrollBoxRenderable {
