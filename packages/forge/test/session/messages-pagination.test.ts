@@ -95,7 +95,7 @@ const addUser = Effect.fn("Test.addUser")(function* (sessionID: SessionID, text?
 const addAssistant = Effect.fn("Test.addAssistant")(function* (
   sessionID: SessionID,
   parentID: MessageID,
-  opts?: { summary?: boolean; finish?: string; error?: SessionV1.Assistant["error"] },
+  opts?: { summary?: boolean; finish?: string; error?: SessionV1.Assistant["error"]; structured?: unknown },
 ) {
   const session = yield* SessionNs.Service
   const id = MessageID.ascending()
@@ -115,6 +115,7 @@ const addAssistant = Effect.fn("Test.addAssistant")(function* (
     summary: opts?.summary,
     finish: opts?.finish,
     error: opts?.error,
+    structured: opts?.structured,
   } as unknown as SessionV1.Info)
   return id
 })
@@ -373,6 +374,21 @@ describe("MessageV2.page", () => {
 })
 
 describe("MessageV2.stream", () => {
+  it.instance("reads past pages of unrelated deeply nested messages", () =>
+    withSession(({ sessionID }) =>
+      Effect.gen(function* () {
+        const structured = Array.from({ length: 1_100 }).reduce<unknown>((value) => [value], null)
+        const turnID = yield* addUser(sessionID, "Requested turn")
+        const matchingID = yield* addAssistant(sessionID, turnID, { structured })
+        const otherID = yield* addUser(sessionID, "Unrelated turn")
+        for (let index = 0; index < 51; index++) yield* addAssistant(sessionID, otherID, { structured })
+
+        const turn = yield* MessageV2.stream(sessionID, { turnID })
+        expect(turn.map((row) => row.info.id)).toEqual([matchingID, turnID])
+      }),
+    ),
+  )
+
   it.instance("reads only the requested turn across page boundaries", () =>
     withSession(({ sessionID }) =>
       Effect.gen(function* () {

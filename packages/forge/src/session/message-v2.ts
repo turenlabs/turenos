@@ -462,10 +462,10 @@ export const page = Effect.fn("MessageV2.page")(function* (input: {
       ? undefined
       : or(
           eq(MessageTable.id, input.turnID),
-          and(
-            sql`json_extract(${MessageTable.data}, '$.role') = 'assistant'`,
-            sql`(${MessageTable.data} -> '$.parentID') = ${JSON.stringify(input.turnID)}`,
-          ),
+          sql`CASE WHEN json_valid(${MessageTable.data}) THEN
+            json_extract(${MessageTable.data}, '$.role') = 'assistant'
+            AND (${MessageTable.data} -> '$.parentID') = ${JSON.stringify(input.turnID)}
+          ELSE 1 END`,
         ),
   )
   const rows = yield* db
@@ -492,7 +492,16 @@ export const page = Effect.fn("MessageV2.page")(function* (input: {
 
   const more = rows.length > input.limit
   const slice = more ? rows.slice(0, input.limit) : rows
-  const items = yield* hydrate(db, slice)
+  // SQLite rejects some deeply nested messages. Check those candidates before loading parts.
+  const items = yield* hydrate(
+    db,
+    input.turnID === undefined
+      ? slice
+      : slice.filter((row) => {
+          const message = info(row)
+          return message.id === input.turnID || (message.role === "assistant" && message.parentID === input.turnID)
+        }),
+  )
   items.reverse()
   const tail = slice.at(-1)
   return {
@@ -509,7 +518,6 @@ export function stream(sessionID: SessionID, options?: { turnID: MessageID }) {
     let before: string | undefined
     while (true) {
       const next = yield* page({ sessionID, limit: size, before, turnID: options?.turnID })
-      if (next.items.length === 0) break
       for (let i = next.items.length - 1; i >= 0; i--) {
         const item = next.items[i]
         if (item) result.push(item)
