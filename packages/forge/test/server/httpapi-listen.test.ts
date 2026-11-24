@@ -176,6 +176,34 @@ async function openPtySocket(listener: Awaited<ReturnType<typeof startListener>>
 }
 
 describe("HttpApi Server.listen", () => {
+  test("keeps the global event stream open across idle heartbeats", async () => {
+    const listener = await startListener()
+    const abort = new AbortController()
+    try {
+      const response = await fetch(new URL(GlobalPaths.event, listener.url), {
+        headers: { authorization: authorization() },
+        signal: AbortSignal.any([abort.signal, AbortSignal.timeout(30_000)]),
+      })
+      expect(response.status).toBe(200)
+      const reader = response.body?.pipeThrough(new TextDecoderStream()).getReader()
+      if (!reader) throw new Error("Expected a global event stream")
+
+      // A stock listener can deliver the first heartbeat before closing the socket.
+      let received = ""
+      let heartbeats = 0
+      while (heartbeats < 2) {
+        const chunk = await reader.read()
+        if (chunk.done) break
+        received += chunk.value
+        heartbeats = received.match(/"type":"server\.heartbeat"/g)?.length ?? 0
+      }
+      expect(heartbeats).toBeGreaterThanOrEqual(2)
+    } finally {
+      abort.abort()
+      await stop(listener, "idle event stream listener stop")
+    }
+  }, 45_000)
+
   testPty("starts an authenticated Unix socket and removes it on stop", async () => {
     await using tmp = await tmpdir({ config: { formatter: false, lsp: false } })
     const socketPath = path.join(await realpath(tmp.path), "listener.sock")
