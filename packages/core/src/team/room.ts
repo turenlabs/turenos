@@ -2,7 +2,7 @@ export * as SwarmRoom from "./room"
 
 import { SwarmRoom as Contract } from "@turenlabs/schema/swarm-room"
 import { isWithReplicas } from "@turenlabs/effect-drizzle-sqlite"
-import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, sql } from "drizzle-orm"
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, max, sql } from "drizzle-orm"
 import { Context, Effect, Layer, Option, Queue, Schema } from "effect"
 import { AgentV2 } from "../agent"
 import { Database } from "../database/database"
@@ -414,24 +414,29 @@ const layer = Layer.effect(
         .pipe(Effect.orDie)
       // A worker counts as blocked when its latest room entry is an unanswered
       // question — the leader sees "needs input" instead of a stale "working".
-      const latestByMember = new Map<string, Contract.Kind>()
-      yield* primary
-        .select({ memberID: SwarmRoomEntryTable.member_id, kind: SwarmRoomEntryTable.kind })
-        .from(SwarmRoomEntryTable)
-        .where(eq(SwarmRoomEntryTable.room_id, roomID))
-        .orderBy(desc(SwarmRoomEntryTable.seq))
-        .all()
-        .pipe(
-          Effect.orDie,
-          Effect.map((rows) => {
-            for (const row of rows) {
-              if (!latestByMember.has(row.memberID)) latestByMember.set(row.memberID, row.kind)
-            }
-          }),
-        )
-      const blocked = new Set(
-        [...latestByMember.entries()].filter(([, kind]) => kind === "question").map(([memberID]) => memberID),
-      )
+      const blockedRows =
+        tasks.length === 0
+          ? []
+          : yield* primary
+              .select({ memberID: SwarmRoomEntryTable.member_id })
+              .from(SwarmRoomEntryTable)
+              .where(
+                and(
+                  eq(SwarmRoomEntryTable.room_id, roomID),
+                  eq(SwarmRoomEntryTable.kind, "question"),
+                  inArray(
+                    SwarmRoomEntryTable.seq,
+                    primary
+                      .select({ seq: max(SwarmRoomEntryTable.seq) })
+                      .from(SwarmRoomEntryTable)
+                      .where(eq(SwarmRoomEntryTable.room_id, roomID))
+                      .groupBy(SwarmRoomEntryTable.member_id),
+                  ),
+                ),
+              )
+              .all()
+              .pipe(Effect.orDie)
+      const blocked = new Set(blockedRows.map((row) => row.memberID))
 
       const leader: Member[] = root
         ? [
