@@ -20,6 +20,7 @@ import { Session } from "@/session/session"
 import { SessionPrompt } from "../../src/session/prompt"
 import { SessionSummary } from "../../src/session/summary"
 import { MessageV2 } from "../../src/session/message-v2"
+import { MessageID } from "../../src/session/schema"
 import { SessionV1 } from "@turenlabs/core/v1/session"
 import { Database } from "@turenlabs/core/database/database"
 import { SessionProjector } from "@turenlabs/core/session/projector"
@@ -181,6 +182,8 @@ it.live("tool execution produces non-empty session diff (snapshot race)", () =>
         yield* Effect.sleep("100 millis")
       }
       expect(diff.length).toBeGreaterThan(0)
+      expect(yield* summary.diff({ sessionID: session.id, messageID: result.info.id })).toEqual([])
+      expect(yield* summary.diff({ sessionID: session.id, messageID: MessageID.ascending() })).toEqual([])
     }),
     { git: true, config: testConfig },
   ),

@@ -70,6 +70,12 @@ test("disambiguates duplicate project names and keeps workspace and lexical dire
   expect(rows.find((row) => row.id === "d")!.groupLabel).toContain("sandbox")
 })
 
+test("keeps raw labels when path suffixes cannot disambiguate the directories", () => {
+  const paths = ["/", "C:/work/app", "C:\\work\\app", "/opt/app"]
+  const rows = sessionRows(paths.map((path, index) => session(String(index), path)), {})
+  expect(rows.map((row) => row.groupLabel)).toEqual(["/", "opt/app", "C:/work/app", "C:\\work\\app"])
+})
+
 async function fixture(height = 12) {
   const view = await createTestRenderer({ width: 40, height, kittyKeyboard: true })
   cleanup.push(() => view.renderer.destroy())

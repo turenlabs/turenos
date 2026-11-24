@@ -39,8 +39,8 @@ import { sessionInteractionTrace } from "@/utils/session-interaction-trace"
 import {
   isSessionV2ToolStub,
   mergeIncrementalMessages,
+  mergeSessionV2Messages,
   mergeSessionV2Parts,
-  mergeSessionV2Presentation,
   presentSessionV2Messages,
   presentTool,
   type SessionV2Presentation,
@@ -55,6 +55,12 @@ export type LiveDelta = {
   partID: string
   field: "text"
   delta: string
+}
+
+export function appendSessionV2Delta(buckets: Map<string, LiveDelta[]>, key: string, delta: LiveDelta) {
+  const bucket = buckets.get(key)
+  if (bucket) bucket.push(delta)
+  else buckets.set(key, [delta])
 }
 
 export type SnapshotMode = "context" | "full"
@@ -539,13 +545,12 @@ export function createSessionV2TimelineController(input: {
     // A full read is still only a bounded window. Tool settlement and pagination therefore merge
     // it into the last visible transcript; only a structural boundary (revert/cold
     // open) may remove rows that are absent from that window.
-    const projection = mergeSessionV2Presentation({
+    const projection = mergeSessionV2Messages({
       messages: sync().data.message[sessionID] ?? [],
-      parts: sync().data.part,
+      incoming: presentation.messages,
       previousOwnedMessageIDs: authoritative
         ? new Set((sync().data.message[sessionID] ?? []).map((message) => message.id))
         : (owned.get(sessionID) ?? new Set()),
-      presentation,
       preservedMessageIDs: new Set(sessionPromptPending.ids()),
       removeMissing: authoritative,
     })
@@ -575,7 +580,7 @@ export function createSessionV2TimelineController(input: {
       pending
         .reduce((groups, delta) => {
           const key = `${delta.messageID}\0${delta.partID}`
-          groups.set(key, [...(groups.get(key) ?? []), delta])
+          appendSessionV2Delta(groups, key, delta)
           return groups
         }, new Map<string, LiveDelta[]>())
         .forEach((values, key) => {
@@ -1083,7 +1088,7 @@ export function createSessionV2TimelineController(input: {
       field: "text" as const,
       delta: value.delta,
     }
-    deltas.set(value.sessionID, [...(deltas.get(value.sessionID) ?? []), delta])
+    appendSessionV2Delta(deltas, value.sessionID, delta)
     if (applyDelta(value.sessionID, delta)) return
     scheduleHydrate(value.sessionID)
   }
