@@ -178,6 +178,7 @@ export default function TeamPage() {
     server.list.map((connection) => ({ key: ServerConnection.key(connection), label: serverName(connection) })),
   )
   const selectedServer = createMemo(() => serverOptions().find((option) => option.key === server.key))
+  const messagesByID = createMemo(() => new Map(state.value?.messages.map((message) => [message.id, message])))
   // Attachment drafts belong to one room on one server; the same room ID can exist on two servers.
   const draftScope = (roomID: string) => JSON.stringify([serverSDK().url, serverSDK().scope, roomID])
   // Message text is kept per room too, so a draft stays in the room where it was typed.
@@ -1221,7 +1222,7 @@ export default function TeamPage() {
                         class="mb-2 min-w-0 border-l-2 border-v2-border-border-base pl-2 text-[11px] leading-4 text-v2-text-text-muted"
                       >
                         <Show
-                          when={replyContext(message, state.value?.messages ?? [])}
+                          when={replyContext(message, messagesByID())}
                           fallback={<p>Reply to a message not loaded.</p>}
                         >
                           {(source) => (

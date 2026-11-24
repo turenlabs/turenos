@@ -30,6 +30,8 @@ describe("team room rules", () => {
     expect(replyContext(reply, [source, reply])).toEqual({ author: "moss", excerpt: "Check the result" })
     expect(replyContext(reply, [reply])).toBeUndefined()
     expect(replyContext(message("plain", 3), [source])).toBeUndefined()
+    expect(replyContext(reply, new Map([[source.id, source]]))).toEqual({ author: "moss", excerpt: "Check the result" })
+    expect(replyContext(reply, new Map([[reply.id, reply]]))).toBeUndefined()
   })
 
   test("caps reply excerpts at 160 characters and keeps markup as plain text", () => {
