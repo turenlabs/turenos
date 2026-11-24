@@ -795,16 +795,31 @@ const layer = Layer.effect(
     const lanes = Effect.fn("SwarmRoom.lanes")(function* (roomID: ID) {
       yield* requireRoom(roomID)
       const entries = yield* primary
-        .select()
+        .select({
+          kind: SwarmRoomEntryTable.kind,
+          seq: SwarmRoomEntryTable.seq,
+          member_id: SwarmRoomEntryTable.member_id,
+          actor_name: SwarmRoomEntryTable.actor_name,
+          payload: SwarmRoomEntryTable.payload,
+        })
         .from(SwarmRoomEntryTable)
-        .where(eq(SwarmRoomEntryTable.room_id, roomID))
+        .where(
+          and(
+            eq(SwarmRoomEntryTable.room_id, roomID),
+            // Replay in JavaScript when SQLite cannot parse a deeply nested payload.
+            sql`CASE
+              WHEN ${SwarmRoomEntryTable.kind} = 'plan' THEN 1
+              WHEN json_valid(${SwarmRoomEntryTable.payload}) THEN json_type(${SwarmRoomEntryTable.payload}, '$.lane') = 'text'
+              ELSE ${SwarmRoomEntryTable.payload} IS NOT NULL
+            END`,
+          ),
+        )
         .orderBy(asc(SwarmRoomEntryTable.seq))
         .all()
         .pipe(Effect.orDie)
       const laneOrder: string[] = []
       const laneMap = new Map<string, LaneState>()
       const claimOwner = new Map<string, { memberID: MemberID; name: string; seq: number }>()
-      const memberName = (row: typeof SwarmRoomEntryTable.$inferSelect) => row.actor_name
 
       for (const entry of entries) {
         const payload = entry.payload as Record<string, unknown> | null
@@ -841,8 +856,8 @@ const layer = Layer.effect(
         }
         const lane = laneMap.get(laneKey)!
         if (entry.kind === "claim") {
-          claimOwner.set(laneKey, { memberID: entry.member_id, name: memberName(entry), seq: entry.seq })
-          laneMap.set(laneKey, { ...lane, status: "claimed", claimedBy: entry.member_id, claimedByName: memberName(entry), updatedSeq: entry.seq })
+          claimOwner.set(laneKey, { memberID: entry.member_id, name: entry.actor_name, seq: entry.seq })
+          laneMap.set(laneKey, { ...lane, status: "claimed", claimedBy: entry.member_id, claimedByName: entry.actor_name, updatedSeq: entry.seq })
         }
         if (entry.kind === "release") {
           claimOwner.delete(laneKey)
