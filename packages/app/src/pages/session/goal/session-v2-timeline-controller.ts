@@ -196,6 +196,32 @@ export function sessionV2DeltasForProjection(input: {
   )
 }
 
+export function reconcileSessionV2DeltaBases(input: {
+  current: readonly LiveDelta[]
+  pending: readonly LiveDelta[]
+  through: number
+  snapshotText: ReadonlyMap<string, string>
+  deltaBases: Map<string, string | undefined>
+}) {
+  const pending = new Set(input.pending.map((delta) => delta.sequence))
+  const unresolved = new Set<string>()
+  for (const delta of input.current) {
+    if (delta.sequence <= input.through && pending.has(delta.sequence)) {
+      unresolved.add(`${delta.messageID}\0${delta.partID}`)
+    }
+  }
+  return input.current.filter((delta) => {
+    const key = `${delta.messageID}\0${delta.partID}`
+    if (!pending.has(delta.sequence)) {
+      input.deltaBases.delete(key)
+      return false
+    }
+    const snapshot = input.snapshotText.get(key)
+    if (!unresolved.has(key) && snapshot !== undefined) input.deltaBases.set(key, snapshot)
+    return true
+  })
+}
+
 /** High-frequency stream fragments are applied from the live delta channel, not reloaded as context. */
 export function sessionEventNeedsTranscriptSnapshot(type: string) {
   switch (type) {
@@ -605,26 +631,9 @@ export function createSessionV2TimelineController(input: {
     })
     sessionPromptStartup.clearResponded(presentation.messages)
     owned.set(sessionID, projection.ownedMessageIDs)
-    const pendingSequences = new Set(pending.map((delta) => delta.sequence))
-    const currentDeltas = deltas.get(sessionID) ?? []
-    currentDeltas.forEach((delta) => {
-      const key = `${delta.messageID}\0${delta.partID}`
-      if (!pendingSequences.has(delta.sequence)) {
-        deltaBases.delete(key)
-        return
-      }
-      const unresolvedBefore = currentDeltas.some(
-        (value) =>
-          value.sequence <= through &&
-          pendingSequences.has(value.sequence) &&
-          `${value.messageID}\0${value.partID}` === key,
-      )
-      const snapshot = snapshotText.get(key)
-      if (!unresolvedBefore && snapshot !== undefined) deltaBases.set(key, snapshot)
-    })
     deltas.set(
       sessionID,
-      currentDeltas.filter((delta) => pendingSequences.has(delta.sequence)),
+      reconcileSessionV2DeltaBases({ current: deltas.get(sessionID) ?? [], pending, through, snapshotText, deltaBases }),
     )
     sessionInteractionTrace("snapshot.projected", {
       durationMs: performance.now() - projectionStarted,
