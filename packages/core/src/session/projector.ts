@@ -522,16 +522,23 @@ function run(db: DatabaseService, event: SessionEvent.Event) {
       },
       getCurrentShell(callID) {
         return Effect.gen(function* () {
-          const rows = yield* db
+          const row = yield* db
             .select()
             .from(SessionMessageTable)
-            .where(and(eq(SessionMessageTable.session_id, event.data.sessionID), eq(SessionMessageTable.type, "shell")))
+            .where(
+              and(
+                eq(SessionMessageTable.session_id, event.data.sessionID),
+                eq(SessionMessageTable.type, "shell"),
+                // Compare JSON text so binding preserves unpaired surrogates in the call ID.
+                sql`(${SessionMessageTable.data} -> '$.callID') = ${JSON.stringify(callID)}`,
+              ),
+            )
             .orderBy(desc(SessionMessageTable.seq))
-            .all()
+            .limit(1)
+            .get()
             .pipe(Effect.orDie)
-          return rows
-            .map(decodeRow)
-            .find((message): message is SessionMessage.Shell => message.type === "shell" && message.callID === callID)
+          const message = row && decodeRow(row)
+          return message?.type === "shell" ? message : undefined
         })
       },
       updateShell,
