@@ -896,6 +896,34 @@ describe("mergeIncrementalMessages", () => {
     expect(merged[1]).toMatchObject({ id: "msg_b", model: { modelID: "fresh" } })
   })
 
+  test("preserves a completed assistant while accepting the incoming parent and authoritative deletions", () => {
+    const open = {
+      id: "msg_assistant",
+      type: "assistant" as const,
+      agent: "build",
+      model: { providerID: "provider", id: "model" },
+      time: { created: 2 },
+      content: [],
+    }
+    const current = present([user, { ...open, time: { created: 2, completed: 4 }, finish: "stop" }]).messages
+    const incoming = present([{ ...user, id: "msg_earlier_parent" }, open]).messages
+    const merged = mergeSessionV2Messages({
+      messages: current,
+      incoming,
+      previousOwnedMessageIDs: new Set(current.map((message) => message.id)),
+      removeMissing: true,
+    })
+
+    expect(merged.removedMessageIDs).toEqual([user.id])
+    expect(merged.staleAssistants).toEqual(new Set([open.id]))
+    expect(merged.messages.at(-1)).toMatchObject({
+      id: open.id,
+      parentID: "msg_earlier_parent",
+      finish: "stop",
+      time: { completed: 4 },
+    })
+  })
+
   test("interleaves both inputs into ascending time.created order", () => {
     const merged = mergeIncrementalMessages(
       [row("msg_a", 1), row("msg_d", 7)],

@@ -2565,6 +2565,13 @@ export default function Page() {
     <>
       {sessionSync() ?? ""}
       <div class="flex min-h-0 min-w-0 flex-1 flex-col">
+        <Show when={messagesReady() && params.id && timeline.messages().length === 0 && historyMore()}>
+          <div class="flex shrink-0 justify-center p-2">
+            <Button variant="ghost" disabled={historyLoading()} onClick={() => void loadOlder().catch(() => {})}>
+              {language.t(historyLoading() ? "session.messages.loadingEarlier" : "session.messages.loadEarlier")}
+            </Button>
+          </div>
+        </Show>
         <Show
           when={messagesReady() ? params.id : undefined}
           keyed

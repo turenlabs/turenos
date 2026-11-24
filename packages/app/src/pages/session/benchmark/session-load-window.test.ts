@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test"
-import { loadSessionV2MessageWindow, SESSION_V2_MESSAGE_PAGE_LIMIT } from "../goal/session-v2-message-window"
+import {
+  loadSessionV2MessageWindow,
+  loadSessionV2Window,
+  SESSION_V2_MESSAGE_PAGE_LIMIT,
+} from "../goal/session-v2-message-window"
 import type { SessionMessage } from "@turenlabs/sdk/v2/client"
 import { mergeSessionV2Messages, presentSessionV2Messages } from "../goal/session-v2-presentation"
 import { generateSessionMessages, smallProfile } from "./session-load-fixture"
@@ -126,6 +130,31 @@ describe("session tab-switch load", () => {
         ),
       ).toBe(true)
     }
+  })
+
+  test("cold open reaches the parent of a long turn within the extended request budget", async () => {
+    const prompt = messages.find((message) => message.type === "user")!
+    const reply = messages.find((message) => message.type === "assistant")!
+    const server = pageServer(SESSION_V2_MESSAGE_PAGE_LIMIT, [
+      prompt,
+      ...Array.from({ length: 450 }, (_, index) => ({ ...reply, id: `msg_long_${index}` })),
+    ])
+    const window = await loadSessionV2Window({
+      sessionID: "ses_bench",
+      signal: new AbortController().signal,
+      request: async ({ cursor }) => ({ data: await server.load(cursor) }),
+    })
+    const result = presentSessionV2Messages({
+      sessionID: "ses_bench",
+      directory: "/repo",
+      agent: "build",
+      model: { providerID: "provider", modelID: "model" },
+      messages: window.messages,
+    })
+
+    expect(server.requests).toBe(10)
+    expect(result.messages).toHaveLength(451)
+    expect(result.messages.at(-1)).toMatchObject({ id: "msg_long_449", parentID: prompt.id })
   })
 })
 
