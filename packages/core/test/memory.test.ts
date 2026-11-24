@@ -484,20 +484,23 @@ describe("Memory", () => {
     }),
   )
 
-  it.effect("rebuilds the whole index from the drawers alone", () =>
+  it.effect("rebuilds the whole index across multiple batches", () =>
     Effect.gen(function* () {
       const { service, wing, room } = yield* scaffold("reindex")
-      yield* service.write({
-        wingID: wing.id,
-        roomID: room.id,
-        title: "rebuildable",
-        body: "sqlite wal checkpoint truncate on shutdown",
-        provenance,
-      })
-      const count = yield* service.reindex()
-      expect(count).toBeGreaterThanOrEqual(1)
-      const hits = yield* service.search({ query: "wal checkpoint", wings: [wing.id] })
-      expect(hits.length).toBe(1)
+      for (let index = 0; index < 205; index++) {
+        yield* service.write({
+          wingID: wing.id,
+          roomID: room.id,
+          title: "rebuildable",
+          body: `checkpoint${index}`,
+          provenance,
+        })
+      }
+      expect(yield* service.reindex()).toBe(205)
+      for (const index of [0, 99, 100, 199, 204]) {
+        const hits = yield* service.search({ query: `checkpoint${index}`, wings: [wing.id] })
+        expect(hits.map((hit) => hit.drawer.body)).toEqual([`checkpoint${index}`])
+      }
     }),
   )
 
