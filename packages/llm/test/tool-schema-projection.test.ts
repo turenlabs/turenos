@@ -81,6 +81,22 @@ describe("tool schema projections", () => {
     })
   })
 
+  test("openai keeps the first variant's definition of a shared property", () => {
+    const projected = ToolSchemaProjection.openAI({
+      anyOf: [
+        { properties: { shared: { type: "string" }, first: { type: "boolean" } } },
+        { properties: { last: { type: "number" }, shared: { type: "number" } } },
+      ],
+    })
+
+    expect(projected.properties).toEqual({
+      last: { type: "number" },
+      shared: { type: "string" },
+      first: { type: "boolean" },
+    })
+    expect(Object.keys(projected.properties ?? {})).toEqual(["last", "shared", "first"])
+  })
+
   // F8: a `Schema.Json` tool lowers to an untyped `{}` root that strict OpenAI-compatible providers
   // reject with "tools.function.parameters.type is required". Every projection must restate an
   // untyped or empty root as an explicit object contract.
